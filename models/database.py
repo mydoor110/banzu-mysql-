@@ -373,6 +373,84 @@ def _init_sqlite_tables(cur):
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
+        """,
+
+        # Training project categories table
+        """
+        CREATE TABLE IF NOT EXISTS training_project_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            display_order INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+
+        # Import logs audit table
+        """
+        CREATE TABLE IF NOT EXISTS import_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            module TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            user_role TEXT NOT NULL,
+            department_id INTEGER,
+            department_name TEXT,
+            file_name TEXT,
+            total_rows INTEGER DEFAULT 0,
+            success_rows INTEGER DEFAULT 0,
+            failed_rows INTEGER DEFAULT 0,
+            skipped_rows INTEGER DEFAULT 0,
+            error_message TEXT,
+            import_details TEXT,
+            ip_address TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+        )
+        """,
+
+        # Algorithm presets table
+        """
+        CREATE TABLE IF NOT EXISTS algorithm_presets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            preset_name TEXT NOT NULL UNIQUE,
+            preset_key TEXT NOT NULL UNIQUE,
+            description TEXT,
+            config_data TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+
+        # Algorithm active config table
+        """
+        CREATE TABLE IF NOT EXISTS algorithm_active_config (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            based_on_preset TEXT,
+            is_customized INTEGER DEFAULT 0,
+            config_data TEXT NOT NULL,
+            updated_by INTEGER,
+            updated_at TEXT,
+            FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+        """,
+
+        # Algorithm config logs table
+        """
+        CREATE TABLE IF NOT EXISTS algorithm_config_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            preset_name TEXT,
+            old_config TEXT,
+            new_config TEXT,
+            change_reason TEXT,
+            changed_by INTEGER NOT NULL,
+            changed_by_name TEXT,
+            changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ip_address TEXT,
+            FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
+        )
         """
     ]
 
@@ -382,6 +460,33 @@ def _init_sqlite_tables(cur):
             cur.execute(table_sql)
         except sqlite3.Error as e:
             print(f"Error creating table: {e}")
+
+    # Create view for recent imports
+    try:
+        cur.execute("""
+            CREATE VIEW IF NOT EXISTS v_recent_imports AS
+            SELECT
+                il.*,
+                d.name as dept_name,
+                CASE
+                    WHEN il.user_role = 'admin' THEN '系统管理员'
+                    WHEN il.user_role = 'manager' THEN '部门管理员'
+                    ELSE '普通用户'
+                END as role_display,
+                CASE il.module
+                    WHEN 'personnel' THEN '人员管理'
+                    WHEN 'performance' THEN '绩效管理'
+                    WHEN 'training' THEN '培训管理'
+                    WHEN 'safety' THEN '安全管理'
+                    ELSE il.module
+                END as module_display
+            FROM import_logs il
+            LEFT JOIN departments d ON il.department_id = d.id
+            ORDER BY il.created_at DESC
+            LIMIT 100
+        """)
+    except sqlite3.Error as e:
+        print(f"Error creating view: {e}")
 
     # Create performance indexes
     _create_indexes(cur, is_mysql=False)
@@ -646,6 +751,85 @@ def _init_mysql_tables(cur):
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+
+        # Training project categories table
+        """
+        CREATE TABLE IF NOT EXISTS training_project_categories (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            description TEXT,
+            display_order INT DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+
+        # Import logs audit table
+        """
+        CREATE TABLE IF NOT EXISTS import_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            module VARCHAR(100) NOT NULL,
+            operation VARCHAR(100) NOT NULL,
+            user_id INT NOT NULL,
+            username VARCHAR(255) NOT NULL,
+            user_role VARCHAR(50) NOT NULL,
+            department_id INT,
+            department_name VARCHAR(255),
+            file_name VARCHAR(500),
+            total_rows INT DEFAULT 0,
+            success_rows INT DEFAULT 0,
+            failed_rows INT DEFAULT 0,
+            skipped_rows INT DEFAULT 0,
+            error_message TEXT,
+            import_details TEXT,
+            ip_address VARCHAR(50),
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+
+        # Algorithm presets table
+        """
+        CREATE TABLE IF NOT EXISTS algorithm_presets (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            preset_name VARCHAR(255) NOT NULL UNIQUE,
+            preset_key VARCHAR(100) NOT NULL UNIQUE,
+            description TEXT,
+            config_data TEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+
+        # Algorithm active config table
+        """
+        CREATE TABLE IF NOT EXISTS algorithm_active_config (
+            id INT PRIMARY KEY DEFAULT 1,
+            based_on_preset VARCHAR(100),
+            is_customized INT DEFAULT 0,
+            config_data TEXT NOT NULL,
+            updated_by INT,
+            updated_at DATETIME,
+            FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+            CHECK (id = 1)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+
+        # Algorithm config logs table
+        """
+        CREATE TABLE IF NOT EXISTS algorithm_config_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            action VARCHAR(50) NOT NULL,
+            preset_name VARCHAR(255),
+            old_config TEXT,
+            new_config TEXT,
+            change_reason TEXT,
+            changed_by INT NOT NULL,
+            changed_by_name VARCHAR(255),
+            changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ip_address VARCHAR(50),
+            FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
     ]
 
@@ -656,6 +840,34 @@ def _init_mysql_tables(cur):
             cur.execute(table_sql)
         except Exception as e:
             print(f"Error creating table: {e}")
+
+    # Create view for recent imports (MySQL version)
+    try:
+        cur.execute("DROP VIEW IF EXISTS v_recent_imports")
+        cur.execute("""
+            CREATE VIEW v_recent_imports AS
+            SELECT
+                il.*,
+                d.name as dept_name,
+                CASE
+                    WHEN il.user_role = 'admin' THEN '系统管理员'
+                    WHEN il.user_role = 'manager' THEN '部门管理员'
+                    ELSE '普通用户'
+                END as role_display,
+                CASE il.module
+                    WHEN 'personnel' THEN '人员管理'
+                    WHEN 'performance' THEN '绩效管理'
+                    WHEN 'training' THEN '培训管理'
+                    WHEN 'safety' THEN '安全管理'
+                    ELSE il.module
+                END as module_display
+            FROM import_logs il
+            LEFT JOIN departments d ON il.department_id = d.id
+            ORDER BY il.created_at DESC
+            LIMIT 100
+        """)
+    except Exception as e:
+        print(f"Error creating view: {e}")
 
     # Create performance indexes
     _create_indexes(cur, is_mysql=True)
@@ -688,7 +900,16 @@ def _create_indexes(cur, is_mysql=False):
         "CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_provider ON ai_usage_logs(provider_id)",
         "CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_created ON ai_usage_logs(created_at)",
         "CREATE INDEX IF NOT EXISTS idx_ai_analysis_history_emp_hash ON ai_analysis_history(emp_no, data_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_ai_analysis_history_created ON ai_analysis_history(created_at)"
+        "CREATE INDEX IF NOT EXISTS idx_ai_analysis_history_created ON ai_analysis_history(created_at)",
+        # Import logs indexes
+        "CREATE INDEX IF NOT EXISTS idx_import_logs_module ON import_logs(module)",
+        "CREATE INDEX IF NOT EXISTS idx_import_logs_user_id ON import_logs(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_import_logs_created_at ON import_logs(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_import_logs_department_id ON import_logs(department_id)",
+        # Algorithm config logs indexes
+        "CREATE INDEX IF NOT EXISTS idx_config_logs_changed_at ON algorithm_config_logs(changed_at)",
+        # Training project categories indexes
+        "CREATE INDEX IF NOT EXISTS idx_training_projects_category_id ON training_projects(category_id)"
     ]
 
     for index_sql in indexes:
