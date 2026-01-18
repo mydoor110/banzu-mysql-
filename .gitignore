@@ -86,6 +86,7 @@ GitHub上传指南.md
 *_backup_*
 
 # ==================== 同步和迁移脚本 ====================
+sync.sh
 sync_*.sh
 migrate_*.py
 

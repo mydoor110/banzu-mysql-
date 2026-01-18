@@ -942,7 +942,7 @@ def bootstrap_data():
     # Bootstrap default department
     cur.execute("SELECT COUNT(1) FROM departments")
     result = cur.fetchone()
-    count = result[0] if isinstance(result, (list, tuple)) else result.get('COUNT(1)', 0)
+    count = result[0] if result else 0
 
     if count == 0:
         cur.execute(
@@ -954,7 +954,7 @@ def bootstrap_data():
     # Bootstrap admin account
     cur.execute("SELECT COUNT(1) FROM users")
     result = cur.fetchone()
-    count = result[0] if isinstance(result, (list, tuple)) else result.get('COUNT(1)', 0)
+    count = result[0] if result else 0
 
     if count == 0:
         from werkzeug.security import generate_password_hash
@@ -982,7 +982,7 @@ def bootstrap_stopwords():
     # Check if stopwords already exist
     cur.execute("SELECT COUNT(1) FROM stopwords")
     result = cur.fetchone()
-    count = result[0] if isinstance(result, (list, tuple)) else result.get('COUNT(1)', 0)
+    count = result[0] if result else 0
 
     if count > 0:
         return  # Already initialized

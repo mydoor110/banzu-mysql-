@@ -5,6 +5,9 @@
 主应用程序入口
 """
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 import sqlite3
 import json
 
