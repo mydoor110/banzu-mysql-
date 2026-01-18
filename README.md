@@ -1,7 +1,10 @@
 # 班组管理系统 - 企业级管理平台
 
 ## 项目简介
-班组管理系统是一个全功能的企业级管理平台，为基层班组提供绩效管理、培训管理、安全管理、人员管理和部门管理等核心功能。基于 Flask 开发，使用 Bootstrap 5 构建现代化响应式界面。项目遵循"轻量、易部署、易维护"的设计理念，支持多部门层级管理和权限控制。
+
+班组管理系统是一个全功能的企业级管理平台，为基层班组提供绩效管理、培训管理、安全管理、人员管理和部门管理等核心功能。基于 Flask Blueprint 架构开发，使用 Bootstrap 5 构建现代化响应式界面。
+
+项目遵循"轻量、易部署、易维护"的设计理念，支持 **SQLite** 和 **MySQL** 双数据库模式，支持多部门层级管理和权限控制。
 
 ## 系统功能
 
@@ -15,159 +18,218 @@
 - **绩效工作台**: 集中展示年度总览、PDF 上传、区间统计、绩效计算器、季度绩效
 - **数据导入**: 支持 PDF 文件批量解析和 Excel 数据导入
 - **统计分析**: 多维度绩效统计和数据可视化
-- **权限控制**: 基于部门权限的数据访问控制
+- **季度绩效**: 季度成绩聚合和人工覆盖调整
+- **算法配置**: 支持严格/标准/宽松三档算法预设
 
 ### 🎓 培训管理系统
 - **培训工作台**: 集中管理培训记录、数据分析、计划制定等功能
 - **培训记录**: 详细的培训档案管理，支持多种培训类型
+- **培训项目**: 培训项目分类管理
 - **数据分析**: ECharts 可视化培训效果分析
 - **不合格管理**: 专门的不合格人员跟踪和管理
-- **培训计划**: 系统化的培训计划制定和执行
 
 ### 👥 人员管理系统
 - **档案管理**: 完整的员工档案信息维护
 - **数据统计**: 年龄结构、学历分布、司龄分析等
+- **能力画像**: 员工综合能力评估和画像
+- **风险挖掘**: 基于数据的风险预警分析
 - **批量操作**: Excel 批量导入导出功能
-- **实时编辑**: 在线档案编辑和更新
 
 ### 🛡️ 安全管理系统
 - **安全检查**: 安全检查记录和隐患管理
 - **整改跟踪**: 安全隐患整改进度跟踪
 - **统计报表**: 安全数据统计和趋势分析
+- **分类管理**: 多维度安全检查分类
+
+### 🤖 AI 智能分析
+- **多 AI 提供商**: 支持配置多个 AI 服务提供商
+- **智能诊断**: 员工绩效智能分析和建议
+- **分析缓存**: AI 分析结果缓存，节省成本
+- **提示词配置**: 可自定义 AI 提示词模板
 
 ### ⚙️ 系统管理
 - **用户管理**: 用户账号创建、角色分配、部门设置
 - **部门管理**: 部门结构维护、权限配置
-- **系统配置**: 系统参数设置和功能配置
+- **导入日志**: 完整的数据导入审计日志
+- **算法配置**: 综合评分算法参数配置
+- **备份管理**: 数据备份和恢复功能
 
-## 核心设计
+## 技术架构
 
-- **账号体系与权限控制**
-  基于部门的三级权限体系（admin/manager/user），使用 SQLite 存储用户信息，配合 `werkzeug.security` 提供密码哈希，Session 维护登录态。实现基于部门路径的高效权限查询和数据隔离。
+### 后端技术栈
+- **框架**: Flask 2.x + Blueprint 模块化架构
+- **数据库**: SQLite / MySQL 双模式支持
+- **ORM**: 原生 SQL + 数据库抽象层
+- **认证**: Session + werkzeug.security 密码哈希
+- **文件处理**: pandas + openpyxl + pdfplumber
 
-- **模块化架构**
-  各功能模块采用独立的工作台设计，支持多页面导航。每个模块都有完整的 CRUD 操作和数据导入导出功能。
+### 前端技术栈
+- **UI 框架**: Bootstrap 5
+- **图表库**: ECharts
+- **交互**: 原生 JavaScript + Fetch API
 
-- **数据模型**
-  核心表结构：
-  - `departments`：部门信息表，支持层级结构（parent_id, level, path），包含部门名称、负责人、描述等
-  - `users`：用户账号表，包含用户名、密码哈希、部门关联（department_id）、角色权限（role）等
-  - `employees`：员工档案表，维护完整人员信息，为各模块提供统一数据源
-  - `performances`：按年/月/工号唯一索引的绩效记录，包含分数、等级及文件路径
-  - `training_records`：培训记录表，包含培训类型、参与人员、培训结果等信息
-  - `grade_map` 与 `quarter_grade_options`：绩效档位与季度配置
-  - `quarter_overrides`：季度绩效人工调整记录
+## 项目结构
 
-- **文件导入与解析**  
-  上传的 PDF 文件存储于 `uploads/`；服务端会解析表格文本，匹配工号-姓名对后写入 `performances` 表。人员档案支持 Excel 批量导入（自动计算年龄、工龄、司龄），并提供模板下载便于按格式录入。导出功能使用 `openpyxl` 生成 Excel 文件缓存至 `exports/`。
-
-- **统计与可视化**  
-  - 年度总览 (`/records`)：展示选定年份内所有员工的月度成绩、平均分和等级分布，支持导出；
-  - 区间统计 (`/range`)：按任意起止年月生成员工维度的成绩对比；
-  - 绩效计算器 (`/calculator`)：根据自定义档位映射快速计算得分；
-  - 季度绩效 (`/quarters`)：聚合季度成绩并允许人工覆盖结果；
-  - 人员画像 (`/personnel`)：实时展示年龄结构、学历分布、司龄区间，支持档案详情页即时编辑。
-
-## 主要代码结构
 ```
 .
-├── app.py                          # Flask 主应用，包含所有路由和业务逻辑
-├── templates/
-│   ├── base.html                   # 基础模板，导航菜单和布局
-│   ├── login.html                  # 登录页面
-│   ├── change_password.html        # 密码修改页面
-│   │
-│   ├── performance_dashboard.html   # 绩效工作台
-│   ├── records.html                # 绩效年度总览
-│   ├── upload.html                 # 绩效PDF上传
-│   ├── range_view.html             # 绩效区间统计
-│   ├── calculator.html             # 绩效计算器
-│   ├── quarters.html               # 季度绩效
-│   │
-│   ├── training_dashboard.html      # 培训工作台
-│   ├── training_records.html       # 培训记录管理
-│   ├── training_analytics.html     # 培训数据分析
-│   ├── training_disqualified.html  # 不合格人员管理
-│   ├── training_plans.html         # 培训计划管理
-│   ├── training_upload.html        # 培训数据上传
-│   │
-│   ├── personnel.html              # 人员管理首页
-│   ├── personnel_preview.html      # 人员档案详情
-│   │
-│   ├── admin_users.html            # 用户管理页面
-│   ├── departments.html            # 部门管理首页
-│   ├── department_detail.html      # 部门详情页面
-│   │
-│   └── placeholder.html            # 占位模板（安全管理等）
-│
-├── static/
-│   └── style.css                   # 自定义样式
-├── uploads/                        # PDF文件上传目录
-├── exports/                        # Excel导出目录
-├── app.db                          # SQLite数据库
-│
-├── TRAINING_MODULE_CHANGELOG.md    # 培训模块变更记录
-├── DEPARTMENT_MANAGEMENT_DOCS.md   # 部门管理系统文档
-└── README.md                       # 项目说明文档
+├── app.py                      # Flask 主应用入口
+├── config/
+│   ├── __init__.py
+│   └── settings.py             # 配置管理（数据库、路径等）
+├── models/
+│   ├── __init__.py
+│   └── database.py             # 数据库连接和初始化（支持 SQLite/MySQL）
+├── blueprints/                 # 功能模块（Blueprint 架构）
+│   ├── auth.py                 # 认证模块
+│   ├── admin.py                # 管理员模块
+│   ├── departments.py          # 部门管理
+│   ├── personnel.py            # 人员管理
+│   ├── performance.py          # 绩效管理
+│   ├── training.py             # 培训管理
+│   ├── safety.py               # 安全管理
+│   ├── system_config.py        # 系统配置
+│   ├── decorators.py           # 权限装饰器
+│   └── helpers.py              # 辅助函数
+├── services/                   # 业务服务层
+├── utils/                      # 工具函数
+├── templates/                  # Jinja2 模板
+├── static/                     # 静态资源
+├── uploads/                    # 上传文件目录
+├── exports/                    # 导出文件目录
+├── logs/                       # 日志目录
+├── backups/                    # 备份目录
+├── requirements.txt            # Python 依赖
+├── .env.example                # 环境变量示例
+└── README.md                   # 项目说明
 ```
 
-### app.py 模块划分
-- **数据库工具**：`get_db`, `init_db` 完成连接与表结构初始化，包含所有核心表的创建和管理员账号初始化
-- **权限控制**：`get_user_department`, `get_accessible_departments`, `get_accessible_user_ids` 实现基于部门的权限控制
-- **人员档案工具**：完整的人员信息 CRUD 操作，支持 Excel 批量导入和年龄、工龄自动计算
-- **绩效管理**：绩效数据处理、PDF 解析、统计分析和报表导出功能
-- **培训管理**：培训记录管理、数据分析、计划制定等完整培训业务逻辑
-- **部门管理**：部门层级结构维护、权限配置、组织架构管理
-- **用户管理**：用户账号管理、角色分配、部门关联设置
-- **路由层**：按功能模块分段，包含仪表盘、管理和 API 端点
+## 数据模型
 
-## 使用说明
+### 核心表（20 个）
 
-### 快速开始
-1. **安装依赖**：`pip install -r requirements.txt`
-2. **环境配置**：
-   - `APP_SECRET_KEY`：Flask Session 密钥
-   - `APP_USER` / `APP_PASS`：首次启动时的初始管理员账号
-3. **启动服务**：`flask --app app.py run` 或 `python app.py`
-4. **系统初始化**：使用管理员账号登录，首先设置部门结构和用户账号
+| 表名 | 用途 |
+|------|------|
+| `users` | 用户账号 |
+| `departments` | 部门管理（支持层级结构） |
+| `employees` | 员工档案 |
+| `performance_records` | 绩效记录 |
+| `grade_map` | 绩效等级映射 |
+| `quarter_overrides` | 季度绩效覆盖 |
+| `quarter_grade_options` | 季度等级选项 |
+| `training_records` | 培训记录 |
+| `training_projects` | 培训项目 |
+| `training_project_categories` | 培训项目分类 |
+| `safety_inspection_records` | 安全检查记录 |
+| `import_logs` | 导入日志审计 |
+| `algorithm_presets` | 算法预设 |
+| `algorithm_active_config` | 算法激活配置 |
+| `algorithm_config_logs` | 算法配置变更日志 |
+| `stopwords` | NLP 停用词 |
+| `ai_providers` | AI 提供商配置 |
+| `ai_usage_logs` | AI 使用日志 |
+| `ai_analysis_history` | AI 分析缓存 |
+| `ai_prompt_configs` | AI 提示词配置 |
 
-### 系统使用流程
-1. **部门设置**：在"系统管理" → "部门管理"中创建组织架构
-2. **用户管理**：在"系统管理" → "用户管理"中创建用户并分配部门和角色
-3. **人员档案**：在"人员管理"中维护员工基础信息
-4. **业务使用**：各部门用户登录后可使用相应的功能模块
+## 快速开始
 
-## 技术特性
+### 1. 安装依赖
 
-### 权限控制
-- 基于部门路径的高效权限查询
-- 三级权限体系（admin/manager/user）
-- 数据访问隔离和安全控制
+```bash
+pip install -r requirements.txt
+```
 
-### 性能优化
-- SQLite 轻量级数据库，支持并发访问
-- 基于路径的层级查询，避免递归操作
-- 前端响应式设计，适配多种设备
+### 2. 环境配置
 
-### 数据导入导出
-- PDF 文件智能解析和数据提取
-- Excel 批量导入导出功能
-- 数据模板下载和格式校验
+复制环境变量示例文件：
 
-### 可视化分析
-- ECharts 图表库，支持多种图表类型
-- 实时数据统计和趋势分析
-- 响应式图表，支持移动端查看
+```bash
+cp .env.example .env
+```
+
+编辑 `.env` 文件：
+
+```bash
+# 管理员账户
+APP_USER=admin
+APP_PASS=your_secure_password
+
+# Flask 密钥
+SECRET_KEY=your_secret_key_here
+
+# 应用端口
+PORT=5001
+
+# 数据库配置（二选一）
+# 方式一：使用 SQLite（默认）
+DB_TYPE=sqlite
+DB_PATH=app.db
+
+# 方式二：使用 MySQL
+DB_TYPE=mysql
+MYSQL_HOST=localhost
+MYSQL_PORT=3306
+MYSQL_USER=root
+MYSQL_PASSWORD=your_mysql_password
+MYSQL_DATABASE=team_management
+MYSQL_CHARSET=utf8mb4
+```
+
+### 3. 启动服务
+
+```bash
+python app.py
+```
+
+或使用 Flask CLI：
+
+```bash
+flask --app app.py run --host=0.0.0.0 --port=5001
+```
+
+### 4. 访问系统
+
+打开浏览器访问 `http://localhost:5001`，使用配置的管理员账号登录。
+
+## MySQL 配置说明
+
+### 创建数据库
+
+```sql
+CREATE DATABASE team_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+### 切换到 MySQL
+
+1. 修改 `.env` 文件中的 `DB_TYPE=mysql`
+2. 配置 MySQL 连接信息
+3. 首次启动时会自动创建所有表和索引
+
+## 权限体系
+
+| 角色 | 权限范围 |
+|------|---------|
+| `admin` | 系统管理员，可访问所有数据和功能 |
+| `manager` | 部门管理员，可管理本部门及下级部门数据 |
+| `user` | 普通用户，只能查看本部门数据 |
 
 ## 版本历史
 
-### v2.0.0 (当前版本)
+### v3.0.0 (当前版本) - 2025年1月
+- ✅ **MySQL 数据库支持**: 支持 SQLite/MySQL 双模式
+- ✅ **Blueprint 架构重构**: 模块化代码组织
+- ✅ **AI 智能分析**: 多 AI 提供商支持
+- ✅ **算法配置系统**: 三档算法预设（严格/标准/宽松）
+- ✅ **导入日志审计**: 完整的数据导入追踪
+- ✅ **人员能力画像**: 综合能力评估
+- ✅ **风险挖掘分析**: 数据驱动的风险预警
+
+### v2.0.0 - 2024年12月
 - ✅ 完整的培训管理系统
 - ✅ 部门层级管理和权限控制
 - ✅ 多模块工作台架构
 - ✅ 用户角色和权限体系
 
-### v1.0.0 (基础版本)
+### v1.0.0 - 2024年初
 - ✅ 绩效管理核心功能
 - ✅ 人员档案管理
 - ✅ 基础用户认证
@@ -175,18 +237,18 @@
 ## 后续规划
 
 ### 短期计划
-- 🔄 安全管理模块完整实现
+- 🔄 数据导出格式扩展（PDF 报表）
 - 🔄 移动端适配优化
-- 🔄 数据导出格式扩展
+- 🔄 批量操作性能优化
 
 ### 长期计划
-- 📋 工作流引擎
+- 📋 RESTful API 接口
 - 📋 消息通知系统
-- 📋 API 接口开发
-- 📋 数据备份和恢复
+- 📋 工作流引擎
+- 📋 数据大屏展示
 
 ---
 
-**文档版本**: v2.0.0
-**最后更新**: 2024年12月14日
+**文档版本**: v3.0.0
+**最后更新**: 2025年1月18日
 **维护者**: 系统管理员
