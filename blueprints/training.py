@@ -21,6 +21,7 @@ from config.settings import APP_TITLE, EXPORT_DIR
 from models.database import get_db
 from .decorators import login_required, role_required
 from .helpers import require_user_id, get_accessible_department_ids, validate_employee_access, build_department_filter, parse_date_filters, build_date_filter_sql, log_import_operation
+from utils.training_utils import normalize_project_name
 
 # 创建 Blueprint
 training_bp = Blueprint('training', __name__, url_prefix='/training')
@@ -237,6 +238,8 @@ def upload_daily_report():
 
                     # 项目名称（从"故障"列提取）
                     project_name = str(get_val('project_name') or "").strip()
+                    # 清理项目名称：去除序号和中文标点符号
+                    project_name = normalize_project_name(project_name)
                     if project_name:
                         all_project_names.add(project_name)
 
@@ -278,15 +281,30 @@ def upload_daily_report():
         missing_projects = []  # 不存在的项目名称列表
 
         for project_name in all_project_names:
+            # 首先尝试精确匹配
             cur.execute("""
-                SELECT id, category_id FROM training_projects
+                SELECT id, category_id, name FROM training_projects
                 WHERE name = %s
             """, (project_name,))
             row = cur.fetchone()
             if row:
                 existing_projects[project_name] = (row['id'], row['category_id'])
             else:
-                missing_projects.append(project_name)
+                # 如果精确匹配失败，尝试清理后匹配
+                # 获取所有项目名称并清理后比较
+                cur.execute("SELECT id, category_id, name FROM training_projects")
+                all_db_projects = cur.fetchall()
+                
+                matched = False
+                for db_proj in all_db_projects:
+                    normalized_db_name = normalize_project_name(db_proj['name'])
+                    if normalized_db_name == project_name:
+                        existing_projects[project_name] = (db_proj['id'], db_proj['category_id'])
+                        matched = True
+                        break
+                
+                if not matched:
+                    missing_projects.append(project_name)
 
         # ====== 第三阶段：如果有缺失项目，使用临时文件存储（避免session过大）======
         if missing_projects:
@@ -1591,10 +1609,10 @@ def batch_add_projects():
         if len(parts) >= 2:
             # 两列数据：分类 + 项目名称
             category_name = parts[0] if parts[0] else None
-            project_name = parts[1]
+            project_name = normalize_project_name(parts[1])
         elif len(parts) == 1:
             # 只有一列：项目名称
-            project_name = parts[0]
+            project_name = normalize_project_name(parts[0])
         else:
             errors.append(f'第{line_no}行：格式错误')
             skipped_count += 1
