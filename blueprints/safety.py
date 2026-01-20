@@ -83,11 +83,11 @@ def upload_inspection():
 
         # ====== 方案3: 检查文件是否已导入 ======
         cur.execute("""
-            SELECT COUNT(*) FROM safety_inspection_records
+            SELECT COUNT(*) AS cnt FROM safety_inspection_records
             WHERE source_file = %s
         """, (filename,))
 
-        if cur.fetchone()[0] > 0:
+        if cur.fetchone()['cnt'] > 0:
             flash(f'文件 "{filename}" 已导入过，请勿重复导入！', 'warning')
             return redirect(url_for("safety.upload_inspection"))
 
@@ -269,7 +269,7 @@ def upload_inspection():
                 if len(matching_employees) > 1:
                     # 有重名
                     duplicate_names[person_name] = [
-                        {'emp_no': row[0], 'name': row[1], 'dept_id': row[2]}
+                        {'emp_no': row['emp_no'], 'name': row['name'], 'dept_id': row['department_id']}
                         for row in matching_employees
                     ]
 
@@ -319,8 +319,8 @@ def upload_inspection():
                     """, (inspected_person,))
                     emp_row = cur.fetchone()
 
-                    if emp_row and emp_row[0]:
-                        emp_dept_id = emp_row[0]
+                    if emp_row and emp_row['department_id']:
+                        emp_dept_id = emp_row['department_id']
                         # 检查是否有权限访问该部门
                         if emp_dept_id not in accessible_dept_ids:
                             has_permission = False
@@ -329,7 +329,7 @@ def upload_inspection():
 
                 # 检查是否已存在完全相同的记录（基于关键字段）
                 cur.execute("""
-                    SELECT COUNT(*) FROM safety_inspection_records
+                    SELECT COUNT(*) AS cnt FROM safety_inspection_records
                     WHERE category = %s
                     AND inspection_date = %s
                     AND location = %s
@@ -341,7 +341,7 @@ def upload_inspection():
                     record_data['hazard_description']
                 ))
 
-                if cur.fetchone()[0] > 0:
+                if cur.fetchone()['cnt'] > 0:
                     # 已存在相同记录，跳过
                     total_skipped += 1
                     continue
@@ -519,8 +519,8 @@ def confirm_duplicates():
                     """, (selected_emp_no,))
                     emp_row = cur.fetchone()
 
-                    if emp_row and emp_row[0]:
-                        emp_dept_id = emp_row[0]
+                    if emp_row and emp_row['department_id']:
+                        emp_dept_id = emp_row['department_id']
                         # 检查是否有权限访问该部门
                         if emp_dept_id not in accessible_dept_ids:
                             total_skipped_no_permission += 1
@@ -534,15 +534,15 @@ def confirm_duplicates():
                     """, (inspected_person,))
                     emp_row = cur.fetchone()
 
-                    if emp_row and emp_row[0]:
-                        emp_dept_id = emp_row[0]
+                    if emp_row and emp_row['department_id']:
+                        emp_dept_id = emp_row['department_id']
                         if emp_dept_id not in accessible_dept_ids:
                             total_skipped_no_permission += 1
                             continue
 
                 # 检查是否已存在完全相同的记录
                 cur.execute("""
-                    SELECT COUNT(*) FROM safety_inspection_records
+                    SELECT COUNT(*) AS cnt FROM safety_inspection_records
                     WHERE category = %s
                     AND inspection_date = %s
                     AND location = %s
@@ -554,7 +554,7 @@ def confirm_duplicates():
                     record_data['hazard_description']
                 ))
 
-                if cur.fetchone()[0] > 0:
+                if cur.fetchone()['cnt'] > 0:
                     total_skipped += 1
                     continue
 
@@ -654,7 +654,7 @@ def confirm_duplicates():
                 cur.execute("SELECT name FROM departments WHERE id = %s", (emp['dept_id'],))
                 dept_row = cur.fetchone()
                 if dept_row:
-                    dept_name = dept_row[0]
+                    dept_name = dept_row['name']
 
             employees_with_dept.append({
                 'emp_no': emp['emp_no'],
@@ -758,7 +758,7 @@ def records():
         WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
         ORDER BY sr.category
     """, tuple(dept_ids))
-    categories = [row[0] for row in cur.fetchall() if row[0]]
+    categories = [row['category'] for row in cur.fetchall() if row['category']]
 
     cur.execute(f"""
         SELECT DISTINCT sr.responsible_team FROM safety_inspection_records sr
@@ -766,7 +766,7 @@ def records():
         WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
         ORDER BY sr.responsible_team
     """, tuple(dept_ids))
-    teams = [row[0] for row in cur.fetchall() if row[0]]
+    teams = [row['responsible_team'] for row in cur.fetchall() if row['responsible_team']]
 
     cur.execute(f"""
         SELECT DISTINCT sr.work_type FROM safety_inspection_records sr
@@ -775,7 +775,7 @@ def records():
           AND sr.work_type IS NOT NULL AND sr.work_type != ''
         ORDER BY sr.work_type
     """, tuple(dept_ids))
-    work_types = [row[0] for row in cur.fetchall() if row[0]]
+    work_types = [row['work_type'] for row in cur.fetchall() if row['work_type']]
 
     return render_template(
         "safety_records.html",
@@ -1108,7 +1108,7 @@ def api_analytics_severity_distribution():
     # 数据预处理：提取分值并统计
     score_counts = {}
     for row in rows:
-        score = extract_score_from_assessment(row[0])
+        score = extract_score_from_assessment(row['assessment'])
         if score > 0:  # 只统计有效扣分
             # 将浮点数转换为整数(如果是整数值),避免1.0和1分开统计
             if score == int(score):
@@ -1162,8 +1162,8 @@ def api_analytics_daily_trend():
     # 按日期聚合
     daily_data = {}
     for row in rows:
-        date = row[0]
-        score = extract_score_from_assessment(row[1])
+        date = row['inspection_date']
+        score = extract_score_from_assessment(row['assessment'])
         if score > 0:
             if date not in daily_data:
                 daily_data[date] = {"count": 0, "total_score": 0}
@@ -1226,8 +1226,8 @@ def api_analytics_top_loss_items():
     # 按检查项目聚合
     item_scores = {}
     for row in rows:
-        item = row[0]
-        score = extract_score_from_assessment(row[1])
+        item = row['inspection_item']
+        score = extract_score_from_assessment(row['assessment'])
         if score > 0:
             item_scores[item] = item_scores.get(item, 0) + score
 
@@ -1286,9 +1286,9 @@ def api_analytics_personnel_risk_matrix():
     # 按人员聚合
     personnel_data = {}
     for row in rows:
-        person = row[0]
-        team = row[1] or "未知"
-        score = extract_score_from_assessment(row[2])
+        person = row['inspected_person']
+        team = row['responsible_team'] or "未知"
+        score = extract_score_from_assessment(row['assessment'])
 
         if score > 0:
             if person not in personnel_data:
@@ -1353,7 +1353,7 @@ def api_analytics_top_contributors():
     # 统计每个整改人的问题数量
     contributor_counts = {}
     for row in rows:
-        rectifier = row[0]
+        rectifier = row['rectifier']
         contributor_counts[rectifier] = contributor_counts.get(rectifier, 0) + 1
 
     # 排序并取Top 10
@@ -1428,21 +1428,21 @@ def api_analytics_severity_drilldown():
     # 筛选出对应分数的问题记录
     problem_records = []
     for row in rows:
-        record_score = extract_score_from_assessment(row[6])  # assessment 在索引6
+        record_score = extract_score_from_assessment(row['assessment'])
 
         # 判断是否属于该分数段
         if record_score == score:
             problem_records.append({
-                "id": row[0],
-                "date": row[1],
-                "inspectedPerson": row[2] or "未知",
-                "team": row[3] or "未知",
-                "hazardDescription": row[4] or "",
-                "correctiveMeasures": row[5] or "",
-                "assessment": row[6] or "",
-                "rectificationStatus": row[7] or "待整改",
-                "location": row[8] or "",
-                "inspectionItem": row[9] or "",
+                "id": row['id'],
+                "date": row['inspection_date'],
+                "inspectedPerson": row['inspected_person'] or "未知",
+                "team": row['responsible_team'] or "未知",
+                "hazardDescription": row['hazard_description'] or "",
+                "correctiveMeasures": row['corrective_measures'] or "",
+                "assessment": row['assessment'] or "",
+                "rectificationStatus": row['rectification_status'] or "待整改",
+                "location": row['location'] or "",
+                "inspectionItem": row['inspection_item'] or "",
                 "score": int(record_score) if record_score == int(record_score) else round(record_score, 1)
             })
 

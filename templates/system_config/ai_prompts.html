@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .prompt-card {
+        border-left: 4px solid #dee2e6;
+        transition: all 0.3s ease;
+    }
+    .prompt-card.modified {
+        border-left-color: #ffc107;
+    }
+    .prompt-card:hover {
+        box-shadow: 0 0.25rem 0.5rem rgba(0,0,0,0.1);
+    }
+    .prompt-title {
+        font-weight: 600;
+        color: #495057;
+    }
+    .prompt-key {
+        font-size: 0.75rem;
+        color: #6c757d;
+        font-family: monospace;
+    }
+    .prompt-content {
+        background-color: #f8f9fa;
+        border-radius: 4px;
+        padding: 12px;
+        font-size: 0.9rem;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .prompt-actions .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    .modified-badge {
+        font-size: 0.7rem;
+    }
+    .instruction-textarea {
+        font-family: monospace;
+        font-size: 0.9rem;
+        min-height: 200px;
+    }
+    .help-text {
+        font-size: 0.85rem;
+        color: #6c757d;
+    }
+    .dimension-icon {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-size: 1rem;
+        font-weight: bold;
+        color: white;
+        margin-right: 12px;
+        flex-shrink: 0;
+    }
+    .dimension-1 { background-color: #dc3545; }
+    .dimension-2 { background-color: #fd7e14; }
+    .dimension-3 { background-color: #ffc107; color: #212529; }
+    .dimension-4 { background-color: #198754; }
+    .dimension-5 { background-color: #0d6efd; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>AI 提示语配置</h2>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('system_config.ai_config_page') }}">AI模型配置</a></li>
+            <li class="breadcrumb-item active">提示语配置</li>
+        </ol>
+    </nav>
+</div>
+
+<!-- 说明卡片 -->
+<div class="alert alert-info mb-4">
+    <h6 class="alert-heading mb-2">配置说明</h6>
+    <p class="mb-1 small">
+        此页面用于配置 AI 诊断的 5 维度分析要求。您可以根据实际业务需求自定义每个维度的分析指令，
+        AI 将按照您配置的指令进行高风险人员的行为诊断分析。
+    </p>
+    <hr class="my-2">
+    <p class="mb-0 small">
+        <strong>提示：</strong>修改后的配置将立即生效于新的 AI 诊断请求。如需恢复默认配置，可点击"重置"按钮。
+    </p>
+</div>
+
+<!-- 操作栏 -->
+<div class="card mb-4">
+    <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <span class="text-muted">共 <strong id="config-count">5</strong> 个分析维度</span>
+                <span class="text-muted ms-3">已修改: <strong id="modified-count">0</strong> 个</span>
+            </div>
+            <div>
+                <button class="btn btn-warning btn-sm" id="reset-all-btn">
+                    重置所有为默认值
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 配置列表 -->
+<div id="configs-container">
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">加载中...</span>
+        </div>
+        <p class="mt-3 text-muted">加载中...</p>
+    </div>
+</div>
+
+<!-- 编辑模态框 -->
+<div class="modal fade" id="edit-modal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="edit-modal-title">编辑提示语配置</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-config-key">
+
+                <div class="mb-3">
+                    <label class="form-label">维度名称</label>
+                    <input type="text" class="form-control" id="edit-title" readonly>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">默认指令 <span class="text-muted">(只读)</span></label>
+                    <div class="prompt-content" id="edit-default-instruction"></div>
+                </div>
+
+                <div class="mb-3">
+                    <label for="edit-current-instruction" class="form-label">
+                        当前指令 <span class="text-danger">*</span>
+                    </label>
+                    <textarea class="form-control instruction-textarea" id="edit-current-instruction"
+                              rows="8" required></textarea>
+                    <div class="form-text">
+                        修改此内容将影响 AI 诊断时对该维度的分析方式。支持 Markdown 格式。
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-warning" id="reset-to-default-btn">
+                    恢复默认值
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="save-config-btn">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Elements
+    const configsContainer = document.getElementById('configs-container');
+    const editModal = new bootstrap.Modal(document.getElementById('edit-modal'));
+
+    // Dimension colors for icons
+    const dimensionColors = ['dimension-1', 'dimension-2', 'dimension-3', 'dimension-4', 'dimension-5'];
+
+    // Load all configurations
+    async function loadConfigs() {
+        try {
+            const resp = await fetch('/system/config/api/ai/prompts');
+            const data = await resp.json();
+
+            if (data.success) {
+                renderConfigs(data.configs);
+                updateStats(data.configs);
+            } else {
+                showAlert('danger', data.error || '加载配置失败');
+            }
+        } catch (e) {
+            console.error('Failed to load configs:', e);
+            configsContainer.innerHTML = `
+                <div class="alert alert-danger">加载失败，请刷新页面重试</div>
+            `;
+        }
+    }
+
+    // Render configurations list
+    function renderConfigs(configs) {
+        if (!configs || !configs.length) {
+            configsContainer.innerHTML = `
+                <div class="alert alert-warning">暂无配置数据</div>
+            `;
+            return;
+        }
+
+        configsContainer.innerHTML = configs.map((c, idx) => `
+            <div class="card prompt-card mb-3 ${c.is_modified ? 'modified' : ''}" data-key="${escapeHtml(c.config_key)}">
+                <div class="card-body">
+                    <div class="d-flex">
+                        <div class="dimension-icon ${dimensionColors[idx] || 'bg-secondary'}">
+                            ${idx + 1}
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <span class="prompt-title">${escapeHtml(c.title)}</span>
+                                    ${c.is_modified ? '<span class="badge bg-warning text-dark modified-badge ms-2">已修改</span>' : ''}
+                                    <div class="prompt-key">config_key: ${escapeHtml(c.config_key)}</div>
+                                </div>
+                                <div class="prompt-actions">
+                                    <button class="btn btn-outline-primary edit-btn" data-key="${escapeHtml(c.config_key)}">
+                                        编辑
+                                    </button>
+                                    ${c.is_modified ? `
+                                        <button class="btn btn-outline-warning reset-btn" data-key="${escapeHtml(c.config_key)}">
+                                            重置
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <div class="prompt-content">${escapeHtml(c.current_instruction)}</div>
+                            ${c.updated_at ? `
+                                <div class="mt-2 small text-muted">
+                                    最后更新: ${escapeHtml(c.updated_at)}
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        // Bind action buttons
+        bindActions();
+    }
+
+    // Update statistics
+    function updateStats(configs) {
+        document.getElementById('config-count').textContent = configs.length;
+        const modifiedCount = configs.filter(c => c.is_modified).length;
+        document.getElementById('modified-count').textContent = modifiedCount;
+    }
+
+    // Bind action buttons
+    function bindActions() {
+        // Edit buttons
+        document.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => openEditModal(btn.dataset.key));
+        });
+
+        // Reset buttons
+        document.querySelectorAll('.reset-btn').forEach(btn => {
+            btn.addEventListener('click', () => resetConfig(btn.dataset.key));
+        });
+    }
+
+    // Open edit modal
+    async function openEditModal(configKey) {
+        try {
+            const resp = await fetch(`/system/config/api/ai/prompts/${configKey}`);
+            const data = await resp.json();
+
+            if (data.success) {
+                const c = data.config;
+
+                document.getElementById('edit-config-key').value = c.config_key;
+                document.getElementById('edit-title').value = c.title;
+                document.getElementById('edit-default-instruction').textContent = c.default_instruction;
+                document.getElementById('edit-current-instruction').value = c.current_instruction;
+                document.getElementById('edit-modal-title').textContent = `编辑: ${c.title}`;
+
+                editModal.show();
+            } else {
+                showAlert('danger', data.error || '加载配置失败');
+            }
+        } catch (e) {
+            console.error('Failed to load config:', e);
+            showAlert('danger', '加载配置失败');
+        }
+    }
+
+    // Save configuration
+    async function saveConfig() {
+        const configKey = document.getElementById('edit-config-key').value;
+        const instruction = document.getElementById('edit-current-instruction').value.trim();
+
+        if (!instruction) {
+            showAlert('warning', '指令内容不能为空');
+            return;
+        }
+
+        try {
+            const resp = await fetch(`/system/config/api/ai/prompts/${configKey}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instruction: instruction })
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message || '保存成功');
+                editModal.hide();
+                loadConfigs();
+            } else {
+                showAlert('danger', data.error || '保存失败');
+            }
+        } catch (e) {
+            console.error('Failed to save config:', e);
+            showAlert('danger', '保存失败');
+        }
+    }
+
+    // Reset single configuration
+    async function resetConfig(configKey) {
+        if (!confirm('确定要将此配置项重置为默认值吗？')) return;
+
+        try {
+            const resp = await fetch(`/system/config/api/ai/prompts/${configKey}/reset`, {
+                method: 'POST'
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message || '重置成功');
+                loadConfigs();
+            } else {
+                showAlert('danger', data.error || '重置失败');
+            }
+        } catch (e) {
+            console.error('Failed to reset config:', e);
+            showAlert('danger', '重置失败');
+        }
+    }
+
+    // Reset all configurations
+    async function resetAllConfigs() {
+        if (!confirm('确定要将所有配置项重置为默认值吗？此操作不可撤销。')) return;
+
+        try {
+            const resp = await fetch('/system/config/api/ai/prompts/reset-all', {
+                method: 'POST'
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message || '重置成功');
+                loadConfigs();
+            } else {
+                showAlert('danger', data.error || '重置失败');
+            }
+        } catch (e) {
+            console.error('Failed to reset all configs:', e);
+            showAlert('danger', '重置失败');
+        }
+    }
+
+    // Reset current editing to default in modal
+    function resetToDefaultInModal() {
+        const defaultInstruction = document.getElementById('edit-default-instruction').textContent;
+        document.getElementById('edit-current-instruction').value = defaultInstruction;
+    }
+
+    // Show alert
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${escapeHtml(message)}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild.nextSibling);
+        setTimeout(() => alertDiv.remove(), 5000);
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Event bindings
+    document.getElementById('save-config-btn').addEventListener('click', saveConfig);
+    document.getElementById('reset-to-default-btn').addEventListener('click', resetToDefaultInModal);
+    document.getElementById('reset-all-btn').addEventListener('click', resetAllConfigs);
+
+    // Initial load
+    loadConfigs();
+});
+</script>
+{% endblock %}

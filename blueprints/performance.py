@@ -132,7 +132,7 @@ def build_yearly_matrix(uid: int, year: int, accessible_user_ids=None):
         FROM performance_records pr
         {join_clause}
         WHERE {where_clause} AND pr.year=%s
-        ORDER BY CAST(pr.emp_no as INTEGER), pr.month
+        ORDER BY CAST(pr.emp_no AS SIGNED), pr.month
         """,
         dept_params + [year],
     )
@@ -198,7 +198,7 @@ def build_calculator_dataset(uid: int, year: int, mapping: Dict[str, float]):
             FROM performance_records pr
             {join_clause}
             WHERE {where_clause} AND pr.year=%s
-            ORDER BY CAST(pr.emp_no as INTEGER), pr.month
+            ORDER BY CAST(pr.emp_no AS SIGNED), pr.month
             """,
             dept_params + [year],
         )
@@ -555,7 +555,7 @@ def upload():
                 """,
                 dept_params
             )
-            roster = {record[0] for record in cur.fetchall()}
+            roster = {record['emp_no'] for record in cur.fetchall()}
             if not roster:
                 flash("人员档案为空，请先新增人员。", "warning")
                 return redirect(url_for("personnel.index"))
@@ -573,11 +573,11 @@ def upload():
                     """
                     INSERT INTO performance_records(emp_no, name, year, month, score, grade, src_file, created_by)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT(emp_no, year, month) DO UPDATE SET
-                        name=excluded.name,
-                        score=excluded.score,
-                        grade=excluded.grade,
-                        src_file=excluded.src_file
+                    ON DUPLICATE KEY UPDATE
+                        name=VALUES(name),
+                        score=VALUES(score),
+                        grade=VALUES(grade),
+                        src_file=VALUES(src_file)
                     """,
                     (
                         row["emp_no"],
@@ -685,7 +685,7 @@ def records():
             FROM performance_records pr
             {join_clause}
             WHERE {where_clause} AND pr.year=%s AND pr.month=%s
-            ORDER BY CAST(pr.emp_no as INTEGER)
+            ORDER BY CAST(pr.emp_no AS SIGNED)
             """,
             dept_params + [year, month],
         )
@@ -800,7 +800,7 @@ def range_view():
                 FROM performance_records pr
                 {join_clause}
                 WHERE {where_clause} AND (pr.year*100 + pr.month) BETWEEN %s AND %s
-                ORDER BY CAST(pr.emp_no as INTEGER), pr.year, pr.month
+                ORDER BY CAST(pr.emp_no AS SIGNED), pr.year, pr.month
                 """,
                 dept_params + [start, end],
             )
@@ -867,7 +867,7 @@ def export_single():
         FROM performance_records pr
         {join_clause}
         WHERE {where_clause} AND pr.year=%s AND pr.month=%s
-        ORDER BY CAST(pr.emp_no as INTEGER)
+        ORDER BY CAST(pr.emp_no AS SIGNED)
         """,
         dept_params + [year, month],
     )
@@ -943,7 +943,7 @@ def export_range():
         FROM performance_records pr
         {join_clause}
         WHERE {where_clause} AND (pr.year*100 + pr.month) BETWEEN %s AND %s
-        ORDER BY CAST(pr.emp_no as INTEGER), pr.year, pr.month
+        ORDER BY CAST(pr.emp_no AS SIGNED), pr.year, pr.month
         """,
         dept_params + [start, end],
     )
@@ -1289,7 +1289,7 @@ def quarters():
                 """
                 INSERT INTO quarter_overrides(emp_no, year, quarter, grade)
                 VALUES (%s, %s, %s, %s)
-                ON CONFLICT(emp_no, year, quarter) DO UPDATE SET grade=excluded.grade
+                ON DUPLICATE KEY UPDATE grade=VALUES(grade)
                 """,
                 (emp_no, year, quarter, grade),
             )

@@ -140,7 +140,7 @@ def detail(dept_id):
                         "SELECT COUNT(*) as cnt FROM departments WHERE manager_user_id = %s",
                         (old_manager_id,)
                     )
-                    other_dept_count = cur.fetchone()[0]
+                    other_dept_count = cur.fetchone()['cnt']
                     # 如果不再是任何部门的负责人,将角色改为普通用户
                     if other_dept_count == 0:
                         cur.execute(
@@ -168,9 +168,9 @@ def detail(dept_id):
         elif action == 'delete':
             # 检查是否可以删除
             cur.execute("SELECT COUNT(*) as cnt FROM departments WHERE parent_id=%s", (dept_id,))
-            sub_count = cur.fetchone()[0]
+            sub_count = cur.fetchone()['cnt']
             cur.execute("SELECT COUNT(*) as cnt FROM users WHERE department_id=%s", (dept_id,))
-            user_count = cur.fetchone()[0]
+            user_count = cur.fetchone()['cnt']
             
             if sub_count > 0:
                 flash('无法删除具有子部门的部门', 'warning')
@@ -205,7 +205,7 @@ def detail(dept_id):
             certification_date, solo_driving_date
         FROM employees
         WHERE department_id=%s
-        ORDER BY CAST(emp_no as INTEGER)
+        ORDER BY CAST(emp_no AS SIGNED)
     """, (dept_id,))
     employees = []
     for row in cur.fetchall():

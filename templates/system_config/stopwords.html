@@ -1,0 +1,616 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .stopword-badge {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+    .stopword-builtin {
+        background-color: #6c757d;
+    }
+    .stopword-custom {
+        background-color: #0d6efd;
+    }
+    .stats-card {
+        border-left: 4px solid;
+    }
+    .stats-card.total {
+        border-color: #198754;
+    }
+    .stats-card.builtin {
+        border-color: #6c757d;
+    }
+    .stats-card.custom {
+        border-color: #0d6efd;
+    }
+    .table-stopwords td {
+        vertical-align: middle;
+    }
+    .search-box {
+        max-width: 300px;
+    }
+    .action-buttons .btn {
+        margin-right: 0.5rem;
+    }
+    .pagination {
+        margin-bottom: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>停用词管理</h2>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('system_config.algorithm_config_page') }}">系统配置</a></li>
+            <li class="breadcrumb-item active">停用词管理</li>
+        </ol>
+    </nav>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row mb-4" id="stats-row">
+    <div class="col-md-4">
+        <div class="card stats-card total">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">总计</h6>
+                <h3 class="card-title mb-0" id="stats-total">-</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stats-card builtin">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">内置词</h6>
+                <h3 class="card-title mb-0" id="stats-builtin">-</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stats-card custom">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">自定义</h6>
+                <h3 class="card-title mb-0" id="stats-custom">-</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 操作栏 -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-md-4 mb-2 mb-md-0">
+                <div class="input-group search-box">
+                    <input type="text" class="form-control" id="search-input" placeholder="搜索停用词...">
+                    <button class="btn btn-outline-secondary" type="button" id="search-btn">
+                        搜索
+                    </button>
+                </div>
+            </div>
+            <div class="col-md-3 mb-2 mb-md-0">
+                <select class="form-select" id="category-filter">
+                    <option value="">全部类型</option>
+                    <option value="builtin">内置词</option>
+                    <option value="custom">自定义</option>
+                </select>
+            </div>
+            <div class="col-md-5">
+                <div class="action-buttons d-flex flex-wrap justify-content-md-end">
+                    <button class="btn btn-primary btn-sm mb-1" id="add-btn">
+                        添加停用词
+                    </button>
+                    <button class="btn btn-success btn-sm mb-1" id="import-btn">
+                        批量导入
+                    </button>
+                    <button class="btn btn-danger btn-sm mb-1" id="batch-delete-btn" disabled>
+                        批量删除 (<span id="selected-count">0</span>)
+                    </button>
+                    <button class="btn btn-warning btn-sm mb-1" id="reset-btn">
+                        恢复默认
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 停用词列表 -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-stopwords">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" class="form-check-input" id="select-all">
+                        </th>
+                        <th>停用词</th>
+                        <th style="width: 100px;">类型</th>
+                        <th style="width: 180px;">添加时间</th>
+                        <th style="width: 80px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody id="stopwords-table">
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">加载中...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 分页 -->
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <div class="text-muted" id="pagination-info">
+                显示 0-0 条，共 0 条
+            </div>
+            <nav>
+                <ul class="pagination" id="pagination">
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- 添加停用词模态框 -->
+<div class="modal fade" id="add-modal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">添加停用词</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="new-word" class="form-label">停用词</label>
+                    <input type="text" class="form-control" id="new-word" placeholder="请输入停用词" maxlength="50">
+                    <div class="form-text">最多50个字符</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="confirm-add-btn">添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批量导入模态框 -->
+<div class="modal fade" id="import-modal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">批量导入停用词</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="import-file" class="form-label">选择文件</label>
+                    <input type="file" class="form-control" id="import-file" accept=".txt">
+                    <div class="form-text">
+                        支持 .txt 文件，每行一个停用词，支持 UTF-8 或 GBK 编码
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" id="confirm-import-btn">导入</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 恢复默认确认模态框 -->
+<div class="modal fade" id="reset-modal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">恢复默认停用词</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <strong>警告：</strong>此操作将删除所有停用词（包括您添加的自定义停用词），并恢复为系统默认的停用词列表。此操作不可撤销！
+                </div>
+                <p>确定要恢复默认停用词吗？</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-warning" id="confirm-reset-btn">确定恢复</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // State
+    let currentPage = 1;
+    const perPage = 50;
+    let selectedIds = new Set();
+
+    // Elements
+    const searchInput = document.getElementById('search-input');
+    const searchBtn = document.getElementById('search-btn');
+    const categoryFilter = document.getElementById('category-filter');
+    const selectAll = document.getElementById('select-all');
+    const batchDeleteBtn = document.getElementById('batch-delete-btn');
+    const selectedCountSpan = document.getElementById('selected-count');
+
+    // Modals
+    const addModal = new bootstrap.Modal(document.getElementById('add-modal'));
+    const importModal = new bootstrap.Modal(document.getElementById('import-modal'));
+    const resetModal = new bootstrap.Modal(document.getElementById('reset-modal'));
+
+    // Load stats
+    async function loadStats() {
+        try {
+            const resp = await fetch('/system/config/api/stopwords/stats');
+            const data = await resp.json();
+            if (data.success) {
+                document.getElementById('stats-total').textContent = data.stats.total;
+                document.getElementById('stats-builtin').textContent = data.stats.builtin;
+                document.getElementById('stats-custom').textContent = data.stats.custom;
+            }
+        } catch (e) {
+            console.error('Failed to load stats:', e);
+        }
+    }
+
+    // Load stopwords
+    async function loadStopwords(page = 1) {
+        currentPage = page;
+        const keyword = searchInput.value.trim();
+        const category = categoryFilter.value;
+
+        const params = new URLSearchParams({
+            page: page,
+            per_page: perPage
+        });
+        if (keyword) params.append('keyword', keyword);
+        if (category) params.append('category', category);
+
+        try {
+            const resp = await fetch(`/system/config/api/stopwords?${params}`);
+            const data = await resp.json();
+
+            if (data.success) {
+                renderTable(data.stopwords);
+                renderPagination(data.total, data.page, data.total_pages);
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            console.error('Failed to load stopwords:', e);
+            showAlert('danger', '加载停用词失败');
+        }
+    }
+
+    // Render table
+    function renderTable(stopwords) {
+        const tbody = document.getElementById('stopwords-table');
+
+        if (!stopwords.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">暂无数据</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = stopwords.map(item => `
+            <tr data-id="${item.id}">
+                <td>
+                    <input type="checkbox" class="form-check-input row-checkbox"
+                           value="${item.id}" ${selectedIds.has(item.id) ? 'checked' : ''}>
+                </td>
+                <td><strong>${escapeHtml(item.word)}</strong></td>
+                <td>
+                    <span class="badge stopword-badge ${item.category === 'builtin' ? 'stopword-builtin' : 'stopword-custom'}">
+                        ${item.category === 'builtin' ? '内置' : '自定义'}
+                    </span>
+                </td>
+                <td class="text-muted">${item.created_at || '-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger delete-btn" data-id="${item.id}" data-word="${escapeHtml(item.word)}">
+                        删除
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        // Bind delete buttons
+        tbody.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteStopword(btn.dataset.id, btn.dataset.word));
+        });
+
+        // Bind checkboxes
+        tbody.querySelectorAll('.row-checkbox').forEach(cb => {
+            cb.addEventListener('change', () => {
+                const id = parseInt(cb.value);
+                if (cb.checked) {
+                    selectedIds.add(id);
+                } else {
+                    selectedIds.delete(id);
+                }
+                updateSelectedCount();
+            });
+        });
+
+        updateSelectAllState();
+    }
+
+    // Render pagination
+    function renderPagination(total, page, totalPages) {
+        const start = (page - 1) * perPage + 1;
+        const end = Math.min(page * perPage, total);
+        document.getElementById('pagination-info').textContent =
+            total > 0 ? `显示 ${start}-${end} 条，共 ${total} 条` : '暂无数据';
+
+        const pagination = document.getElementById('pagination');
+        if (totalPages <= 1) {
+            pagination.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+
+        // Previous
+        html += `<li class="page-item ${page === 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" data-page="${page - 1}">上一页</a>
+        </li>`;
+
+        // Page numbers
+        const maxShow = 5;
+        let startPage = Math.max(1, page - Math.floor(maxShow / 2));
+        let endPage = Math.min(totalPages, startPage + maxShow - 1);
+        if (endPage - startPage < maxShow - 1) {
+            startPage = Math.max(1, endPage - maxShow + 1);
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            html += `<li class="page-item ${i === page ? 'active' : ''}">
+                <a class="page-link" href="#" data-page="${i}">${i}</a>
+            </li>`;
+        }
+
+        // Next
+        html += `<li class="page-item ${page === totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" data-page="${page + 1}">下一页</a>
+        </li>`;
+
+        pagination.innerHTML = html;
+
+        // Bind clicks
+        pagination.querySelectorAll('.page-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetPage = parseInt(link.dataset.page);
+                if (targetPage >= 1 && targetPage <= totalPages && targetPage !== page) {
+                    loadStopwords(targetPage);
+                }
+            });
+        });
+    }
+
+    // Update selected count
+    function updateSelectedCount() {
+        selectedCountSpan.textContent = selectedIds.size;
+        batchDeleteBtn.disabled = selectedIds.size === 0;
+    }
+
+    // Update select all checkbox state
+    function updateSelectAllState() {
+        const checkboxes = document.querySelectorAll('.row-checkbox');
+        const checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
+        selectAll.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
+    }
+
+    // Delete single stopword
+    async function deleteStopword(id, word) {
+        if (!confirm(`确定要删除停用词 "${word}" 吗？`)) return;
+
+        try {
+            const resp = await fetch(`/system/config/api/stopwords/${id}`, {
+                method: 'DELETE'
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                selectedIds.delete(parseInt(id));
+                updateSelectedCount();
+                loadStopwords(currentPage);
+                loadStats();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            console.error('Failed to delete:', e);
+            showAlert('danger', '删除失败');
+        }
+    }
+
+    // Batch delete
+    async function batchDelete() {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`确定要删除选中的 ${selectedIds.size} 个停用词吗？`)) return;
+
+        try {
+            const resp = await fetch('/system/config/api/stopwords/batch-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: Array.from(selectedIds) })
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                selectedIds.clear();
+                updateSelectedCount();
+                loadStopwords(1);
+                loadStats();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            console.error('Failed to batch delete:', e);
+            showAlert('danger', '批量删除失败');
+        }
+    }
+
+    // Add stopword
+    async function addStopword() {
+        const word = document.getElementById('new-word').value.trim();
+        if (!word) {
+            showAlert('warning', '请输入停用词');
+            return;
+        }
+
+        try {
+            const resp = await fetch('/system/config/api/stopwords', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ word })
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                document.getElementById('new-word').value = '';
+                addModal.hide();
+                loadStopwords(1);
+                loadStats();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            console.error('Failed to add:', e);
+            showAlert('danger', '添加失败');
+        }
+    }
+
+    // Import stopwords
+    async function importStopwords() {
+        const fileInput = document.getElementById('import-file');
+        const file = fileInput.files[0];
+
+        if (!file) {
+            showAlert('warning', '请选择文件');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const resp = await fetch('/system/config/api/stopwords/import', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                fileInput.value = '';
+                importModal.hide();
+                loadStopwords(1);
+                loadStats();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            console.error('Failed to import:', e);
+            showAlert('danger', '导入失败');
+        }
+    }
+
+    // Reset stopwords
+    async function resetStopwords() {
+        try {
+            const resp = await fetch('/system/config/api/stopwords/reset', {
+                method: 'POST'
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                resetModal.hide();
+                selectedIds.clear();
+                updateSelectedCount();
+                loadStopwords(1);
+                loadStats();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            console.error('Failed to reset:', e);
+            showAlert('danger', '恢复默认失败');
+        }
+    }
+
+    // Show alert
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild.nextSibling);
+
+        setTimeout(() => alertDiv.remove(), 5000);
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Event bindings
+    searchBtn.addEventListener('click', () => loadStopwords(1));
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') loadStopwords(1);
+    });
+    categoryFilter.addEventListener('change', () => loadStopwords(1));
+
+    selectAll.addEventListener('change', () => {
+        const checkboxes = document.querySelectorAll('.row-checkbox');
+        checkboxes.forEach(cb => {
+            cb.checked = selectAll.checked;
+            const id = parseInt(cb.value);
+            if (selectAll.checked) {
+                selectedIds.add(id);
+            } else {
+                selectedIds.delete(id);
+            }
+        });
+        updateSelectedCount();
+    });
+
+    document.getElementById('add-btn').addEventListener('click', () => addModal.show());
+    document.getElementById('confirm-add-btn').addEventListener('click', addStopword);
+
+    document.getElementById('import-btn').addEventListener('click', () => importModal.show());
+    document.getElementById('confirm-import-btn').addEventListener('click', importStopwords);
+
+    document.getElementById('reset-btn').addEventListener('click', () => resetModal.show());
+    document.getElementById('confirm-reset-btn').addEventListener('click', resetStopwords);
+
+    batchDeleteBtn.addEventListener('click', batchDelete);
+
+    // Allow Enter key to submit in add modal
+    document.getElementById('new-word').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') addStopword();
+    });
+
+    // Initial load
+    loadStats();
+    loadStopwords(1);
+});
+</script>
+{% endblock %}

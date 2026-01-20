@@ -210,7 +210,7 @@ def upload_daily_report():
                         emp_dept_row = cur.fetchone()
 
                         # 如果员工不存在或不属于可访问部门，静默跳过
-                        if not emp_dept_row or emp_dept_row[0] not in accessible_dept_ids:
+                        if not emp_dept_row or emp_dept_row['department_id'] not in accessible_dept_ids:
                             continue
 
                     # 提取得分
@@ -284,7 +284,7 @@ def upload_daily_report():
             """, (project_name,))
             row = cur.fetchone()
             if row:
-                existing_projects[project_name] = (row[0], row[1])
+                existing_projects[project_name] = (row['id'], row['category_id'])
             else:
                 missing_projects.append(project_name)
 
@@ -330,7 +330,7 @@ def upload_daily_report():
                 SELECT id, name FROM training_project_categories
                 ORDER BY display_order ASC, name ASC
             """)
-            categories = [{'id': row[0], 'name': row[1]} for row in cur.fetchall()]
+            categories = [{'id': row['id'], 'name': row['name']} for row in cur.fetchall()]
 
             return render_template(
                 'training_confirm_projects.html',
@@ -422,11 +422,11 @@ def _import_training_records(all_records_data, existing_projects, uid, conn):
                 """, (record['emp_no'], retake_date))
                 prev_record = cur.fetchone()
                 if prev_record:
-                    retake_of_record_id = prev_record[0]
+                    retake_of_record_id = prev_record['id']
 
         # 检查是否已存在完全相同的记录
         cur.execute("""
-            SELECT COUNT(*) FROM training_records
+            SELECT COUNT(*) AS cnt FROM training_records
             WHERE emp_no = %s
             AND training_date = %s
             AND project_id = %s
@@ -440,7 +440,7 @@ def _import_training_records(all_records_data, existing_projects, uid, conn):
             record['specific_problem']
         ))
 
-        if cur.fetchone()[0] > 0:
+        if cur.fetchone()['cnt'] > 0:
             total_skipped += 1
             continue
 
@@ -564,7 +564,7 @@ def confirm_projects():
 
                 if row:
                     # 项目已存在，使用现有的
-                    existing_projects[project_name] = (row[0], row[1])
+                    existing_projects[project_name] = (row['id'], row['category_id'])
                 else:
                     # 创建新项目
                     try:
@@ -638,7 +638,7 @@ def confirm_projects():
         SELECT id, name FROM training_project_categories
         ORDER BY display_order ASC, name ASC
     """)
-    categories = [{'id': row[0], 'name': row[1]} for row in cur.fetchall()]
+    categories = [{'id': row['id'], 'name': row['name']} for row in cur.fetchall()]
 
     return render_template(
         'training_confirm_projects.html',
@@ -731,7 +731,7 @@ def records():
           AND tr.team_name IS NOT NULL AND tr.team_name != ''
         ORDER BY tr.team_name
     """, tuple(dept_params_for_dropdowns))
-    team_names = [row[0] for row in cur.fetchall() if row[0]]
+    team_names = [row['team_name'] for row in cur.fetchall() if row['team_name']]
 
     # 项目名称列表（从 training_projects 获取）
     cur.execute(f"""
@@ -743,7 +743,7 @@ def records():
           AND tp.name IS NOT NULL AND tp.name != ''
         ORDER BY tp.name
     """, tuple(dept_params_for_dropdowns))
-    project_names = [row[0] for row in cur.fetchall() if row[0]]
+    project_names = [row['name'] for row in cur.fetchall() if row['name']]
 
     # 分类列表（从 training_project_categories 获取）
     cur.execute(f"""
@@ -756,7 +756,7 @@ def records():
           AND tpc.name IS NOT NULL AND tpc.name != ''
         ORDER BY tpc.name
     """, tuple(dept_params_for_dropdowns))
-    categories = [row[0] for row in cur.fetchall() if row[0]]
+    categories = [row['name'] for row in cur.fetchall() if row['name']]
 
     # 问题类型列表
     cur.execute(f"""
@@ -766,7 +766,7 @@ def records():
           AND tr.problem_type IS NOT NULL AND tr.problem_type != '' AND tr.problem_type != '无'
         ORDER BY tr.problem_type
     """, tuple(dept_params_for_dropdowns))
-    problem_types = [row[0] for row in cur.fetchall() if row[0]]
+    problem_types = [row['problem_type'] for row in cur.fetchall() if row['problem_type']]
 
     return render_template(
         "training_records.html",
@@ -860,7 +860,7 @@ def disqualified():
         WHERE {where_clause} AND tr.is_qualified=0 AND tr.team_name IS NOT NULL
         ORDER BY tr.team_name
     """, dept_params)
-    teams = [row[0] for row in cur.fetchall()]
+    teams = [row['team_name'] for row in cur.fetchall()]
 
     cur.execute(f"""
         SELECT DISTINCT tp.name
@@ -870,7 +870,7 @@ def disqualified():
         WHERE {where_clause} AND tr.is_qualified=0 AND tp.name IS NOT NULL
         ORDER BY tp.name
     """, dept_params)
-    projects = [row[0] for row in cur.fetchall()]
+    projects = [row['name'] for row in cur.fetchall()]
 
     cur.execute(f"""
         SELECT DISTINCT tr.problem_type
@@ -879,7 +879,7 @@ def disqualified():
         WHERE {where_clause} AND tr.is_qualified=0 AND tr.problem_type IS NOT NULL
         ORDER BY tr.problem_type
     """, dept_params)
-    problem_types = [row[0] for row in cur.fetchall()]
+    problem_types = [row['problem_type'] for row in cur.fetchall()]
 
     return render_template(
         "training_disqualified.html",
@@ -1206,13 +1206,16 @@ def project_categories():
 
     categories = []
     for row in cur.fetchall():
+        created_at = row['created_at']
+        if created_at:
+            created_at = str(created_at)[:19]
         categories.append({
-            'id': row[0],
-            'name': row[1],
-            'description': row[2],
-            'display_order': row[3],
-            'created_at': row[4][:19] if row[4] else '',
-            'project_count': row[5]
+            'id': row['id'],
+            'name': row['name'],
+            'description': row['description'],
+            'display_order': row['display_order'],
+            'created_at': created_at or '',
+            'project_count': row['project_count']
         })
 
     return render_template(
@@ -1301,9 +1304,9 @@ def delete_project_category():
 
     # 检查是否有关联的项目
     cur.execute("""
-        SELECT COUNT(*) FROM training_projects WHERE category_id = %s
+        SELECT COUNT(*) AS cnt FROM training_projects WHERE category_id = %s
     """, (category_id,))
-    project_count = cur.fetchone()[0]
+    project_count = cur.fetchone()['cnt']
 
     if project_count > 0:
         flash(f'该分类下有 {project_count} 个项目，无法删除', 'danger')
@@ -1337,7 +1340,7 @@ def projects():
 
     # 查询所有分类
     cur.execute("SELECT id, name FROM training_project_categories ORDER BY display_order ASC, name ASC")
-    categories = [{'id': row[0], 'name': row[1]} for row in cur.fetchall()]
+    categories = [{'id': row['id'], 'name': row['name']} for row in cur.fetchall()]
 
     # 构建查询
     query = """
@@ -1376,14 +1379,14 @@ def projects():
     projects = []
     for row in cur.fetchall():
         projects.append({
-            'id': row[0],
-            'name': row[1],
-            'category_id': row[2],
-            'category_name': row[3] or '未分类',
-            'description': row[4],
-            'is_active': row[5],
-            'created_at': row[6],
-            'record_count': row[7]
+            'id': row['id'],
+            'name': row['name'],
+            'category_id': row['category_id'],
+            'category_name': row['category_name'] or '未分类',
+            'description': row['description'],
+            'is_active': row['is_active'],
+            'created_at': row['created_at'],
+            'record_count': row['record_count']
         })
 
     return render_template(
@@ -1474,8 +1477,8 @@ def delete_project():
     cur = conn.cursor()
 
     # 检查是否有关联的培训记录
-    cur.execute("SELECT COUNT(*) FROM training_records WHERE project_id = %s", (project_id,))
-    record_count = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) AS cnt FROM training_records WHERE project_id = %s", (project_id,))
+    record_count = cur.fetchone()['cnt']
 
     if record_count > 0:
         flash(f'该项目有 {record_count} 条培训记录，无法删除', 'danger')
@@ -1513,15 +1516,15 @@ def batch_delete_projects():
     for project_id in project_ids:
         try:
             # 检查是否有关联的培训记录
-            cur.execute("SELECT COUNT(*) FROM training_records WHERE project_id = %s", (project_id,))
-            record_count = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) AS cnt FROM training_records WHERE project_id = %s", (project_id,))
+            record_count = cur.fetchone()['cnt']
 
             if record_count > 0:
                 # 获取项目名称用于提示
                 cur.execute("SELECT name FROM training_projects WHERE id = %s", (project_id,))
                 row = cur.fetchone()
                 if row:
-                    errors.append(f'"{row[0]}"有{record_count}条记录')
+                    errors.append(f'"{row["name"]}"有{record_count}条记录')
                 skipped_count += 1
                 continue
 
@@ -1562,7 +1565,7 @@ def batch_add_projects():
 
     # 获取现有分类映射 {分类名称: 分类ID}
     cur.execute("SELECT id, name FROM training_project_categories")
-    category_map = {row[1]: row[0] for row in cur.fetchall()}
+    category_map = {row['name']: row['id'] for row in cur.fetchall()}
 
     # 解析数据
     lines = batch_data.split('\n')
@@ -1610,8 +1613,8 @@ def batch_add_projects():
                 # 创建新分类
                 try:
                     # 获取当前最大display_order
-                    cur.execute("SELECT COALESCE(MAX(display_order), 0) FROM training_project_categories")
-                    max_order = cur.fetchone()[0]
+                    cur.execute("SELECT COALESCE(MAX(display_order), 0) AS max_order FROM training_project_categories")
+                    max_order = cur.fetchone()['max_order']
 
                     cur.execute("""
                         INSERT INTO training_project_categories (name, display_order)

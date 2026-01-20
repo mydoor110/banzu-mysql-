@@ -272,8 +272,8 @@ def import_logs():
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
     # 获取总记录数
-    cur.execute(f"SELECT COUNT(*) FROM import_logs WHERE {where_clause}", params)
-    total_count = cur.fetchone()[0]
+    cur.execute(f"SELECT COUNT(*) AS cnt FROM import_logs WHERE {where_clause}", params)
+    total_count = cur.fetchone()['cnt']
 
     # 获取分页数据
     offset = (page - 1) * per_page
@@ -340,7 +340,7 @@ def import_logs():
             COUNT(*) as import_count,
             SUM(success_rows) as total_success
         FROM import_logs
-        WHERE DATE(created_at) >= DATE('now', '-7 days')
+        WHERE DATE(created_at) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
         GROUP BY DATE(created_at)
         ORDER BY date DESC
     """)
@@ -497,20 +497,20 @@ def export_import_logs():
     # 写入数据
     for log in logs:
         ws.append([
-            log[0],  # ID
-            log[1],  # module_display
-            log[2],  # operation
-            log[3],  # username
-            log[4],  # role_display
-            log[5] or '',  # dept_name
-            log[6] or '',  # file_name
-            log[7],  # total_rows
-            log[8],  # success_rows
-            log[9],  # failed_rows
-            log[10],  # skipped_rows
-            log[11] or '',  # error_message
-            log[12] or '',  # ip_address
-            log[13],  # created_at
+            log['id'],
+            log['module_display'],
+            log['operation'],
+            log['username'],
+            log['role_display'],
+            log['dept_name'] or '',
+            log['file_name'] or '',
+            log['total_rows'],
+            log['success_rows'],
+            log['failed_rows'],
+            log['skipped_rows'],
+            log['error_message'] or '',
+            log['ip_address'] or '',
+            log['created_at'],
         ])
 
     # 设置列宽

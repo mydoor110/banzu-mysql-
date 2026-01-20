@@ -8,7 +8,6 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-import sqlite3
 import json
 
 from flask import Flask, redirect, url_for, session
@@ -62,8 +61,8 @@ def teardown_db(exception=None):
 # ==================== 数据库初始化 ====================
 
 def init_db():
-    """初始化数据库表和索引 - 支持 SQLite 和 MySQL"""
-    # 使用 models/database.py 中的初始化函数（自动判断数据库类型）
+    """初始化数据库表和索引 - MySQL"""
+    # 使用 models/database.py 中的初始化函数
     init_database()
 
     # 初始化基础数据（部门、管理员账户、停用词等）

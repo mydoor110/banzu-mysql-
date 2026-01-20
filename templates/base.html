@@ -44,6 +44,9 @@
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{{ url_for('admin.import_logs') }}"><i class="fas fa-file-import me-1"></i>导入日志审查</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('system_config.algorithm_config_page') }}">算法参数配置</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('system_config.stopwords_page') }}">停用词管理</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('system_config.ai_config_page') }}">AI模型配置</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('system_config.ai_prompts_page') }}">AI提示语配置</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('admin.backups') }}"><i class="fas fa-database me-1"></i>备份管理</a></li>
               </ul>
             </li>

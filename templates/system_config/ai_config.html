@@ -1,0 +1,857 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    .provider-card {
+        border-left: 4px solid #dee2e6;
+        transition: all 0.3s ease;
+    }
+    .provider-card.active {
+        border-left-color: #198754;
+    }
+    .provider-card.default {
+        background-color: #f8f9fa;
+    }
+    .provider-card:hover {
+        box-shadow: 0 0.25rem 0.5rem rgba(0,0,0,0.1);
+    }
+    .provider-type-badge {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+    }
+    .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+    }
+    .status-indicator.active {
+        background-color: #198754;
+    }
+    .status-indicator.inactive {
+        background-color: #dc3545;
+    }
+    .stats-card {
+        border-left: 4px solid;
+    }
+    .stats-card.calls { border-color: #0d6efd; }
+    .stats-card.tokens { border-color: #198754; }
+    .stats-card.success { border-color: #ffc107; }
+    .stats-card.errors { border-color: #dc3545; }
+    .model-select-group {
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .template-card {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 2px solid transparent;
+    }
+    .template-card:hover {
+        border-color: #0d6efd;
+        transform: translateY(-2px);
+    }
+    .template-card.selected {
+        border-color: #0d6efd;
+        background-color: #e7f1ff;
+    }
+    .api-key-input {
+        font-family: monospace;
+    }
+    .test-result {
+        font-size: 0.85rem;
+    }
+    .test-result.success {
+        color: #198754;
+    }
+    .test-result.error {
+        color: #dc3545;
+    }
+    .provider-actions .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    .empty-state {
+        padding: 3rem;
+        text-align: center;
+        color: #6c757d;
+    }
+    .empty-state i {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>AI 模型配置</h2>
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-0">
+            <li class="breadcrumb-item"><a href="{{ url_for('system_config.algorithm_config_page') }}">系统配置</a></li>
+            <li class="breadcrumb-item active">AI模型配置</li>
+        </ol>
+    </nav>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row mb-4" id="stats-row">
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="card stats-card calls">
+            <div class="card-body py-2">
+                <h6 class="card-subtitle mb-1 text-muted">调用次数</h6>
+                <h4 class="card-title mb-0" id="stats-calls">-</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="card stats-card tokens">
+            <div class="card-body py-2">
+                <h6 class="card-subtitle mb-1 text-muted">Token消耗</h6>
+                <h4 class="card-title mb-0" id="stats-tokens">-</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="card stats-card success">
+            <div class="card-body py-2">
+                <h6 class="card-subtitle mb-1 text-muted">成功率</h6>
+                <h4 class="card-title mb-0" id="stats-success">-</h4>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-sm-6 mb-3">
+        <div class="card stats-card errors">
+            <div class="card-body py-2">
+                <h6 class="card-subtitle mb-1 text-muted">错误次数</h6>
+                <h4 class="card-title mb-0" id="stats-errors">-</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 操作栏 -->
+<div class="card mb-4">
+    <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <span class="text-muted">已配置 <strong id="provider-count">0</strong> 个AI提供商</span>
+            </div>
+            <div>
+                <button class="btn btn-primary btn-sm" id="add-provider-btn">
+                    + 添加AI提供商
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 提供商列表 -->
+<div id="providers-container">
+    <div class="empty-state">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">加载中...</span>
+        </div>
+        <p class="mt-3">加载中...</p>
+    </div>
+</div>
+
+<!-- 添加/编辑提供商模态框 -->
+<div class="modal fade" id="provider-modal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modal-title">添加AI提供商</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Step 1: 选择提供商类型 -->
+                <div id="step-1">
+                    <h6 class="mb-3">选择AI提供商</h6>
+                    <div class="row" id="templates-container">
+                        <!-- 动态加载模板 -->
+                    </div>
+                </div>
+
+                <!-- Step 2: 配置详情 -->
+                <div id="step-2" style="display: none;">
+                    <form id="provider-form">
+                        <input type="hidden" id="provider-id">
+                        <input type="hidden" id="provider-type">
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="provider-name" class="form-label">名称 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="provider-name" required>
+                                <div class="form-text">自定义名称，便于识别</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="provider-model" class="form-label">模型 <span class="text-danger">*</span></label>
+                                <select class="form-select" id="provider-model-select">
+                                    <option value="">选择模型...</option>
+                                </select>
+                                <input type="text" class="form-control mt-2" id="provider-model-custom"
+                                       placeholder="或输入自定义模型名称" style="display: none;">
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="provider-api-key" class="form-label">API Key <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="password" class="form-control api-key-input" id="provider-api-key"
+                                       placeholder="sk-xxxx 或其他格式的API密钥">
+                                <button class="btn btn-outline-secondary" type="button" id="toggle-api-key">
+                                    显示
+                                </button>
+                            </div>
+                            <div class="form-text">API密钥将加密存储，编辑时留空表示不修改</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="provider-base-url" class="form-label">API 地址 <span class="text-danger">*</span></label>
+                            <input type="url" class="form-control" id="provider-base-url" required
+                                   placeholder="https://api.example.com/v1">
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="provider-timeout" class="form-label">超时时间(秒)</label>
+                                <input type="number" class="form-control" id="provider-timeout" value="30" min="5" max="300">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="provider-max-tokens" class="form-label">最大Token</label>
+                                <input type="number" class="form-control" id="provider-max-tokens" value="200" min="50" max="4000">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="provider-temperature" class="form-label">温度参数</label>
+                                <input type="number" class="form-control" id="provider-temperature" value="0.7" min="0" max="2" step="0.1">
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="provider-priority" class="form-label">优先级</label>
+                                <input type="number" class="form-control" id="provider-priority" value="0" min="0" max="100">
+                                <div class="form-text">数字越大优先级越高</div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="provider-is-active" checked>
+                                    <label class="form-check-label" for="provider-is-active">启用</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="provider-is-default">
+                                    <label class="form-check-label" for="provider-is-default">设为默认</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="provider-description" class="form-label">备注</label>
+                            <textarea class="form-control" id="provider-description" rows="2"></textarea>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-outline-secondary" id="back-to-step1" style="display: none;">上一步</button>
+                <button type="button" class="btn btn-primary" id="next-to-step2">下一步</button>
+                <button type="button" class="btn btn-success" id="save-provider" style="display: none;">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 测试结果模态框 -->
+<div class="modal fade" id="test-modal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">连接测试</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="test-result-body">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2">正在测试连接...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // State
+    let templates = {};
+    let selectedTemplate = null;
+    let editingProviderId = null;
+
+    // Elements
+    const providersContainer = document.getElementById('providers-container');
+    const providerModal = new bootstrap.Modal(document.getElementById('provider-modal'));
+    const testModal = new bootstrap.Modal(document.getElementById('test-modal'));
+
+    // Load templates
+    async function loadTemplates() {
+        try {
+            const resp = await fetch('/system/config/api/ai/templates');
+            const data = await resp.json();
+            if (data.success) {
+                templates = data.templates;
+                renderTemplates();
+            }
+        } catch (e) {
+            console.error('Failed to load templates:', e);
+        }
+    }
+
+    // Render template selection
+    function renderTemplates() {
+        const container = document.getElementById('templates-container');
+        container.innerHTML = Object.entries(templates).map(([key, tpl]) => `
+            <div class="col-md-4 col-sm-6 mb-3">
+                <div class="card template-card h-100" data-template="${key}">
+                    <div class="card-body py-2">
+                        <h6 class="card-title mb-1">${escapeHtml(tpl.name)}</h6>
+                        <p class="card-text small text-muted mb-0">${escapeHtml(tpl.description || '')}</p>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        // Bind click events
+        container.querySelectorAll('.template-card').forEach(card => {
+            card.addEventListener('click', () => {
+                container.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                selectedTemplate = card.dataset.template;
+            });
+        });
+    }
+
+    // Load providers
+    async function loadProviders() {
+        try {
+            const resp = await fetch('/system/config/api/ai/providers');
+            const data = await resp.json();
+
+            if (data.success) {
+                document.getElementById('provider-count').textContent = data.providers.length;
+                renderProviders(data.providers);
+            }
+        } catch (e) {
+            console.error('Failed to load providers:', e);
+            providersContainer.innerHTML = `
+                <div class="alert alert-danger">加载失败，请刷新页面重试</div>
+            `;
+        }
+    }
+
+    // Render providers list
+    function renderProviders(providers) {
+        if (!providers.length) {
+            providersContainer.innerHTML = `
+                <div class="empty-state card">
+                    <div class="card-body">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-robot opacity-25" viewBox="0 0 16 16">
+                            <path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5ZM3 8.062C3 6.76 4.235 5.765 5.53 5.886a26.58 26.58 0 0 0 4.94 0C11.765 5.765 13 6.76 13 8.062v1.157a.933.933 0 0 1-.765.935c-.845.147-2.34.346-4.235.346-1.895 0-3.39-.2-4.235-.346A.933.933 0 0 1 3 9.219V8.062Zm4.542-.827a.25.25 0 0 0-.217.068l-.92.9a24.767 24.767 0 0 1-1.871-.183.25.25 0 0 0-.068.495c.55.076 1.232.149 2.02.193a.25.25 0 0 0 .189-.071l.754-.736.847 1.71a.25.25 0 0 0 .404.062l.932-.97a25.286 25.286 0 0 0 1.922-.188.25.25 0 0 0-.068-.495c-.538.074-1.207.145-1.98.189a.25.25 0 0 0-.166.076l-.754.785-.842-1.7a.25.25 0 0 0-.182-.135Z"/>
+                            <path d="M8.5 1.866a1 1 0 1 0-1 0V3h-2A4.5 4.5 0 0 0 1 7.5V8a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1v1a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1v-.5A4.5 4.5 0 0 0 10.5 3h-2V1.866ZM14 7.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7.5A3.5 3.5 0 0 1 5.5 4h5A3.5 3.5 0 0 1 14 7.5Z"/>
+                        </svg>
+                        <h5 class="mt-3">尚未配置AI提供商</h5>
+                        <p class="text-muted mb-3">添加AI提供商后，系统将使用AI进行高风险人员行为诊断</p>
+                        <button class="btn btn-primary" onclick="document.getElementById('add-provider-btn').click()">
+                            添加第一个AI提供商
+                        </button>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        providersContainer.innerHTML = providers.map(p => `
+            <div class="card provider-card mb-3 ${p.is_active ? 'active' : ''} ${p.is_default ? 'default' : ''}" data-id="${p.id}">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center mb-2">
+                                <span class="status-indicator ${p.is_active ? 'active' : 'inactive'}"></span>
+                                <h5 class="card-title mb-0 me-2">${escapeHtml(p.name)}</h5>
+                                ${p.is_default ? '<span class="badge bg-primary">默认</span>' : ''}
+                                <span class="badge bg-secondary provider-type-badge ms-2">${escapeHtml(p.provider_type)}</span>
+                            </div>
+                            <div class="text-muted small">
+                                <div><strong>模型:</strong> ${escapeHtml(p.model)}</div>
+                                <div><strong>API地址:</strong> ${escapeHtml(p.base_url)}</div>
+                                <div><strong>API Key:</strong> ${p.api_key_set ? p.api_key : '<span class="text-danger">未配置</span>'}</div>
+                                ${p.description ? `<div class="mt-1"><em>${escapeHtml(p.description)}</em></div>` : ''}
+                            </div>
+                        </div>
+                        <div class="provider-actions d-flex flex-column gap-1">
+                            <button class="btn btn-outline-primary test-btn" data-id="${p.id}" ${!p.api_key_set ? 'disabled' : ''}>
+                                测试
+                            </button>
+                            <button class="btn btn-outline-secondary edit-btn" data-id="${p.id}">
+                                编辑
+                            </button>
+                            ${!p.is_default ? `<button class="btn btn-outline-success set-default-btn" data-id="${p.id}">设为默认</button>` : ''}
+                            <button class="btn btn-outline-${p.is_active ? 'warning' : 'success'} toggle-btn" data-id="${p.id}">
+                                ${p.is_active ? '禁用' : '启用'}
+                            </button>
+                            <button class="btn btn-outline-danger delete-btn" data-id="${p.id}">
+                                删除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        // Bind action buttons
+        bindProviderActions();
+    }
+
+    // Bind provider action buttons
+    function bindProviderActions() {
+        // Test buttons
+        document.querySelectorAll('.test-btn').forEach(btn => {
+            btn.addEventListener('click', () => testProvider(btn.dataset.id));
+        });
+
+        // Edit buttons
+        document.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => editProvider(btn.dataset.id));
+        });
+
+        // Set default buttons
+        document.querySelectorAll('.set-default-btn').forEach(btn => {
+            btn.addEventListener('click', () => setDefaultProvider(btn.dataset.id));
+        });
+
+        // Toggle buttons
+        document.querySelectorAll('.toggle-btn').forEach(btn => {
+            btn.addEventListener('click', () => toggleProvider(btn.dataset.id));
+        });
+
+        // Delete buttons
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteProvider(btn.dataset.id));
+        });
+    }
+
+    // Load stats
+    async function loadStats() {
+        try {
+            const resp = await fetch('/system/config/api/ai/stats?days=30');
+            const data = await resp.json();
+            if (data.success) {
+                document.getElementById('stats-calls').textContent = data.stats.total_calls.toLocaleString();
+                document.getElementById('stats-tokens').textContent = data.stats.total_tokens.toLocaleString();
+                document.getElementById('stats-success').textContent = data.stats.success_rate + '%';
+                document.getElementById('stats-errors').textContent = data.stats.error_count.toLocaleString();
+            }
+        } catch (e) {
+            console.error('Failed to load stats:', e);
+        }
+    }
+
+    // Test provider connection
+    async function testProvider(id) {
+        testModal.show();
+        const resultBody = document.getElementById('test-result-body');
+        resultBody.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2">正在测试连接...</p>
+            </div>
+        `;
+
+        try {
+            const resp = await fetch(`/system/config/api/ai/providers/${id}/test`, {
+                method: 'POST'
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                resultBody.innerHTML = `
+                    <div class="alert alert-success">
+                        <h6 class="alert-heading">连接成功!</h6>
+                        <hr>
+                        <p class="mb-1"><strong>模型:</strong> ${escapeHtml(data.result.model)}</p>
+                        <p class="mb-1"><strong>Token消耗:</strong> ${data.result.tokens}</p>
+                        <p class="mb-0"><strong>AI回复:</strong> ${escapeHtml(data.result.reply)}</p>
+                    </div>
+                `;
+            } else {
+                resultBody.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h6 class="alert-heading">连接失败</h6>
+                        <hr>
+                        <p class="mb-0">${escapeHtml(data.message || data.error)}</p>
+                    </div>
+                `;
+            }
+        } catch (e) {
+            resultBody.innerHTML = `
+                <div class="alert alert-danger">
+                    <h6 class="alert-heading">测试出错</h6>
+                    <hr>
+                    <p class="mb-0">${escapeHtml(e.message)}</p>
+                </div>
+            `;
+        }
+    }
+
+    // Edit provider
+    async function editProvider(id) {
+        editingProviderId = id;
+
+        try {
+            const resp = await fetch(`/system/config/api/ai/providers/${id}`);
+            const data = await resp.json();
+
+            if (data.success) {
+                const p = data.provider;
+
+                // Set form values
+                document.getElementById('provider-id').value = p.id;
+                document.getElementById('provider-type').value = p.provider_type;
+                document.getElementById('provider-name').value = p.name;
+                document.getElementById('provider-base-url').value = p.base_url;
+                document.getElementById('provider-api-key').value = '';
+                document.getElementById('provider-api-key').placeholder = p.api_key ? '已设置，留空表示不修改' : '请输入API Key';
+                document.getElementById('provider-timeout').value = p.timeout;
+                document.getElementById('provider-max-tokens').value = p.max_tokens;
+                document.getElementById('provider-temperature').value = p.temperature;
+                document.getElementById('provider-priority').value = p.priority;
+                document.getElementById('provider-is-active').checked = p.is_active;
+                document.getElementById('provider-is-default').checked = p.is_default;
+                document.getElementById('provider-description').value = p.description || '';
+
+                // Setup model select
+                setupModelSelect(p.provider_type, p.model);
+
+                // Show step 2 directly
+                document.getElementById('step-1').style.display = 'none';
+                document.getElementById('step-2').style.display = 'block';
+                document.getElementById('next-to-step2').style.display = 'none';
+                document.getElementById('back-to-step1').style.display = 'none';
+                document.getElementById('save-provider').style.display = 'inline-block';
+                document.getElementById('modal-title').textContent = '编辑AI提供商';
+
+                providerModal.show();
+            }
+        } catch (e) {
+            console.error('Failed to load provider:', e);
+            showAlert('danger', '加载配置失败');
+        }
+    }
+
+    // Setup model select based on provider type
+    function setupModelSelect(providerType, currentModel = '') {
+        const select = document.getElementById('provider-model-select');
+        const customInput = document.getElementById('provider-model-custom');
+        const template = templates[providerType];
+
+        select.innerHTML = '<option value="">选择模型...</option>';
+
+        // Check if template has preset models
+        const hasPresetModels = template && template.models && template.models.length > 0;
+
+        if (hasPresetModels) {
+            template.models.forEach(m => {
+                const option = document.createElement('option');
+                option.value = m.id;
+                option.textContent = m.name;
+                if (m.id === currentModel) option.selected = true;
+                select.appendChild(option);
+            });
+            select.innerHTML += '<option value="__custom__">自定义模型...</option>';
+            select.style.display = 'block';
+
+            // Handle custom model for templates with preset models
+            if (currentModel && !template.models.find(m => m.id === currentModel)) {
+                select.value = '__custom__';
+                customInput.value = currentModel;
+                customInput.style.display = 'block';
+            } else {
+                customInput.style.display = 'none';
+            }
+        } else {
+            // For custom provider type, hide select and show input directly
+            select.style.display = 'none';
+            customInput.style.display = 'block';
+            customInput.value = currentModel || '';
+            customInput.placeholder = '请输入模型名称，如 gpt-4o-mini';
+        }
+
+        // Add change listener (remove old ones first by replacing element)
+        const newSelect = select.cloneNode(true);
+        newSelect.id = 'provider-model-select'; // Ensure ID is preserved
+        select.parentNode.replaceChild(newSelect, select);
+
+        // Add change listener to the new select element
+        newSelect.addEventListener('change', () => {
+            const customInputEl = document.getElementById('provider-model-custom');
+            if (newSelect.value === '__custom__') {
+                customInputEl.style.display = 'block';
+                customInputEl.focus();
+            } else {
+                customInputEl.style.display = 'none';
+            }
+        });
+    }
+
+    // Get selected model value
+    function getSelectedModel() {
+        const select = document.getElementById('provider-model-select');
+        const customInput = document.getElementById('provider-model-custom');
+
+        // If select is hidden (custom provider type), use custom input
+        if (!select || select.style.display === 'none') {
+            return customInput.value.trim();
+        }
+
+        // If custom option selected, use custom input
+        if (select.value === '__custom__') {
+            return customInput.value.trim();
+        }
+
+        // Otherwise return selected value from dropdown
+        return select.value;
+    }
+
+    // Set default provider
+    async function setDefaultProvider(id) {
+        try {
+            const resp = await fetch(`/system/config/api/ai/providers/${id}/default`, {
+                method: 'POST'
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                loadProviders();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            showAlert('danger', '设置默认失败');
+        }
+    }
+
+    // Toggle provider active status
+    async function toggleProvider(id) {
+        try {
+            const resp = await fetch(`/system/config/api/ai/providers/${id}/toggle`, {
+                method: 'POST'
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                loadProviders();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            showAlert('danger', '操作失败');
+        }
+    }
+
+    // Delete provider
+    async function deleteProvider(id) {
+        if (!confirm('确定要删除此AI提供商配置吗？')) return;
+
+        try {
+            const resp = await fetch(`/system/config/api/ai/providers/${id}`, {
+                method: 'DELETE'
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                loadProviders();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            showAlert('danger', '删除失败');
+        }
+    }
+
+    // Save provider
+    async function saveProvider() {
+        const id = document.getElementById('provider-id').value;
+        const providerType = document.getElementById('provider-type').value;
+        const model = getSelectedModel();
+
+        if (!model) {
+            showAlert('warning', '请选择或输入模型名称');
+            return;
+        }
+
+        const payload = {
+            name: document.getElementById('provider-name').value.trim(),
+            provider_type: providerType,
+            base_url: document.getElementById('provider-base-url').value.trim(),
+            model: model,
+            api_key: document.getElementById('provider-api-key').value.trim(),
+            timeout: parseInt(document.getElementById('provider-timeout').value) || 30,
+            max_tokens: parseInt(document.getElementById('provider-max-tokens').value) || 200,
+            temperature: parseFloat(document.getElementById('provider-temperature').value) || 0.7,
+            priority: parseInt(document.getElementById('provider-priority').value) || 0,
+            is_active: document.getElementById('provider-is-active').checked,
+            is_default: document.getElementById('provider-is-default').checked,
+            description: document.getElementById('provider-description').value.trim()
+        };
+
+        // Get extra headers from template
+        const template = templates[providerType];
+        if (template && template.extra_headers) {
+            payload.extra_headers = template.extra_headers;
+        }
+
+        try {
+            let resp;
+            if (id) {
+                // Update
+                resp = await fetch(`/system/config/api/ai/providers/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                // Create
+                resp = await fetch('/system/config/api/ai/providers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            const data = await resp.json();
+
+            if (data.success) {
+                showAlert('success', data.message);
+                providerModal.hide();
+                loadProviders();
+            } else {
+                showAlert('danger', data.error);
+            }
+        } catch (e) {
+            showAlert('danger', '保存失败');
+        }
+    }
+
+    // Reset modal to initial state
+    function resetModal() {
+        editingProviderId = null;
+        selectedTemplate = null;
+
+        document.getElementById('provider-id').value = '';
+        document.getElementById('provider-form').reset();
+        document.getElementById('provider-model-custom').style.display = 'none';
+
+        document.getElementById('step-1').style.display = 'block';
+        document.getElementById('step-2').style.display = 'none';
+        document.getElementById('next-to-step2').style.display = 'inline-block';
+        document.getElementById('back-to-step1').style.display = 'none';
+        document.getElementById('save-provider').style.display = 'none';
+        document.getElementById('modal-title').textContent = '添加AI提供商';
+
+        document.querySelectorAll('.template-card').forEach(c => c.classList.remove('selected'));
+    }
+
+    // Show alert
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${escapeHtml(message)}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild.nextSibling);
+        setTimeout(() => alertDiv.remove(), 5000);
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Event bindings
+    document.getElementById('add-provider-btn').addEventListener('click', () => {
+        resetModal();
+        providerModal.show();
+    });
+
+    document.getElementById('next-to-step2').addEventListener('click', () => {
+        if (!selectedTemplate) {
+            showAlert('warning', '请选择一个AI提供商');
+            return;
+        }
+
+        const template = templates[selectedTemplate];
+
+        // Pre-fill form with template values
+        document.getElementById('provider-type').value = selectedTemplate;
+        document.getElementById('provider-name').value = template.name;
+        document.getElementById('provider-base-url').value = template.base_url;
+        document.getElementById('provider-api-key').placeholder = '请输入API Key';
+
+        // Setup model select
+        setupModelSelect(selectedTemplate);
+
+        // Show step 2
+        document.getElementById('step-1').style.display = 'none';
+        document.getElementById('step-2').style.display = 'block';
+        document.getElementById('next-to-step2').style.display = 'none';
+        document.getElementById('back-to-step1').style.display = 'inline-block';
+        document.getElementById('save-provider').style.display = 'inline-block';
+    });
+
+    document.getElementById('back-to-step1').addEventListener('click', () => {
+        document.getElementById('step-1').style.display = 'block';
+        document.getElementById('step-2').style.display = 'none';
+        document.getElementById('next-to-step2').style.display = 'inline-block';
+        document.getElementById('back-to-step1').style.display = 'none';
+        document.getElementById('save-provider').style.display = 'none';
+    });
+
+    document.getElementById('save-provider').addEventListener('click', saveProvider);
+
+    // Toggle API key visibility
+    document.getElementById('toggle-api-key').addEventListener('click', () => {
+        const input = document.getElementById('provider-api-key');
+        const btn = document.getElementById('toggle-api-key');
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.textContent = '隐藏';
+        } else {
+            input.type = 'password';
+            btn.textContent = '显示';
+        }
+    });
+
+    // Reset modal when hidden
+    document.getElementById('provider-modal').addEventListener('hidden.bs.modal', resetModal);
+
+    // Initial load
+    loadTemplates();
+    loadProviders();
+    loadStats();
+});
+</script>
+{% endblock %}

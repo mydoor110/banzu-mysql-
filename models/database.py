@@ -91,12 +91,13 @@ def _init_mysql_tables(cur):
         """
         CREATE TABLE IF NOT EXISTS employees (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            emp_no VARCHAR(100) NOT NULL,
+            emp_no VARCHAR(100) NOT NULL UNIQUE,
             name VARCHAR(255) NOT NULL,
-            user_id INT NOT NULL,
+            created_by INT,
             class_name VARCHAR(255),
             position VARCHAR(255),
             birth_date VARCHAR(20),
+            certification_date VARCHAR(20),
             marital_status VARCHAR(50),
             hometown VARCHAR(255),
             political_status VARCHAR(100),
@@ -108,8 +109,7 @@ def _init_mysql_tables(cur):
             department_id INT,
             solo_driving_date VARCHAR(20),
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uk_emp_user (emp_no, user_id),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
             FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
@@ -125,10 +125,10 @@ def _init_mysql_tables(cur):
             score DECIMAL(10,2),
             grade VARCHAR(50),
             src_file VARCHAR(500),
-            user_id INT NOT NULL,
+            created_by INT,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE KEY uk_perf (emp_no, year, month, user_id),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            UNIQUE KEY uk_perf (emp_no, year, month),
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
 
@@ -152,10 +152,10 @@ def _init_mysql_tables(cur):
             is_disqualified INT DEFAULT 0,
             is_retake INT DEFAULT 0,
             retake_of_record_id INT,
-            user_id INT NOT NULL,
+            created_by INT,
             source_file VARCHAR(500),
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
             FOREIGN KEY (retake_of_record_id) REFERENCES training_records(id) ON DELETE SET NULL,
             FOREIGN KEY (project_id) REFERENCES training_projects(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -189,37 +189,29 @@ def _init_mysql_tables(cur):
         # Grade mapping table
         """
         CREATE TABLE IF NOT EXISTS grade_map (
-            user_id INT NOT NULL,
-            grade VARCHAR(50) NOT NULL,
-            value DECIMAL(10,2) NOT NULL,
-            PRIMARY KEY (user_id, grade),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            grade VARCHAR(50) NOT NULL PRIMARY KEY,
+            value DECIMAL(10,2) NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
 
-        # Quarter overrides table
+        # Quarter overrides table (全局配置，不按用户隔离)
         """
         CREATE TABLE IF NOT EXISTS quarter_overrides (
-            user_id INT NOT NULL,
             emp_no VARCHAR(100) NOT NULL,
             year INT NOT NULL,
             quarter INT NOT NULL,
             grade VARCHAR(50) NOT NULL,
-            PRIMARY KEY (user_id, emp_no, year, quarter),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            PRIMARY KEY (emp_no, year, quarter)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
 
-        # Quarter grade options table
+        # Quarter grade options table (全局配置，不按用户隔离)
         """
         CREATE TABLE IF NOT EXISTS quarter_grade_options (
-            user_id INT NOT NULL,
-            grade VARCHAR(50) NOT NULL,
+            grade VARCHAR(50) NOT NULL PRIMARY KEY,
             display_order INT NOT NULL,
             is_default INT NOT NULL DEFAULT 0,
-            color VARCHAR(50),
-            PRIMARY KEY (user_id, grade),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            color VARCHAR(50)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
 
@@ -291,11 +283,14 @@ def _init_mysql_tables(cur):
         """
         CREATE TABLE IF NOT EXISTS training_projects (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
+            name VARCHAR(255) NOT NULL UNIQUE,
             description TEXT,
-            user_id INT NOT NULL,
+            category_id INT,
+            is_active INT NOT NULL DEFAULT 1,
+            created_by INT,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            FOREIGN KEY (category_id) REFERENCES training_project_categories(id) ON DELETE SET NULL,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
 
@@ -448,11 +443,11 @@ def _create_indexes(cur):
         ("idx_users_department_id", "users", "department_id"),
         ("idx_users_role", "users", "role"),
         ("idx_users_username", "users", "username"),
-        ("idx_employees_user_id", "employees", "user_id"),
+        ("idx_employees_dept_id", "employees", "department_id"),
         ("idx_employees_emp_no", "employees", "emp_no"),
-        ("idx_perf_user_year_month", "performance_records", "user_id, year, month"),
+        ("idx_perf_year_month", "performance_records", "year, month"),
         ("idx_perf_emp_no", "performance_records", "emp_no"),
-        ("idx_training_records_user_id", "training_records", "user_id"),
+        ("idx_training_records_created_by", "training_records", "created_by"),
         ("idx_training_records_emp_no", "training_records", "emp_no"),
         ("idx_training_records_date", "training_records", "training_date"),
         ("idx_training_records_disqualified", "training_records", "is_disqualified"),

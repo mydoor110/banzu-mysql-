@@ -3,15 +3,18 @@
 """
 Database backup and restore module
 Comprehensive backup solution with automated scheduling
+MySQL backend support
 """
 import os
 import shutil
-import sqlite3
+import subprocess
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 import json
 import logging
+
+from config.settings import DatabaseConfig
 
 
 # ========== Configuration ==========
@@ -21,9 +24,6 @@ class BackupConfig:
 
     # Backup directory
     BACKUP_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'backups')
-
-    # Database path
-    DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.db')
 
     # Upload directory (if exists)
     UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
@@ -50,7 +50,6 @@ class BackupConfig:
             with open(gitignore_path, 'w', encoding='utf-8') as f:
                 f.write('# Ignore all backup files\n')
                 f.write('*.zip\n')
-                f.write('*.db\n')
                 f.write('*.sql\n')
                 f.write('\n')
                 f.write('# Keep the directory\n')
@@ -93,17 +92,16 @@ class BackupManager:
             # Create ZIP archive
             with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as backup_zip:
                 # Backup database
-                if os.path.exists(BackupConfig.DB_PATH):
-                    db_backup = self._backup_database(timestamp)
-                    if db_backup:
-                        backup_zip.write(db_backup, os.path.basename(db_backup))
-                        metadata['files'].append({
-                            'name': os.path.basename(db_backup),
-                            'type': 'database',
-                            'size': os.path.getsize(db_backup)
-                        })
-                        # Clean up temp database backup
-                        os.remove(db_backup)
+                db_backup = self._backup_database(timestamp)
+                if db_backup:
+                    backup_zip.write(db_backup, os.path.basename(db_backup))
+                    metadata['files'].append({
+                        'name': os.path.basename(db_backup),
+                        'type': 'database',
+                        'size': os.path.getsize(db_backup)
+                    })
+                    # Clean up temp database backup
+                    os.remove(db_backup)
 
                 # Backup configuration files
                 if os.path.exists(BackupConfig.CONFIG_DIR):
@@ -159,33 +157,47 @@ class BackupManager:
 
     def _backup_database(self, timestamp):
         """
-        Create database backup using SQLite backup API
+        Create database backup using mysqldump
 
         Args:
             timestamp: Backup timestamp string
 
         Returns:
-            str: Path to backup database file
+            str: Path to backup SQL file
         """
         try:
-            backup_db_path = os.path.join(BackupConfig.BACKUP_DIR, f"app_backup_{timestamp}.db")
+            backup_sql_path = os.path.join(BackupConfig.BACKUP_DIR, f"db_backup_{timestamp}.sql")
 
-            # Connect to source database
-            source_conn = sqlite3.connect(BackupConfig.DB_PATH)
+            # Build mysqldump command
+            cmd = [
+                'mysqldump',
+                f'--host={DatabaseConfig.MYSQL_HOST}',
+                f'--port={DatabaseConfig.MYSQL_PORT}',
+                f'--user={DatabaseConfig.MYSQL_USER}',
+                f'--password={DatabaseConfig.MYSQL_PASSWORD}',
+                '--single-transaction',
+                '--routines',
+                '--triggers',
+                '--events',
+                DatabaseConfig.MYSQL_DATABASE
+            ]
 
-            # Connect to backup database
-            backup_conn = sqlite3.connect(backup_db_path)
+            # Execute mysqldump
+            with open(backup_sql_path, 'w', encoding='utf-8') as f:
+                result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True)
 
-            # Perform backup using SQLite backup API
-            source_conn.backup(backup_conn)
+            if result.returncode != 0:
+                self.logger.error(f"mysqldump failed: {result.stderr}")
+                if os.path.exists(backup_sql_path):
+                    os.remove(backup_sql_path)
+                return None
 
-            # Close connections
-            backup_conn.close()
-            source_conn.close()
+            self.logger.info(f"Database backed up to: {backup_sql_path}")
+            return backup_sql_path
 
-            self.logger.info(f"Database backed up to: {backup_db_path}")
-            return backup_db_path
-
+        except FileNotFoundError:
+            self.logger.error("mysqldump command not found. Please ensure MySQL client tools are installed.")
+            return None
         except Exception as e:
             self.logger.error(f"Database backup failed: {e}", exc_info=True)
             return None
@@ -285,23 +297,23 @@ class BackupManager:
             with zipfile.ZipFile(backup_path, 'r') as backup_zip:
                 # Restore database
                 if restore_database:
-                    db_files = [f for f in backup_zip.namelist() if f.endswith('.db')]
-                    for db_file in db_files:
-                        backup_zip.extract(db_file, BackupConfig.BACKUP_DIR)
-                        extracted_path = os.path.join(BackupConfig.BACKUP_DIR, db_file)
+                    sql_files = [f for f in backup_zip.namelist() if f.endswith('.sql')]
+                    for sql_file in sql_files:
+                        backup_zip.extract(sql_file, BackupConfig.BACKUP_DIR)
+                        extracted_path = os.path.join(BackupConfig.BACKUP_DIR, sql_file)
 
-                        # Replace current database
-                        if os.path.exists(BackupConfig.DB_PATH):
-                            os.remove(BackupConfig.DB_PATH)
-                        shutil.move(extracted_path, BackupConfig.DB_PATH)
+                        # Restore database using mysql command
+                        success = self._restore_database(extracted_path)
+                        if success:
+                            restore_info['restored_files'].append({
+                                'name': sql_file,
+                                'type': 'database',
+                                'target': 'MySQL database'
+                            })
+                            self.logger.info(f"Database restored from: {sql_file}")
 
-                        restore_info['restored_files'].append({
-                            'name': db_file,
-                            'type': 'database',
-                            'target': BackupConfig.DB_PATH
-                        })
-
-                        self.logger.info(f"Database restored from: {db_file}")
+                        # Clean up extracted SQL file
+                        os.remove(extracted_path)
 
                 # Restore config files
                 if restore_config:
@@ -348,6 +360,44 @@ class BackupManager:
         except Exception as e:
             self.logger.error(f"Restore failed: {e}", exc_info=True)
             raise
+
+    def _restore_database(self, sql_file_path):
+        """
+        Restore database from SQL dump file
+
+        Args:
+            sql_file_path: Path to SQL dump file
+
+        Returns:
+            bool: True if restore successful
+        """
+        try:
+            # Build mysql command
+            cmd = [
+                'mysql',
+                f'--host={DatabaseConfig.MYSQL_HOST}',
+                f'--port={DatabaseConfig.MYSQL_PORT}',
+                f'--user={DatabaseConfig.MYSQL_USER}',
+                f'--password={DatabaseConfig.MYSQL_PASSWORD}',
+                DatabaseConfig.MYSQL_DATABASE
+            ]
+
+            # Execute mysql to restore
+            with open(sql_file_path, 'r', encoding='utf-8') as f:
+                result = subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, text=True)
+
+            if result.returncode != 0:
+                self.logger.error(f"mysql restore failed: {result.stderr}")
+                return False
+
+            return True
+
+        except FileNotFoundError:
+            self.logger.error("mysql command not found. Please ensure MySQL client tools are installed.")
+            return False
+        except Exception as e:
+            self.logger.error(f"Database restore failed: {e}", exc_info=True)
+            return False
 
     def delete_backup(self, backup_name):
         """

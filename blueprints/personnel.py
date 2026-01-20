@@ -952,6 +952,18 @@ def calculate_stability_score(
 
     now = datetime.now()
 
+    # 辅助函数：解析日期（支持字符串和date对象）
+    def parse_date(date_val):
+        if not date_val:
+            return None
+        if isinstance(date_val, datetime):
+            return date_val
+        if hasattr(date_val, 'year'):  # date对象
+            return datetime(date_val.year, date_val.month, date_val.day)
+        if isinstance(date_val, str):
+            return datetime.strptime(date_val, '%Y-%m-%d')
+        return None
+
     # ==================== 维度1：资历评分（60%） ====================
     seniority_weights = stability_config['seniority_weights']
     seniority_thresholds = stability_config['seniority_thresholds']
@@ -960,8 +972,9 @@ def calculate_stability_score(
     age_years = 0
     if birth_date:
         try:
-            birth = datetime.strptime(birth_date, '%Y-%m-%d')
-            age_years = (now - birth).days / 365.25
+            birth = parse_date(birth_date)
+            if birth:
+                age_years = (now - birth).days / 365.25
         except:
             pass
     age_score = min(100, (age_years / seniority_thresholds['age_cap']) * 100)
@@ -970,8 +983,9 @@ def calculate_stability_score(
     working_years = 0
     if work_start_date:
         try:
-            work_start = datetime.strptime(work_start_date, '%Y-%m-%d')
-            working_years = (now - work_start).days / 365.25
+            work_start = parse_date(work_start_date)
+            if work_start:
+                working_years = (now - work_start).days / 365.25
         except:
             pass
     working_score = min(100, (working_years / seniority_thresholds['working_cap']) * 100)
@@ -980,8 +994,9 @@ def calculate_stability_score(
     company_years = 0
     if entry_date:
         try:
-            entry = datetime.strptime(entry_date, '%Y-%m-%d')
-            company_years = (now - entry).days / 365.25
+            entry = parse_date(entry_date)
+            if entry:
+                company_years = (now - entry).days / 365.25
         except:
             pass
     company_score = min(100, (company_years / seniority_thresholds['company_cap']) * 100)
@@ -990,8 +1005,9 @@ def calculate_stability_score(
     cert_years = 0
     if certification_date:
         try:
-            cert = datetime.strptime(certification_date, '%Y-%m-%d')
-            cert_years = (now - cert).days / 365.25
+            cert = parse_date(certification_date)
+            if cert:
+                cert_years = (now - cert).days / 365.25
         except:
             pass
     cert_score = min(100, (cert_years / seniority_thresholds['cert_cap']) * 100)
@@ -1000,8 +1016,9 @@ def calculate_stability_score(
     solo_years = 0
     if solo_driving_date:
         try:
-            solo = datetime.strptime(solo_driving_date, '%Y-%m-%d')
-            solo_years = (now - solo).days / 365.25
+            solo = parse_date(solo_driving_date)
+            if solo:
+                solo_years = (now - solo).days / 365.25
         except:
             pass
     solo_score = min(100, (solo_years / seniority_thresholds['solo_cap']) * 100)
@@ -1176,7 +1193,7 @@ def _calculate_years_since(date_str: Optional[str]) -> Optional[float]:
     return round(years, 1)
 
 
-def _serialize_person(row: sqlite3.Row) -> Dict:
+def _serialize_person(row: Dict) -> Dict:
     """序列化人员数据，添加计算字段"""
     data = dict(row)
     data["age"] = _calculate_age(data.get("birth_date"))
@@ -1255,12 +1272,12 @@ def list_personnel():
                    e.work_start_date, e.entry_date, e.specialty
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
-            ORDER BY CAST(e.emp_no as INTEGER)
+            ORDER BY CAST(e.emp_no AS SIGNED)
         """
         try:
             cur.execute(query)
-        except sqlite3.OperationalError:
-            cur.execute(query.replace("CAST(e.emp_no as INTEGER)", "e.emp_no"))
+        except Exception:
+            cur.execute(query.replace("CAST(e.emp_no AS SIGNED)", "e.emp_no"))
     else:
         accessible_dept_ids = get_accessible_department_ids()
         if not accessible_dept_ids:
@@ -1276,13 +1293,13 @@ def list_personnel():
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             WHERE e.department_id IN ({placeholders})
-            ORDER BY CAST(e.emp_no as INTEGER)
+            ORDER BY CAST(e.emp_no AS SIGNED)
         """
         try:
             cur.execute(query, accessible_dept_ids)
-        except sqlite3.OperationalError:
+        except Exception:
             cur.execute(
-                query.replace("CAST(e.emp_no as INTEGER)", "e.emp_no"),
+                query.replace("CAST(e.emp_no AS SIGNED)", "e.emp_no"),
                 accessible_dept_ids,
             )
 
@@ -1318,7 +1335,6 @@ def get_personnel(emp_no: str) -> Optional[Dict]:
             return None
 
     conn = get_db()
-    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute(
         """
@@ -1394,13 +1410,13 @@ def upsert_personnel(data: Dict[str, Optional[str]]) -> bool:
     columns = ["emp_no", "name", "created_by", "department_id"] + [col for col in PERSONNEL_DB_COLUMNS if col != "department_id"]
     values = [emp_no, name, uid, department_id] + [payload.get(col) for col in PERSONNEL_DB_COLUMNS if col != "department_id"]
     update_clause = ", ".join(
-        f"{col}=excluded.{col}" for col in ["name", "department_id"] + [col for col in PERSONNEL_DB_COLUMNS if col != "department_id"]
+        f"{col}=VALUES({col})" for col in ["name", "department_id"] + [col for col in PERSONNEL_DB_COLUMNS if col != "department_id"]
     )
     cur.execute(
         f"""
         INSERT INTO employees ({", ".join(columns)})
         VALUES ({", ".join(["%s"] * len(columns))})
-        ON CONFLICT(emp_no) DO UPDATE SET {update_clause}
+        ON DUPLICATE KEY UPDATE {update_clause}
         """,
         values,
     )
@@ -2181,7 +2197,7 @@ def api_students_list():
     score_weights = algo_config['comprehensive']['score_weights']
     key_personnel_config = algo_config['key_personnel']
 
-    # 兼容 sqlite3.Row 和 dict 两种类型的辅助函数
+    # 安全获取字典值的辅助函数
     def safe_get(obj, key, default=None):
         if isinstance(obj, dict):
             return obj.get(key, default)
@@ -2216,7 +2232,7 @@ def api_students_list():
         if dept_id:
             cur.execute("SELECT name FROM departments WHERE id = %s", (dept_id,))
             dept_row = cur.fetchone()
-            dept_name = dept_row[0] if dept_row else None
+            dept_name = dept_row['name'] if dept_row else None
         else:
             dept_name = None
 
@@ -2229,11 +2245,11 @@ def api_students_list():
         training_params = [emp_no]
 
         if start_date:
-            training_query += " AND DATE_FORMAT(training_date, '%Y-%m') >= %s"
+            training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') >= %s"
             training_params.append(start_date)
 
         if end_date:
-            training_query += " AND DATE_FORMAT(training_date, '%Y-%m') <= %s"
+            training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') <= %s"
             training_params.append(end_date)
 
         training_query += " ORDER BY training_date ASC"
@@ -2271,11 +2287,11 @@ def api_students_list():
         safety_params = [emp_name]
 
         if start_date:
-            safety_query += " AND DATE_FORMAT(inspection_date, '%Y-%m') >= %s"
+            safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') >= %s"
             safety_params.append(start_date)
 
         if end_date:
-            safety_query += " AND DATE_FORMAT(inspection_date, '%Y-%m') <= %s"
+            safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') <= %s"
             safety_params.append(end_date)
 
         safety_query += " ORDER BY inspection_date ASC"
@@ -2285,7 +2301,7 @@ def api_students_list():
         # 收集所有违规扣分
         violations_list = []
         for s_row in safety_rows:
-            assessment = s_row[0]
+            assessment = s_row['assessment']
             score = extract_score_from_assessment(assessment)
             if score > 0:
                 violations_list.append(float(score))
@@ -2346,15 +2362,15 @@ def api_students_list():
         if perf_rows:
             if is_monthly and len(perf_rows) == 1:
                 # 月度快照算法
-                score, grade, year, month = perf_rows[0]
-                raw_score = float(score) if score else 95
-                grade = grade if grade else 'B+'
+                perf_row = perf_rows[0]
+                raw_score = float(perf_row['score']) if perf_row['score'] else 95
+                grade = perf_row['grade'] if perf_row['grade'] else 'B+'
                 perf_result = calculate_performance_score_monthly(grade, raw_score, algo_config)
                 performance_score = perf_result['radar_value']
             else:
                 # 周期加权算法（带时间衰减）
-                grade_list = [row[1] if row[1] else 'B+' for row in perf_rows]
-                grade_dates = [f"{row[2]}-{row[3]:02d}" for row in perf_rows]  # 构建日期列表
+                grade_list = [row['grade'] if row['grade'] else 'B+' for row in perf_rows]
+                grade_dates = [f"{row['year']}-{row['month']:02d}" for row in perf_rows]  # 构建日期列表
                 perf_result = calculate_performance_score_period(grade_list, grade_dates, algo_config)
                 performance_score = perf_result['radar_value']
         else:
@@ -2389,8 +2405,8 @@ def api_students_list():
                 prev_perf_row = cur.fetchone()
                 if prev_perf_row:
                     prev_perf_score = calculate_performance_score_monthly(
-                        prev_perf_row[1] if prev_perf_row[1] else 'B+',
-                        float(prev_perf_row[0]) if prev_perf_row[0] else 95,
+                        prev_perf_row['grade'] if prev_perf_row['grade'] else 'B+',
+                        float(prev_perf_row['score']) if prev_perf_row['score'] else 95,
                         algo_config
                     )['radar_value']
                 else:
@@ -2400,11 +2416,11 @@ def api_students_list():
                 cur.execute("""
                     SELECT assessment
                     FROM safety_inspection_records
-                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
+                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
                 """, [emp_name, prev_date])
                 prev_violations = []
                 for safety_row in cur.fetchall():
-                    score = extract_score_from_assessment(safety_row[0])
+                    score = extract_score_from_assessment(safety_row['assessment'])
                     if score > 0:
                         prev_violations.append(float(score))
                 prev_safety_result = calculate_safety_score_dual_track(prev_violations, months_active=1, config=algo_config)
@@ -2414,7 +2430,7 @@ def api_students_list():
                 # 查询上月培训
                 cur.execute("""
                     SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
+                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%%Y-%%m') = %s
                 """, [emp_no, prev_date])
                 prev_training_rows = cur.fetchall()
                 prev_training_result = calculate_training_score_with_penalty(prev_training_rows, duration_days=30, cert_years=cert_years, config=algo_config)
@@ -2462,8 +2478,8 @@ def api_students_list():
                     month_perf = cur.fetchone()
                     if month_perf:
                         month_perf_score = calculate_performance_score_monthly(
-                            month_perf[1] if month_perf[1] else 'B+',
-                            float(month_perf[0]) if month_perf[0] else 95,
+                            month_perf['grade'] if month_perf['grade'] else 'B+',
+                            float(month_perf['score']) if month_perf['score'] else 95,
                             algo_config
                         )['radar_value']
                     else:
@@ -2472,13 +2488,13 @@ def api_students_list():
                     # 查询该月安全
                     cur.execute("""
                         SELECT assessment FROM safety_inspection_records
-                        WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
+                        WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
                     """, [emp_name, month_str])
                     month_safety_rows = cur.fetchall()
                     if month_safety_rows:
                         month_violations = []
                         for safety_row in month_safety_rows:  # 修复：避免覆盖外层row变量
-                            score = extract_score_from_assessment(safety_row[0])
+                            score = extract_score_from_assessment(safety_row['assessment'])
                             if score > 0:
                                 month_violations.append(float(score))
                         month_safety_result = calculate_safety_score_dual_track(month_violations, 1, algo_config)
@@ -2489,7 +2505,7 @@ def api_students_list():
                     # 查询该月培训
                     cur.execute("""
                         SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                        WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
+                        WHERE emp_no = %s AND DATE_FORMAT(training_date, '%%Y-%%m') = %s
                     """, [emp_no, month_str])
                     month_training_rows = cur.fetchall()
                     if month_training_rows:
@@ -2587,8 +2603,8 @@ def api_students_list():
                 month_perf_row = cur.fetchone()
                 if month_perf_row:
                     month_perf_score = calculate_performance_score_monthly(
-                        month_perf_row[1] if month_perf_row[1] else 'B+',
-                        float(month_perf_row[0]) if month_perf_row[0] else 95,
+                        month_perf_row['grade'] if month_perf_row['grade'] else 'B+',
+                        float(month_perf_row['score']) if month_perf_row['score'] else 95,
                         algo_config
                     )['radar_value']
                     historical_scores['performance'].append(month_perf_score)
@@ -2597,14 +2613,14 @@ def api_students_list():
                 cur.execute("""
                     SELECT assessment, inspection_date
                     FROM safety_inspection_records
-                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
+                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
                     ORDER BY inspection_date
                 """, [emp_name, month_str])
                 month_safety_rows = cur.fetchall()
                 if month_safety_rows:
                     violations = []
                     for safety_row in month_safety_rows:  # 修复：避免覆盖外层row变量
-                        score = extract_score_from_assessment(safety_row[0])
+                        score = extract_score_from_assessment(safety_row['assessment'])
                         if score > 0:
                             violations.append(float(score))
 
@@ -2619,7 +2635,7 @@ def api_students_list():
                 # 查询该月培训分
                 cur.execute("""
                     SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
+                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%%Y-%%m') = %s
                 """, [emp_no, month_str])
                 month_training_rows = cur.fetchall()
                 if month_training_rows:
@@ -2734,8 +2750,16 @@ def api_comprehensive_profile(emp_no):
     if not validate_employee_access(emp_no):
         return jsonify({'error': '无权限查看此员工'}), 403
 
-    emp_name, dept_id, position, education, entry_date, \
-        birth_date, work_start_date, cert_date, solo_date = employee
+    # DictCursor返回字典，使用字典访问方式
+    emp_name = employee['name']
+    dept_id = employee['department_id']
+    position = employee['position']
+    education = employee['education']
+    entry_date = employee['entry_date']
+    birth_date = employee['birth_date']
+    work_start_date = employee['work_start_date']
+    cert_date = employee['certification_date']
+    solo_date = employee['solo_driving_date']
 
     # 计算各项年限
     working_years = calculate_years_from_date(work_start_date) if work_start_date else None
@@ -2772,11 +2796,11 @@ def api_comprehensive_profile(emp_no):
     training_params = [emp_no]
 
     if start_date:
-        training_query += " AND DATE_FORMAT(training_date, '%Y-%m') >= %s"
+        training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') >= %s"
         training_params.append(start_date)
 
     if end_date:
-        training_query += " AND DATE_FORMAT(training_date, '%Y-%m') <= %s"
+        training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') <= %s"
         training_params.append(end_date)
 
     training_query += " ORDER BY training_date ASC"
@@ -2827,11 +2851,11 @@ def api_comprehensive_profile(emp_no):
     safety_params = [emp_name, emp_name]
 
     if start_date:
-        safety_query += " AND DATE_FORMAT(inspection_date, '%Y-%m') >= %s"
+        safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') >= %s"
         safety_params.append(start_date)
 
     if end_date:
-        safety_query += " AND DATE_FORMAT(inspection_date, '%Y-%m') <= %s"
+        safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') <= %s"
         safety_params.append(end_date)
 
     safety_query += " ORDER BY inspection_date ASC"
@@ -2842,7 +2866,9 @@ def api_comprehensive_profile(emp_no):
     safety_as_rectifier = 0
 
     for row in cur.fetchall():
-        date, assessment, inspected, rectifier = row
+        assessment = row['assessment']
+        inspected = row['inspected_person']
+        rectifier = row['rectifier']
         score = extract_score_from_assessment(assessment)
 
         if inspected == emp_name and score > 0:
@@ -2914,9 +2940,9 @@ def api_comprehensive_profile(emp_no):
     if perf_rows:
         if is_monthly and len(perf_rows) == 1:
             # 月度快照算法
-            score, grade, year, month = perf_rows[0]
-            raw_score = float(score) if score else 95
-            grade = grade if grade else 'B+'
+            perf_row = perf_rows[0]
+            raw_score = float(perf_row['score']) if perf_row['score'] else 95
+            grade = perf_row['grade'] if perf_row['grade'] else 'B+'
             perf_result = calculate_performance_score_monthly(grade, raw_score, algo_config)
             performance_score = perf_result['radar_value']
             performance_status_color = perf_result['status_color']
@@ -2925,8 +2951,8 @@ def api_comprehensive_profile(emp_no):
             performance_mode = 'MONTHLY'
         else:
             # 周期加权算法（带时间衰减）
-            grade_list = [row[1] if row[1] else 'B+' for row in perf_rows]
-            grade_dates = [f"{row[2]}-{row[3]:02d}" for row in perf_rows]  # 构建日期列表
+            grade_list = [row['grade'] if row['grade'] else 'B+' for row in perf_rows]
+            grade_dates = [f"{row['year']}-{row['month']:02d}" for row in perf_rows]  # 构建日期列表
             perf_result = calculate_performance_score_period(grade_list, grade_dates, algo_config)
             performance_score = perf_result['radar_value']
             performance_status_color = perf_result['status_color']
@@ -2974,8 +3000,8 @@ def api_comprehensive_profile(emp_no):
             prev_perf_row = cur.fetchone()
             if prev_perf_row:
                 prev_perf_score = calculate_performance_score_monthly(
-                    prev_perf_row[1] if prev_perf_row[1] else 'B+',
-                    float(prev_perf_row[0]) if prev_perf_row[0] else 95,
+                    prev_perf_row['grade'] if prev_perf_row['grade'] else 'B+',
+                    float(prev_perf_row['score']) if prev_perf_row['score'] else 95,
                     algo_config
                 )['radar_value']
             else:
@@ -2985,12 +3011,12 @@ def api_comprehensive_profile(emp_no):
             cur.execute("""
                 SELECT assessment
                 FROM safety_inspection_records
-                WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
+                WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
             """, [emp_name, prev_date])
 
             prev_violations = []
             for row in cur.fetchall():
-                score = extract_score_from_assessment(row[0])
+                score = extract_score_from_assessment(row['assessment'])
                 if score > 0:
                     prev_violations.append(float(score))
 
@@ -3001,7 +3027,7 @@ def api_comprehensive_profile(emp_no):
             # 查询上月培训
             cur.execute("""
                 SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
+                WHERE emp_no = %s AND DATE_FORMAT(training_date, '%%Y-%%m') = %s
             """, [emp_no, prev_date])
             prev_training_rows = cur.fetchall()
             # 月度模式，周期30天
@@ -3054,11 +3080,11 @@ def api_comprehensive_profile(emp_no):
                 month_perf_row = cur.fetchone()
                 if month_perf_row:
                     month_perf_score = calculate_performance_score_monthly(
-                        month_perf_row[1] if month_perf_row[1] else 'B+',
-                        float(month_perf_row[0]) if month_perf_row[0] else 95,
+                        month_perf_row['grade'] if month_perf_row['grade'] else 'B+',
+                        float(month_perf_row['score']) if month_perf_row['score'] else 95,
                         algo_config
                     )['radar_value']
-                    print(f"  - 绩效: {month_perf_score} (grade={month_perf_row[1]}, score={month_perf_row[0]})")
+                    print(f"  - 绩效: {month_perf_score} (grade={month_perf_row['grade']}, score={month_perf_row['score']})")
                 else:
                     month_perf_score = 0
                     print(f"  - 绩效: 无数据")
@@ -3067,7 +3093,7 @@ def api_comprehensive_profile(emp_no):
                 cur.execute("""
                     SELECT assessment, inspection_date
                     FROM safety_inspection_records
-                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
+                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
                     ORDER BY inspection_date
                 """, [emp_name, month_str])
                 month_safety_rows = cur.fetchall()
@@ -3075,7 +3101,7 @@ def api_comprehensive_profile(emp_no):
                     # 提取扣分数值
                     violations = []
                     for row in month_safety_rows:
-                        score = extract_score_from_assessment(row[0])
+                        score = extract_score_from_assessment(row['assessment'])
                         if score > 0:
                             violations.append(float(score))
 
@@ -3097,7 +3123,7 @@ def api_comprehensive_profile(emp_no):
                 # 培训
                 cur.execute("""
                     SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
+                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%%Y-%%m') = %s
                 """, [emp_no, month_str])
                 month_training_rows = cur.fetchall()
                 if month_training_rows:
@@ -3200,8 +3226,8 @@ def api_comprehensive_profile(emp_no):
             month_perf_row = cur.fetchone()
             if month_perf_row:
                 month_perf_score = calculate_performance_score_monthly(
-                    month_perf_row[1] if month_perf_row[1] else 'B+',
-                    float(month_perf_row[0]) if month_perf_row[0] else 95,
+                    month_perf_row['grade'] if month_perf_row['grade'] else 'B+',
+                    float(month_perf_row['score']) if month_perf_row['score'] else 95,
                     algo_config
                 )['radar_value']
                 historical_scores['performance'].append(month_perf_score)
@@ -3210,7 +3236,7 @@ def api_comprehensive_profile(emp_no):
             cur.execute("""
                 SELECT assessment, inspection_date
                 FROM safety_inspection_records
-                WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
+                WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
                 ORDER BY inspection_date
             """, [emp_name, month_str])
             month_safety_rows = cur.fetchall()
@@ -3218,7 +3244,7 @@ def api_comprehensive_profile(emp_no):
                 # 提取扣分值
                 violations = []
                 for row in month_safety_rows:
-                    score = extract_score_from_assessment(row[0])
+                    score = extract_score_from_assessment(row['assessment'])
                     if score > 0:
                         violations.append(float(score))
 
@@ -3233,7 +3259,7 @@ def api_comprehensive_profile(emp_no):
             # 查询该月培训分
             cur.execute("""
                 SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
+                WHERE emp_no = %s AND DATE_FORMAT(training_date, '%%Y-%%m') = %s
             """, [emp_no, month_str])
             month_training_rows = cur.fetchall()
             if month_training_rows:
@@ -3269,9 +3295,18 @@ def api_comprehensive_profile(emp_no):
         traceback.print_exc()
         if entry_date:
             try:
-                entry = datetime.strptime(entry_date, '%Y-%m-%d')
-                years = (datetime.now() - entry).days / 365
-                stability_score = min(100, years * 33.3)
+                # 支持date对象和字符串
+                if isinstance(entry_date, str):
+                    entry = datetime.strptime(entry_date, '%Y-%m-%d')
+                elif hasattr(entry_date, 'year'):
+                    entry = datetime(entry_date.year, entry_date.month, entry_date.day)
+                else:
+                    entry = None
+                if entry:
+                    years = (datetime.now() - entry).days / 365
+                    stability_score = min(100, years * 33.3)
+                else:
+                    stability_score = 50
             except:
                 stability_score = 50
         else:
@@ -3287,13 +3322,23 @@ def api_comprehensive_profile(emp_no):
         1
     )
 
+    # 格式化日期为字符串（MySQL返回date对象，JSON无法直接序列化）
+    def format_date(d):
+        if d is None:
+            return None
+        if isinstance(d, str):
+            return d
+        if hasattr(d, 'strftime'):
+            return d.strftime('%Y-%m-%d')
+        return str(d)
+
     return jsonify({
         'employee': {
             'emp_no': emp_no,
             'name': emp_name,
             'position': position,
             'education': education,
-            'entry_date': entry_date
+            'entry_date': format_date(entry_date)
         },
         'scores': {
             'comprehensive': round(comprehensive_score, 1),
@@ -3399,9 +3444,9 @@ def api_student_detail(emp_no):
     cur.execute(query, time_params)
     student_data = {}
     for row in cur.fetchall():
-        student_data[row[0]] = {
-            'avg_score': row[1],
-            'count': row[2]
+        student_data[row['category_name']] = {
+            'avg_score': row['avg_score'],
+            'count': row['count']
         }
 
     # 查询团队平均（基于权限过滤的可见员工）
@@ -3441,7 +3486,7 @@ def api_student_detail(emp_no):
     cur.execute(query, team_time_params)
     team_data = {}
     for row in cur.fetchall():
-        team_data[row[0]] = row[1]
+        team_data[row['category_name']] = row['avg_score']
 
     # 合并所有分类
     all_categories = set(student_data.keys()) | set(team_data.keys())
@@ -3467,7 +3512,7 @@ def api_student_growth(emp_no):
     # 查询该学员按月份的平均分趋势
     query = """
         SELECT
-            DATE_FORMAT(training_date, '%Y-%m') as month,
+            DATE_FORMAT(training_date, '%%Y-%%m') as month,
             ROUND(AVG(score), 1) as avg_score,
             COUNT(*) as count
         FROM training_records
@@ -3480,9 +3525,9 @@ def api_student_growth(emp_no):
     growth_data = []
     for row in cur.fetchall():
         growth_data.append({
-            'month': row[0],
-            'avg_score': row[1],
-            'count': row[2]
+            'month': row['month'],
+            'avg_score': row['avg_score'],
+            'count': row['count']
         })
 
     return jsonify(growth_data)

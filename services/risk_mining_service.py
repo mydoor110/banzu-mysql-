@@ -72,6 +72,7 @@ class RiskMiningService:
             DataFrame with employee information
         """
         conn = get_db()
+        cur = conn.cursor()
 
         query = """
             SELECT e.id, e.emp_no, e.name, e.class_name,
@@ -82,9 +83,17 @@ class RiskMiningService:
         """
 
         if department_path:
-            query += f" WHERE d.path LIKE '{department_path}%'"
+            query += f" WHERE d.path LIKE %s"
+            cur.execute(query, (f"{department_path}%",))
+        else:
+            cur.execute(query)
 
-        return pd.read_sql_query(query, conn)
+        rows = cur.fetchall()
+        if not rows:
+            return pd.DataFrame()
+
+        # DictCursor 返回的是字典列表，直接转 DataFrame
+        return pd.DataFrame(rows)
 
     @classmethod
     def _get_performance_data(
@@ -103,6 +112,7 @@ class RiskMiningService:
             DataFrame with performance records
         """
         conn = get_db()
+        cur = conn.cursor()
 
         start_year, start_month = map(int, start_date.split('-'))
         end_year, end_month = map(int, end_date.split('-'))
@@ -115,11 +125,10 @@ class RiskMiningService:
             ORDER BY emp_no, year, month
         """
 
-        return pd.read_sql_query(
-            query, conn,
-            params=(start_year, start_year, start_month,
-                    end_year, end_year, end_month)
-        )
+        cur.execute(query, (start_year, start_year, start_month,
+                           end_year, end_year, end_month))
+        rows = cur.fetchall()
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
 
     @classmethod
     def _get_safety_data(
@@ -138,6 +147,7 @@ class RiskMiningService:
             DataFrame with safety records
         """
         conn = get_db()
+        cur = conn.cursor()
 
         # Handle YYYY-MM format
         if len(start_date) == 7:
@@ -152,7 +162,9 @@ class RiskMiningService:
             WHERE inspection_date >= %s AND inspection_date <= %s
         """
 
-        return pd.read_sql_query(query, conn, params=(start_date, end_date))
+        cur.execute(query, (start_date, end_date))
+        rows = cur.fetchall()
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
 
     @classmethod
     def _get_training_data(
@@ -171,6 +183,7 @@ class RiskMiningService:
             DataFrame with training records
         """
         conn = get_db()
+        cur = conn.cursor()
 
         if len(start_date) == 7:
             start_date = f"{start_date}-01"
@@ -184,7 +197,9 @@ class RiskMiningService:
             WHERE training_date >= %s AND training_date <= %s
         """
 
-        return pd.read_sql_query(query, conn, params=(start_date, end_date))
+        cur.execute(query, (start_date, end_date))
+        rows = cur.fetchall()
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
 
     @classmethod
     def _calculate_performance_slope(cls, scores: List[float]) -> float:
@@ -201,21 +216,30 @@ class RiskMiningService:
             return 0.0
 
         try:
+            # 确保 scores 是数值类型
+            scores = [float(s) for s in scores if s is not None]
+            if len(scores) < cls.MIN_MONTHS_FOR_SLOPE:
+                return 0.0
+
             from sklearn.linear_model import LinearRegression
 
             X = np.arange(len(scores)).reshape(-1, 1)
-            y = np.array(scores)
+            y = np.array(scores, dtype=float)
 
             model = LinearRegression()
             model.fit(X, y)
 
             return float(model.coef_[0])
 
-        except ImportError:
-            # Fallback to numpy polyfit
-            x = np.arange(len(scores))
-            coeffs = np.polyfit(x, scores, 1)
-            return float(coeffs[0])
+        except (ImportError, ValueError, TypeError):
+            try:
+                # Fallback to numpy polyfit
+                x = np.arange(len(scores))
+                y = np.array(scores, dtype=float)
+                coeffs = np.polyfit(x, y, 1)
+                return float(coeffs[0])
+            except:
+                return 0.0
 
     @classmethod
     def _normalize_score(cls, value: float, min_val: float, max_val: float) -> float:
@@ -591,38 +615,59 @@ class RiskMiningService:
         # 2. Calculate per-employee metrics
         results = []
 
+        # 检查各DataFrame是否有数据和必要的列
+        has_perf_data = not performance_df.empty and 'emp_no' in performance_df.columns
+        has_safety_data = not safety_df.empty and 'inspected_person' in safety_df.columns
+        has_training_data = not training_df.empty and 'emp_no' in training_df.columns
+
         for _, emp in employees_df.iterrows():
             emp_no = emp['emp_no']
             name = emp['name']
 
             # Performance metrics
-            emp_perf = performance_df[performance_df['emp_no'] == emp_no].sort_values(['year', 'month'])
-            perf_scores = emp_perf['score'].dropna().tolist()
-            perf_mean = np.mean(perf_scores) if perf_scores else 0
-            perf_var = np.var(perf_scores) if len(perf_scores) > 1 else 0
+            if has_perf_data:
+                emp_perf = performance_df[performance_df['emp_no'] == emp_no].sort_values(['year', 'month'])
+                # 确保 score 是数值类型
+                perf_scores = pd.to_numeric(emp_perf['score'], errors='coerce').dropna().tolist()
+            else:
+                perf_scores = []
+            perf_mean = float(np.mean(perf_scores)) if perf_scores else 0.0
+            perf_var = float(np.var(perf_scores)) if len(perf_scores) > 1 else 0.0
             perf_slope = cls._calculate_performance_slope(perf_scores)
 
             # Safety metrics (match by name since safety records may not have emp_no)
-            emp_safety = safety_df[safety_df['inspected_person'] == name]
-            safety_count = len(emp_safety)
+            if has_safety_data:
+                emp_safety = safety_df[safety_df['inspected_person'] == name]
+                safety_count = len(emp_safety)
+            else:
+                safety_count = 0
 
             # Training metrics
-            emp_training = training_df[training_df['emp_no'] == emp_no]
-            training_disqualified = emp_training[emp_training['is_disqualified'] == 1]
-            training_disqualified_count = len(training_disqualified)
+            if has_training_data:
+                emp_training = training_df[training_df['emp_no'] == emp_no]
+                training_disqualified = emp_training[emp_training['is_disqualified'] == 1]
+                training_disqualified_count = len(training_disqualified)
+            else:
+                training_disqualified_count = 0
 
             results.append({
                 'emp_no': emp_no,
                 'name': name,
-                'performance_mean': perf_mean,
-                'performance_var': perf_var,
-                'performance_slope': perf_slope,
-                'safety_count': safety_count,
-                'training_disqualified_count': training_disqualified_count,
-                'violation_count': safety_count + training_disqualified_count
+                'performance_mean': float(perf_mean),
+                'performance_var': float(perf_var),
+                'performance_slope': float(perf_slope) if perf_slope is not None else 0.0,
+                'safety_count': int(safety_count),
+                'training_disqualified_count': int(training_disqualified_count),
+                'violation_count': int(safety_count + training_disqualified_count)
             })
 
         results_df = pd.DataFrame(results)
+        # 确保数值列类型正确
+        numeric_cols = ['performance_mean', 'performance_var', 'performance_slope',
+                        'safety_count', 'training_disqualified_count', 'violation_count']
+        for col in numeric_cols:
+            if col in results_df.columns:
+                results_df[col] = pd.to_numeric(results_df[col], errors='coerce').fillna(0)
 
         # 3. Anomaly detection
         is_anomaly, anomaly_scores = cls._detect_anomalies(results_df)

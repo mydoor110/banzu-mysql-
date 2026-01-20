@@ -318,7 +318,7 @@ def get_accessible_departments(user_dept_info=None):
         # 普通用户可以看到自己的部门及所有子部门
         user_path = user_dept_info['path'] or f"/{user_dept_info['department_id']}"
         cur.execute(
-            "SELECT id, name, level, path FROM departments WHERE path LIKE ? OR id = %s ORDER BY level, name",
+            "SELECT id, name, level, path FROM departments WHERE path LIKE %s OR id = %s ORDER BY level, name",
             (f"{user_path}/%", user_dept_info['department_id'])
         )
 
@@ -353,12 +353,12 @@ def get_accessible_user_ids():
 
     conn = get_db()
     cur = conn.cursor()
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     cur.execute(
         f"SELECT id FROM users WHERE department_id IN ({placeholders}) OR id = %s",
         dept_ids + [current_user_id()]
     )
-    user_ids = [row[0] for row in cur.fetchall()]
+    user_ids = [row['id'] for row in cur.fetchall()]
 
     return user_ids if user_ids else [current_user_id()]
 
@@ -426,33 +426,38 @@ def get_employee_department_id(emp_no):
     return row['department_id'] if row else None
 
 
-def calculate_years_from_date(date_str):
+def calculate_years_from_date(date_val):
     """
     计算从指定日期到当前的年限（保留1位小数）
 
     Args:
-        date_str: 日期字符串（格式：YYYY-MM-DD）
+        date_val: 日期（支持字符串格式YYYY-MM-DD、datetime对象、date对象）
 
     Returns:
         float: 年限（保留1位小数），日期无效返回None
     """
-    if not date_str:
+    if not date_val:
         return None
 
     try:
-        from datetime import datetime
+        from datetime import datetime, date
         # 解析日期
-        if isinstance(date_str, str):
+        if isinstance(date_val, str):
             for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y-%m-%d %H:%M:%S']:
                 try:
-                    start_date = datetime.strptime(date_str, fmt)
+                    start_date = datetime.strptime(date_val, fmt)
                     break
                 except ValueError:
                     continue
             else:
                 return None
+        elif isinstance(date_val, datetime):
+            start_date = date_val
+        elif isinstance(date_val, date) or hasattr(date_val, 'year'):
+            # MySQL返回的date对象，转换为datetime
+            start_date = datetime(date_val.year, date_val.month, date_val.day)
         else:
-            start_date = date_str
+            return None
 
         # 计算年限
         current_date = datetime.now()
@@ -526,7 +531,7 @@ def log_import_operation(module, operation, file_name=None, total_rows=0,
                 department_id, department_name, file_name,
                 total_rows, success_rows, failed_rows, skipped_rows,
                 error_message, import_details, ip_address
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             module, operation, user_id, user_info['username'], user_info['role'],
             user_info['department_id'], user_info['department_name'], file_name,
@@ -555,13 +560,13 @@ def build_department_filter(table_alias=None):
     示例:
         # 对于employees表（已有department_id）
         where_clause, join_clause, params = build_department_filter()
-        # where_clause = "department_id IN (?,?,?)"
+        # where_clause = "department_id IN (%s,%s,%s)"
         # join_clause = ""
         # params = [1, 2, 3]
 
         # 对于performance_records表（通过emp_no关联employees）
         where_clause, join_clause, params = build_department_filter('pr')
-        # where_clause = "e.department_id IN (?,?,?)"
+        # where_clause = "e.department_id IN (%s,%s,%s)"
         # join_clause = "LEFT JOIN employees e ON pr.emp_no = e.emp_no"
         # params = [1, 2, 3]
     """
@@ -578,7 +583,7 @@ def build_department_filter(table_alias=None):
         # 无可访问部门，返回空结果条件
         return "1=0", "", []
 
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
 
     # 根据是否有表别名决定JOIN和WHERE
     if table_alias:
@@ -675,7 +680,7 @@ def build_date_filter_sql(date_column, start_date=None, end_date=None):
     示例:
         # 基础用法
         conditions, params = build_date_filter_sql('training_date', '2025-01-01', '2025-01-31')
-        # conditions = ['training_date >= ?', 'training_date <= ?']
+        # conditions = ['training_date >= %s', 'training_date <= %s']
         # params = ['2025-01-01', '2025-01-31']
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
@@ -690,7 +695,7 @@ def build_date_filter_sql(date_column, start_date=None, end_date=None):
         all_params.extend(date_params)
 
         if name_filter:
-            all_conditions.append("name LIKE ?")
+            all_conditions.append("name LIKE %s")
             all_params.append(f"%{name_filter}%")
 
         where_clause = " AND ".join(all_conditions) if all_conditions else "1=1"
@@ -700,11 +705,11 @@ def build_date_filter_sql(date_column, start_date=None, end_date=None):
     params = []
 
     if start_date:
-        conditions.append(f"{date_column} >= ?")
+        conditions.append(f"{date_column} >= %s")
         params.append(start_date)
 
     if end_date:
-        conditions.append(f"{date_column} <= ?")
+        conditions.append(f"{date_column} <= %s")
         params.append(end_date)
 
     return (conditions, params)

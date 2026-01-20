@@ -95,7 +95,7 @@ class AlgorithmConfigService:
 
             # 3. 更新当前配置
             cur.execute("""
-                INSERT OR REPLACE INTO algorithm_active_config
+                REPLACE INTO algorithm_active_config
                 (id, based_on_preset, is_customized, config_data, updated_by, updated_at)
                 VALUES (1, %s, 0, %s, %s, %s)
             """, (preset_key, new_config_data, user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
@@ -157,7 +157,7 @@ class AlgorithmConfigService:
             # 3. 更新当前配置
             new_config_json = json.dumps(config_data, ensure_ascii=False)
             cur.execute("""
-                INSERT OR REPLACE INTO algorithm_active_config
+                REPLACE INTO algorithm_active_config
                 (id, based_on_preset, is_customized, config_data, updated_by, updated_at)
                 VALUES (1, NULL, 1, %s, %s, %s)
             """, (new_config_json, user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
