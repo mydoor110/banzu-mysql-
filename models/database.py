@@ -2,494 +2,56 @@
 # -*- coding: utf-8 -*-
 """
 Database connection and management module
-Supports both SQLite and MySQL backends
+MySQL backend only
 """
 import os
+import pymysql
+from pymysql.cursors import DictCursor
 from threading import local
-from config.settings import DB_PATH, DatabaseConfig
+from config.settings import DatabaseConfig
 
 # Thread-local storage for database connections
 _local = local()
 
 
-def is_mysql():
-    """Check if MySQL is configured as the database backend"""
-    return DatabaseConfig.DB_TYPE.lower() == 'mysql'
-
-
 def get_db():
-    """Get database connection with optimized settings"""
-    if not hasattr(_local, 'connection'):
-        if is_mysql():
-            _local.connection = _get_mysql_connection()
-        else:
-            _local.connection = _get_sqlite_connection()
-
-    return _local.connection
-
-
-def _get_sqlite_connection():
-    """Get SQLite database connection"""
-    import sqlite3
-
-    conn = sqlite3.connect(
-        DB_PATH,
-        timeout=DatabaseConfig.TIMEOUT,
-        check_same_thread=DatabaseConfig.CHECK_SAME_THREAD
-    )
-    conn.row_factory = sqlite3.Row
-
-    # SQLite Performance optimizations
-    if DatabaseConfig.FOREIGN_KEYS:
-        conn.execute("PRAGMA foreign_keys = ON")
-
-    conn.execute(f"PRAGMA journal_mode = {DatabaseConfig.JOURNAL_MODE}")
-    conn.execute(f"PRAGMA synchronous = {DatabaseConfig.SYNCHRONOUS}")
-    conn.execute(f"PRAGMA cache_size = {DatabaseConfig.CACHE_SIZE}")
-
-    return conn
-
-
-def _get_mysql_connection():
     """Get MySQL database connection"""
-    import pymysql
-    from pymysql.cursors import DictCursor
-
-    conn = pymysql.connect(
-        host=DatabaseConfig.MYSQL_HOST,
-        port=DatabaseConfig.MYSQL_PORT,
-        user=DatabaseConfig.MYSQL_USER,
-        password=DatabaseConfig.MYSQL_PASSWORD,
-        database=DatabaseConfig.MYSQL_DATABASE,
-        charset=DatabaseConfig.MYSQL_CHARSET,
-        cursorclass=DictCursor,
-        autocommit=False
-    )
-
-    return conn
+    if not hasattr(_local, 'connection') or _local.connection is None:
+        _local.connection = pymysql.connect(
+            host=DatabaseConfig.MYSQL_HOST,
+            port=DatabaseConfig.MYSQL_PORT,
+            user=DatabaseConfig.MYSQL_USER,
+            password=DatabaseConfig.MYSQL_PASSWORD,
+            database=DatabaseConfig.MYSQL_DATABASE,
+            charset=DatabaseConfig.MYSQL_CHARSET,
+            cursorclass=DictCursor,
+            autocommit=False
+        )
+    return _local.connection
 
 
 def close_db():
     """Close database connection"""
-    if hasattr(_local, 'connection'):
+    if hasattr(_local, 'connection') and _local.connection:
         _local.connection.close()
-        delattr(_local, 'connection')
-
-
-def get_param_placeholder():
-    """Get parameter placeholder based on database type"""
-    return '%s' if is_mysql() else '?'
+        _local.connection = None
 
 
 def get_year_month_concat():
     """
     Get SQL expression for concatenating year and month into 'YYYY-MM' format.
     Returns the SQL expression string to use in queries.
-
-    Usage:
-        query = f"SELECT * FROM performance_records WHERE {get_year_month_concat()} >= ?"
     """
-    if is_mysql():
-        # MySQL: CONCAT(year, '-', LPAD(month, 2, '0'))
-        return "CONCAT(year, '-', LPAD(month, 2, '0'))"
-    else:
-        # SQLite: year || '-' || printf('%02d', month)
-        return "year || '-' || printf('%02d', month)"
+    return "CONCAT(year, '-', LPAD(month, 2, '0'))"
 
 
 def init_database():
     """Initialize database with all tables and indexes"""
     conn = get_db()
     cur = conn.cursor()
-
-    # Use CURRENT_TIMESTAMP for both SQLite and MySQL compatibility
-    if is_mysql():
-        _init_mysql_tables(cur)
-    else:
-        _init_sqlite_tables(cur)
-
+    _init_mysql_tables(cur)
     conn.commit()
     return conn
-
-
-def _init_sqlite_tables(cur):
-    """Initialize SQLite tables"""
-    import sqlite3
-
-    # Create tables with foreign key constraints
-    tables = [
-        # Users table
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            department_id INTEGER,
-            role TEXT DEFAULT 'user',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
-        )
-        """,
-
-        # Departments table
-        """
-        CREATE TABLE IF NOT EXISTS departments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            parent_id INTEGER,
-            description TEXT,
-            manager_user_id INTEGER,
-            level INTEGER DEFAULT 1,
-            path TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (parent_id) REFERENCES departments(id) ON DELETE SET NULL,
-            FOREIGN KEY (manager_user_id) REFERENCES users(id) ON DELETE SET NULL
-        )
-        """,
-
-        # Employees table
-        """
-        CREATE TABLE IF NOT EXISTS employees (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            emp_no TEXT NOT NULL,
-            name TEXT NOT NULL,
-            user_id INTEGER NOT NULL,
-            class_name TEXT,
-            position TEXT,
-            birth_date TEXT,
-            marital_status TEXT,
-            hometown TEXT,
-            political_status TEXT,
-            specialty TEXT,
-            education TEXT,
-            graduation_school TEXT,
-            work_start_date TEXT,
-            entry_date TEXT,
-            department_id INTEGER,
-            solo_driving_date TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(emp_no, user_id),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
-        )
-        """,
-
-        # Performance records table
-        """
-        CREATE TABLE IF NOT EXISTS performance_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            emp_no TEXT NOT NULL,
-            name TEXT NOT NULL,
-            year INTEGER NOT NULL,
-            month INTEGER NOT NULL,
-            score REAL,
-            grade TEXT,
-            src_file TEXT,
-            user_id INTEGER NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(emp_no, year, month, user_id),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        """,
-
-        # Training records table
-        """
-        CREATE TABLE IF NOT EXISTS training_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            emp_no TEXT NOT NULL,
-            name TEXT NOT NULL,
-            team_name TEXT,
-            training_date TEXT NOT NULL,
-            project_id INTEGER,
-            problem_type TEXT,
-            specific_problem TEXT,
-            corrective_measures TEXT,
-            time_spent TEXT,
-            score INTEGER,
-            assessor TEXT,
-            remarks TEXT,
-            is_qualified INTEGER DEFAULT 1,
-            is_disqualified INTEGER DEFAULT 0,
-            is_retake INTEGER DEFAULT 0,
-            retake_of_record_id INTEGER,
-            user_id INTEGER NOT NULL,
-            source_file TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-            FOREIGN KEY (retake_of_record_id) REFERENCES training_records(id) ON DELETE SET NULL,
-            FOREIGN KEY (project_id) REFERENCES training_projects(id) ON DELETE SET NULL
-        )
-        """,
-
-        # Safety inspection records table
-        """
-        CREATE TABLE IF NOT EXISTS safety_inspection_records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category TEXT NOT NULL,
-            inspection_date TEXT NOT NULL,
-            location TEXT,
-            hazard_description TEXT,
-            corrective_measures TEXT,
-            deadline_date TEXT,
-            inspected_person TEXT,
-            responsible_team TEXT,
-            assessment TEXT,
-            rectification_status TEXT,
-            rectifier TEXT,
-            work_type TEXT,
-            responsibility_location TEXT,
-            inspection_item TEXT,
-            created_by INTEGER,
-            source_file TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-        )
-        """,
-
-        # Grade mapping table
-        """
-        CREATE TABLE IF NOT EXISTS grade_map (
-            user_id INTEGER NOT NULL,
-            grade TEXT NOT NULL,
-            value REAL NOT NULL,
-            PRIMARY KEY (user_id, grade),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        """,
-
-        # Quarter overrides table
-        """
-        CREATE TABLE IF NOT EXISTS quarter_overrides (
-            user_id INTEGER NOT NULL,
-            emp_no TEXT NOT NULL,
-            year INTEGER NOT NULL,
-            quarter INTEGER NOT NULL,
-            grade TEXT NOT NULL,
-            PRIMARY KEY (user_id, emp_no, year, quarter),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        """,
-
-        # Quarter grade options table
-        """
-        CREATE TABLE IF NOT EXISTS quarter_grade_options (
-            user_id INTEGER NOT NULL,
-            grade TEXT NOT NULL,
-            display_order INTEGER NOT NULL,
-            is_default INTEGER NOT NULL DEFAULT 0,
-            color TEXT,
-            PRIMARY KEY (user_id, grade),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        """,
-
-        # Stopwords table for NLP text mining
-        """
-        CREATE TABLE IF NOT EXISTS stopwords (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            word TEXT NOT NULL UNIQUE,
-            category TEXT DEFAULT 'custom',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-
-        # AI Providers configuration table
-        """
-        CREATE TABLE IF NOT EXISTS ai_providers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            provider_type TEXT NOT NULL,
-            api_key TEXT,
-            base_url TEXT NOT NULL,
-            model TEXT NOT NULL,
-            is_active INTEGER DEFAULT 0,
-            is_default INTEGER DEFAULT 0,
-            priority INTEGER DEFAULT 0,
-            timeout INTEGER DEFAULT 30,
-            max_tokens INTEGER DEFAULT 200,
-            temperature REAL DEFAULT 0.7,
-            extra_headers TEXT,
-            description TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-
-        # AI usage logs table
-        """
-        CREATE TABLE IF NOT EXISTS ai_usage_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            provider_id INTEGER,
-            provider_name TEXT,
-            model TEXT,
-            tokens_used INTEGER DEFAULT 0,
-            success INTEGER DEFAULT 1,
-            error_message TEXT,
-            request_type TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (provider_id) REFERENCES ai_providers(id) ON DELETE SET NULL
-        )
-        """,
-
-        # AI analysis history table (for caching AI diagnosis results)
-        """
-        CREATE TABLE IF NOT EXISTS ai_analysis_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            emp_no TEXT NOT NULL,
-            data_hash TEXT NOT NULL,
-            time_window TEXT,
-            ai_result TEXT NOT NULL,
-            provider_name TEXT,
-            model TEXT,
-            tokens_used INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(emp_no, data_hash)
-        )
-        """,
-
-        # Training projects table
-        """
-        CREATE TABLE IF NOT EXISTS training_projects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT,
-            user_id INTEGER NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-        """,
-
-        # AI prompt configurations table
-        """
-        CREATE TABLE IF NOT EXISTS ai_prompt_configs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            prompt_type TEXT NOT NULL,
-            system_prompt TEXT,
-            user_prompt_template TEXT NOT NULL,
-            is_active INTEGER DEFAULT 0,
-            is_default INTEGER DEFAULT 0,
-            description TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-
-        # Training project categories table
-        """
-        CREATE TABLE IF NOT EXISTS training_project_categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            description TEXT,
-            display_order INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-
-        # Import logs audit table
-        """
-        CREATE TABLE IF NOT EXISTS import_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            module TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            user_id INTEGER NOT NULL,
-            username TEXT NOT NULL,
-            user_role TEXT NOT NULL,
-            department_id INTEGER,
-            department_name TEXT,
-            file_name TEXT,
-            total_rows INTEGER DEFAULT 0,
-            success_rows INTEGER DEFAULT 0,
-            failed_rows INTEGER DEFAULT 0,
-            skipped_rows INTEGER DEFAULT 0,
-            error_message TEXT,
-            import_details TEXT,
-            ip_address TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-            FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
-        )
-        """,
-
-        # Algorithm presets table
-        """
-        CREATE TABLE IF NOT EXISTS algorithm_presets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            preset_name TEXT NOT NULL UNIQUE,
-            preset_key TEXT NOT NULL UNIQUE,
-            description TEXT,
-            config_data TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """,
-
-        # Algorithm active config table
-        """
-        CREATE TABLE IF NOT EXISTS algorithm_active_config (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            based_on_preset TEXT,
-            is_customized INTEGER DEFAULT 0,
-            config_data TEXT NOT NULL,
-            updated_by INTEGER,
-            updated_at TEXT,
-            FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
-        )
-        """,
-
-        # Algorithm config logs table
-        """
-        CREATE TABLE IF NOT EXISTS algorithm_config_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            action TEXT NOT NULL,
-            preset_name TEXT,
-            old_config TEXT,
-            new_config TEXT,
-            change_reason TEXT,
-            changed_by INTEGER NOT NULL,
-            changed_by_name TEXT,
-            changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            ip_address TEXT,
-            FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
-        )
-        """
-    ]
-
-    # Execute table creation
-    for table_sql in tables:
-        try:
-            cur.execute(table_sql)
-        except sqlite3.Error as e:
-            print(f"Error creating table: {e}")
-
-    # Create view for recent imports
-    try:
-        cur.execute("""
-            CREATE VIEW IF NOT EXISTS v_recent_imports AS
-            SELECT
-                il.*,
-                d.name as dept_name,
-                CASE
-                    WHEN il.user_role = 'admin' THEN '系统管理员'
-                    WHEN il.user_role = 'manager' THEN '部门管理员'
-                    ELSE '普通用户'
-                END as role_display,
-                CASE il.module
-                    WHEN 'personnel' THEN '人员管理'
-                    WHEN 'performance' THEN '绩效管理'
-                    WHEN 'training' THEN '培训管理'
-                    WHEN 'safety' THEN '安全管理'
-                    ELSE il.module
-                END as module_display
-            FROM import_logs il
-            LEFT JOIN departments d ON il.department_id = d.id
-            ORDER BY il.created_at DESC
-            LIMIT 100
-        """)
-    except sqlite3.Error as e:
-        print(f"Error creating view: {e}")
-
-    # Create performance indexes
-    _create_indexes(cur, is_mysql=False)
 
 
 def _init_mysql_tables(cur):
@@ -770,7 +332,7 @@ def _init_mysql_tables(cur):
             id INT AUTO_INCREMENT PRIMARY KEY,
             module VARCHAR(100) NOT NULL,
             operation VARCHAR(100) NOT NULL,
-            user_id INT NOT NULL,
+            user_id INT,
             username VARCHAR(255) NOT NULL,
             user_role VARCHAR(50) NOT NULL,
             department_id INT,
@@ -824,7 +386,7 @@ def _init_mysql_tables(cur):
             old_config TEXT,
             new_config TEXT,
             change_reason TEXT,
-            changed_by INT NOT NULL,
+            changed_by INT,
             changed_by_name VARCHAR(255),
             changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             ip_address VARCHAR(50),
@@ -834,12 +396,17 @@ def _init_mysql_tables(cur):
     ]
 
     # Execute table creation (handle circular foreign key references)
-    # First create tables without foreign keys that reference other tables
+    # Disable foreign key checks to handle circular dependencies
+    cur.execute("SET FOREIGN_KEY_CHECKS = 0")
+
     for table_sql in tables:
         try:
             cur.execute(table_sql)
         except Exception as e:
             print(f"Error creating table: {e}")
+
+    # Re-enable foreign key checks
+    cur.execute("SET FOREIGN_KEY_CHECKS = 1")
 
     # Create view for recent imports (MySQL version)
     try:
@@ -870,64 +437,50 @@ def _init_mysql_tables(cur):
         print(f"Error creating view: {e}")
 
     # Create performance indexes
-    _create_indexes(cur, is_mysql=True)
+    _create_indexes(cur)
 
 
-def _create_indexes(cur, is_mysql=False):
-    """Create performance indexes"""
+def _create_indexes(cur):
+    """Create performance indexes for MySQL"""
     indexes = [
-        "CREATE INDEX IF NOT EXISTS idx_departments_path ON departments(path)",
-        "CREATE INDEX IF NOT EXISTS idx_departments_parent_id ON departments(parent_id)",
-        "CREATE INDEX IF NOT EXISTS idx_users_department_id ON users(department_id)",
-        "CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)",
-        "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
-        "CREATE INDEX IF NOT EXISTS idx_employees_user_id ON employees(user_id)",
-        "CREATE INDEX IF NOT EXISTS idx_employees_emp_no ON employees(emp_no)",
-        "CREATE INDEX IF NOT EXISTS idx_perf_user_year_month ON performance_records(user_id, year, month)",
-        "CREATE INDEX IF NOT EXISTS idx_perf_emp_no ON performance_records(emp_no)",
-        "CREATE INDEX IF NOT EXISTS idx_training_records_user_id ON training_records(user_id)",
-        "CREATE INDEX IF NOT EXISTS idx_training_records_emp_no ON training_records(emp_no)",
-        "CREATE INDEX IF NOT EXISTS idx_training_records_date ON training_records(training_date)",
-        "CREATE INDEX IF NOT EXISTS idx_training_records_disqualified ON training_records(is_disqualified)",
-        "CREATE INDEX IF NOT EXISTS idx_safety_inspection_created_by ON safety_inspection_records(created_by)",
-        "CREATE INDEX IF NOT EXISTS idx_safety_inspection_date ON safety_inspection_records(inspection_date)",
-        "CREATE INDEX IF NOT EXISTS idx_safety_inspection_category ON safety_inspection_records(category)",
-        "CREATE INDEX IF NOT EXISTS idx_safety_inspection_team ON safety_inspection_records(responsible_team)",
-        "CREATE INDEX IF NOT EXISTS idx_stopwords_word ON stopwords(word)",
-        "CREATE INDEX IF NOT EXISTS idx_stopwords_category ON stopwords(category)",
-        "CREATE INDEX IF NOT EXISTS idx_ai_providers_active ON ai_providers(is_active)",
-        "CREATE INDEX IF NOT EXISTS idx_ai_providers_default ON ai_providers(is_default)",
-        "CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_provider ON ai_usage_logs(provider_id)",
-        "CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_created ON ai_usage_logs(created_at)",
-        "CREATE INDEX IF NOT EXISTS idx_ai_analysis_history_emp_hash ON ai_analysis_history(emp_no, data_hash)",
-        "CREATE INDEX IF NOT EXISTS idx_ai_analysis_history_created ON ai_analysis_history(created_at)",
-        # Import logs indexes
-        "CREATE INDEX IF NOT EXISTS idx_import_logs_module ON import_logs(module)",
-        "CREATE INDEX IF NOT EXISTS idx_import_logs_user_id ON import_logs(user_id)",
-        "CREATE INDEX IF NOT EXISTS idx_import_logs_created_at ON import_logs(created_at)",
-        "CREATE INDEX IF NOT EXISTS idx_import_logs_department_id ON import_logs(department_id)",
-        # Algorithm config logs indexes
-        "CREATE INDEX IF NOT EXISTS idx_config_logs_changed_at ON algorithm_config_logs(changed_at)",
-        # Training project categories indexes
-        "CREATE INDEX IF NOT EXISTS idx_training_projects_category_id ON training_projects(category_id)"
+        ("idx_departments_path", "departments", "path"),
+        ("idx_departments_parent_id", "departments", "parent_id"),
+        ("idx_users_department_id", "users", "department_id"),
+        ("idx_users_role", "users", "role"),
+        ("idx_users_username", "users", "username"),
+        ("idx_employees_user_id", "employees", "user_id"),
+        ("idx_employees_emp_no", "employees", "emp_no"),
+        ("idx_perf_user_year_month", "performance_records", "user_id, year, month"),
+        ("idx_perf_emp_no", "performance_records", "emp_no"),
+        ("idx_training_records_user_id", "training_records", "user_id"),
+        ("idx_training_records_emp_no", "training_records", "emp_no"),
+        ("idx_training_records_date", "training_records", "training_date"),
+        ("idx_training_records_disqualified", "training_records", "is_disqualified"),
+        ("idx_safety_inspection_created_by", "safety_inspection_records", "created_by"),
+        ("idx_safety_inspection_date", "safety_inspection_records", "inspection_date"),
+        ("idx_safety_inspection_category", "safety_inspection_records", "category"),
+        ("idx_safety_inspection_team", "safety_inspection_records", "responsible_team"),
+        ("idx_stopwords_word", "stopwords", "word"),
+        ("idx_stopwords_category", "stopwords", "category"),
+        ("idx_ai_providers_active", "ai_providers", "is_active"),
+        ("idx_ai_providers_default", "ai_providers", "is_default"),
+        ("idx_ai_usage_logs_provider", "ai_usage_logs", "provider_id"),
+        ("idx_ai_usage_logs_created", "ai_usage_logs", "created_at"),
+        ("idx_ai_analysis_history_emp_hash", "ai_analysis_history", "emp_no, data_hash"),
+        ("idx_ai_analysis_history_created", "ai_analysis_history", "created_at"),
+        ("idx_import_logs_module", "import_logs", "module"),
+        ("idx_import_logs_user_id", "import_logs", "user_id"),
+        ("idx_import_logs_created_at", "import_logs", "created_at"),
+        ("idx_import_logs_department_id", "import_logs", "department_id"),
+        ("idx_config_logs_changed_at", "algorithm_config_logs", "changed_at"),
+        ("idx_training_projects_category_id", "training_projects", "category_id"),
     ]
 
-    for index_sql in indexes:
+    for index_name, table_name, columns in indexes:
         try:
-            if is_mysql:
-                # MySQL doesn't support IF NOT EXISTS for indexes, need to check first
-                index_name = index_sql.split('IF NOT EXISTS ')[1].split(' ON ')[0]
-                table_name = index_sql.split(' ON ')[1].split('(')[0]
-                try:
-                    cur.execute(f"SHOW INDEX FROM {table_name} WHERE Key_name = '{index_name}'")
-                    if cur.fetchone() is None:
-                        # Index doesn't exist, create it
-                        create_sql = index_sql.replace('IF NOT EXISTS ', '')
-                        cur.execute(create_sql)
-                except:
-                    pass
-            else:
-                cur.execute(index_sql)
+            cur.execute(f"SHOW INDEX FROM {table_name} WHERE Key_name = %s", (index_name,))
+            if cur.fetchone() is None:
+                cur.execute(f"CREATE INDEX {index_name} ON {table_name}({columns})")
         except Exception as e:
             print(f"Warning: Could not create index: {e}")
 
@@ -937,24 +490,22 @@ def bootstrap_data():
     conn = get_db()
     cur = conn.cursor()
 
-    placeholder = get_param_placeholder()
-
     # Bootstrap default department
-    cur.execute("SELECT COUNT(1) FROM departments")
+    cur.execute("SELECT COUNT(1) AS cnt FROM departments")
     result = cur.fetchone()
-    count = result[0] if result else 0
+    count = result['cnt'] if result else 0
 
     if count == 0:
         cur.execute(
-            f"INSERT INTO departments(name, description, level, path) VALUES({placeholder}, {placeholder}, {placeholder}, {placeholder})",
+            "INSERT INTO departments(name, description, level, path) VALUES(%s, %s, %s, %s)",
             ("总公司", "顶级部门", 1, "/1")
         )
         conn.commit()
 
     # Bootstrap admin account
-    cur.execute("SELECT COUNT(1) FROM users")
+    cur.execute("SELECT COUNT(1) AS cnt FROM users")
     result = cur.fetchone()
-    count = result[0] if result else 0
+    count = result['cnt'] if result else 0
 
     if count == 0:
         from werkzeug.security import generate_password_hash
@@ -963,7 +514,7 @@ def bootstrap_data():
         bootstrap_pass = os.environ.get("APP_PASS", "admin123").strip()
 
         cur.execute(
-            f"INSERT INTO users(username, password_hash, department_id, role) VALUES({placeholder}, {placeholder}, {placeholder}, {placeholder})",
+            "INSERT INTO users(username, password_hash, department_id, role) VALUES(%s, %s, %s, %s)",
             (bootstrap_user, generate_password_hash(bootstrap_pass), 1, "admin"),
         )
         conn.commit()
@@ -977,12 +528,10 @@ def bootstrap_stopwords():
     conn = get_db()
     cur = conn.cursor()
 
-    placeholder = get_param_placeholder()
-
     # Check if stopwords already exist
-    cur.execute("SELECT COUNT(1) FROM stopwords")
+    cur.execute("SELECT COUNT(1) AS cnt FROM stopwords")
     result = cur.fetchone()
-    count = result[0] if result else 0
+    count = result['cnt'] if result else 0
 
     if count > 0:
         return  # Already initialized
@@ -1025,16 +574,10 @@ def bootstrap_stopwords():
 
     # Insert default stopwords
     try:
-        if is_mysql():
-            cur.executemany(
-                f"INSERT IGNORE INTO stopwords (word, category) VALUES ({placeholder}, 'builtin')",
-                [(word,) for word in default_stopwords]
-            )
-        else:
-            cur.executemany(
-                "INSERT OR IGNORE INTO stopwords (word, category) VALUES (?, 'builtin')",
-                [(word,) for word in default_stopwords]
-            )
+        cur.executemany(
+            "INSERT IGNORE INTO stopwords (word, category) VALUES (%s, 'builtin')",
+            [(word,) for word in default_stopwords]
+        )
         conn.commit()
         print(f"Initialized {len(default_stopwords)} default stopwords")
     except Exception as e:

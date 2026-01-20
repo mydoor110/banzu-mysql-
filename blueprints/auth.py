@@ -39,7 +39,7 @@ def login():
         # 查询用户
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT id, password_hash, role FROM users WHERE username=?", (username,))
+        cur.execute("SELECT id, password_hash, role FROM users WHERE username=%s", (username,))
         row = cur.fetchone()
 
         # 验证密码
@@ -120,13 +120,13 @@ def change_password():
         # 验证旧密码
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT password_hash FROM users WHERE id=?", (user_id,))
+        cur.execute("SELECT password_hash FROM users WHERE id=%s", (user_id,))
         row = cur.fetchone()
 
         if row and check_password_hash(row['password_hash'], old_password):
             # 更新密码
             new_hash = generate_password_hash(new_password)
-            cur.execute("UPDATE users SET password_hash=? WHERE id=?", (new_hash, user_id))
+            cur.execute("UPDATE users SET password_hash=%s WHERE id=%s", (new_hash, user_id))
             conn.commit()
 
             # 记录审计日志

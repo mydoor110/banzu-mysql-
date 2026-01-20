@@ -44,7 +44,7 @@ def admin_required(f):
         user_id = session.get('user_id')
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+        cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
         row = cur.fetchone()
 
         if not row or row['role'] != 'admin':
@@ -76,7 +76,7 @@ def manager_required(f):
         user_id = session.get('user_id')
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+        cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
         row = cur.fetchone()
 
         if not row or row['role'] not in ['admin', 'manager']:
@@ -114,7 +114,7 @@ def role_required(required_role):
             user_id = session.get('user_id')
             conn = get_db()
             cur = conn.cursor()
-            cur.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+            cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
             row = cur.fetchone()
 
             if not row:

@@ -5,7 +5,7 @@
 负责员工信息管理、导入导出等功能
 """
 import json
-import sqlite3
+import pymysql
 from collections import Counter
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -1266,7 +1266,7 @@ def list_personnel():
         if not accessible_dept_ids:
             return []
 
-        placeholders = ','.join('?' * len(accessible_dept_ids))
+        placeholders = ','.join(['%s'] * len(accessible_dept_ids))
         query = f"""
             SELECT e.emp_no, e.name, e.department_id, d.name as department_name,
                    e.class_name, e.position, e.birth_date, e.certification_date,
@@ -1329,7 +1329,7 @@ def get_personnel(emp_no: str) -> Optional[Dict]:
                e.work_start_date, e.entry_date, e.specialty, e.created_at
         FROM employees e
         LEFT JOIN departments d ON e.department_id = d.id
-        WHERE e.emp_no=?
+        WHERE e.emp_no=%s
         """,
         (emp_no,),
     )
@@ -1399,7 +1399,7 @@ def upsert_personnel(data: Dict[str, Optional[str]]) -> bool:
     cur.execute(
         f"""
         INSERT INTO employees ({", ".join(columns)})
-        VALUES ({", ".join("?" for _ in columns)})
+        VALUES ({", ".join(["%s"] * len(columns))})
         ON CONFLICT(emp_no) DO UPDATE SET {update_clause}
         """,
         values,
@@ -1436,8 +1436,8 @@ def update_personnel_field(emp_no: str, field: str, value: Optional[str]) -> boo
     cur.execute(
         f"""
         UPDATE employees
-        SET {field} = ?
-        WHERE emp_no=?
+        SET {field} = %s
+        WHERE emp_no=%s
         """,
         (payload.get(field), emp_no),
     )
@@ -1459,7 +1459,7 @@ def delete_employee(emp_no):
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("DELETE FROM employees WHERE emp_no=?", (emp_no,))
+    cur.execute("DELETE FROM employees WHERE emp_no=%s", (emp_no,))
     conn.commit()
     return True
 
@@ -1756,7 +1756,7 @@ def batch_delete():
                     skipped_count += 1
                     continue
 
-            cur.execute("DELETE FROM employees WHERE emp_no=?", (emp_no,))
+            cur.execute("DELETE FROM employees WHERE emp_no=%s", (emp_no,))
             if cur.rowcount > 0:
                 deleted_count += 1
 
@@ -1873,7 +1873,7 @@ def api_analytics_data():
         team_power = []
     else:
         # 查询每个部门是否有子部门
-        placeholders = ','.join('?' * len(accessible_dept_ids))
+        placeholders = ','.join(['%s'] * len(accessible_dept_ids))
         cur.execute(f"""
             SELECT d.id, d.name, d.level,
                    CASE
@@ -2214,7 +2214,7 @@ def api_students_list():
 
         # 获取部门名称
         if dept_id:
-            cur.execute("SELECT name FROM departments WHERE id = ?", (dept_id,))
+            cur.execute("SELECT name FROM departments WHERE id = %s", (dept_id,))
             dept_row = cur.fetchone()
             dept_name = dept_row[0] if dept_row else None
         else:
@@ -2224,16 +2224,16 @@ def api_students_list():
         training_query = """
             SELECT score, is_qualified, is_disqualified, training_date
             FROM training_records
-            WHERE emp_no = ?
+            WHERE emp_no = %s
         """
         training_params = [emp_no]
 
         if start_date:
-            training_query += " AND strftime('%Y-%m', training_date) >= ?"
+            training_query += " AND DATE_FORMAT(training_date, '%Y-%m') >= %s"
             training_params.append(start_date)
 
         if end_date:
-            training_query += " AND strftime('%Y-%m', training_date) <= ?"
+            training_query += " AND DATE_FORMAT(training_date, '%Y-%m') <= %s"
             training_params.append(end_date)
 
         training_query += " ORDER BY training_date ASC"
@@ -2266,16 +2266,16 @@ def api_students_list():
         safety_query = """
             SELECT assessment, inspection_date
             FROM safety_inspection_records
-            WHERE inspected_person = ?
+            WHERE inspected_person = %s
         """
         safety_params = [emp_name]
 
         if start_date:
-            safety_query += " AND strftime('%Y-%m', inspection_date) >= ?"
+            safety_query += " AND DATE_FORMAT(inspection_date, '%Y-%m') >= %s"
             safety_params.append(start_date)
 
         if end_date:
-            safety_query += " AND strftime('%Y-%m', inspection_date) <= ?"
+            safety_query += " AND DATE_FORMAT(inspection_date, '%Y-%m') <= %s"
             safety_params.append(end_date)
 
         safety_query += " ORDER BY inspection_date ASC"
@@ -2327,16 +2327,16 @@ def api_students_list():
         perf_query = """
             SELECT score, grade, year, month
             FROM performance_records
-            WHERE emp_no = ?
+            WHERE emp_no = %s
         """
         perf_params = [emp_no]
 
         if start_date:
-            perf_query += f" AND ({get_year_month_concat()}) >= ?"
+            perf_query += f" AND ({get_year_month_concat()}) >= %s"
             perf_params.append(start_date)
 
         if end_date:
-            perf_query += f" AND ({get_year_month_concat()}) <= ?"
+            perf_query += f" AND ({get_year_month_concat()}) <= %s"
             perf_params.append(end_date)
 
         perf_query += " ORDER BY year, month"
@@ -2384,7 +2384,7 @@ def api_students_list():
                 # 查询上月绩效
                 cur.execute(f"""
                     SELECT score, grade FROM performance_records
-                    WHERE emp_no = ? AND ({get_year_month_concat()}) = ?
+                    WHERE emp_no = %s AND ({get_year_month_concat()}) = %s
                 """, [emp_no, prev_date])
                 prev_perf_row = cur.fetchone()
                 if prev_perf_row:
@@ -2400,7 +2400,7 @@ def api_students_list():
                 cur.execute("""
                     SELECT assessment
                     FROM safety_inspection_records
-                    WHERE inspected_person = ? AND strftime('%Y-%m', inspection_date) = ?
+                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
                 """, [emp_name, prev_date])
                 prev_violations = []
                 for safety_row in cur.fetchall():
@@ -2414,7 +2414,7 @@ def api_students_list():
                 # 查询上月培训
                 cur.execute("""
                     SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                    WHERE emp_no = ? AND strftime('%Y-%m', training_date) = ?
+                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
                 """, [emp_no, prev_date])
                 prev_training_rows = cur.fetchall()
                 prev_training_result = calculate_training_score_with_penalty(prev_training_rows, duration_days=30, cert_years=cert_years, config=algo_config)
@@ -2457,7 +2457,7 @@ def api_students_list():
                     # 查询该月绩效
                     cur.execute(f"""
                         SELECT score, grade FROM performance_records
-                        WHERE emp_no = ? AND ({get_year_month_concat()}) = ?
+                        WHERE emp_no = %s AND ({get_year_month_concat()}) = %s
                     """, [emp_no, month_str])
                     month_perf = cur.fetchone()
                     if month_perf:
@@ -2472,7 +2472,7 @@ def api_students_list():
                     # 查询该月安全
                     cur.execute("""
                         SELECT assessment FROM safety_inspection_records
-                        WHERE inspected_person = ? AND strftime('%Y-%m', inspection_date) = ?
+                        WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
                     """, [emp_name, month_str])
                     month_safety_rows = cur.fetchall()
                     if month_safety_rows:
@@ -2489,7 +2489,7 @@ def api_students_list():
                     # 查询该月培训
                     cur.execute("""
                         SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                        WHERE emp_no = ? AND strftime('%Y-%m', training_date) = ?
+                        WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
                     """, [emp_no, month_str])
                     month_training_rows = cur.fetchall()
                     if month_training_rows:
@@ -2582,7 +2582,7 @@ def api_students_list():
                 # 查询该月绩效分
                 cur.execute(f"""
                     SELECT score, grade FROM performance_records
-                    WHERE emp_no = ? AND ({get_year_month_concat()}) = ?
+                    WHERE emp_no = %s AND ({get_year_month_concat()}) = %s
                 """, [emp_no, month_str])
                 month_perf_row = cur.fetchone()
                 if month_perf_row:
@@ -2597,7 +2597,7 @@ def api_students_list():
                 cur.execute("""
                     SELECT assessment, inspection_date
                     FROM safety_inspection_records
-                    WHERE inspected_person = ? AND strftime('%Y-%m', inspection_date) = ?
+                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
                     ORDER BY inspection_date
                 """, [emp_name, month_str])
                 month_safety_rows = cur.fetchall()
@@ -2619,7 +2619,7 @@ def api_students_list():
                 # 查询该月培训分
                 cur.execute("""
                     SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                    WHERE emp_no = ? AND strftime('%Y-%m', training_date) = ?
+                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
                 """, [emp_no, month_str])
                 month_training_rows = cur.fetchall()
                 if month_training_rows:
@@ -2723,7 +2723,7 @@ def api_comprehensive_profile(emp_no):
             name, department_id, position, education, entry_date,
             birth_date, work_start_date, certification_date, solo_driving_date
         FROM employees
-        WHERE emp_no = ?
+        WHERE emp_no = %s
     """, (emp_no,))
     employee = cur.fetchone()
 
@@ -2767,16 +2767,16 @@ def api_comprehensive_profile(emp_no):
             is_disqualified,
             training_date
         FROM training_records
-        WHERE emp_no = ?
+        WHERE emp_no = %s
     """
     training_params = [emp_no]
 
     if start_date:
-        training_query += " AND strftime('%Y-%m', training_date) >= ?"
+        training_query += " AND DATE_FORMAT(training_date, '%Y-%m') >= %s"
         training_params.append(start_date)
 
     if end_date:
-        training_query += " AND strftime('%Y-%m', training_date) <= ?"
+        training_query += " AND DATE_FORMAT(training_date, '%Y-%m') <= %s"
         training_params.append(end_date)
 
     training_query += " ORDER BY training_date ASC"
@@ -2822,16 +2822,16 @@ def api_comprehensive_profile(emp_no):
             inspected_person,
             rectifier
         FROM safety_inspection_records
-        WHERE (inspected_person = ? OR rectifier = ?)
+        WHERE (inspected_person = %s OR rectifier = %s)
     """
     safety_params = [emp_name, emp_name]
 
     if start_date:
-        safety_query += " AND strftime('%Y-%m', inspection_date) >= ?"
+        safety_query += " AND DATE_FORMAT(inspection_date, '%Y-%m') >= %s"
         safety_params.append(start_date)
 
     if end_date:
-        safety_query += " AND strftime('%Y-%m', inspection_date) <= ?"
+        safety_query += " AND DATE_FORMAT(inspection_date, '%Y-%m') <= %s"
         safety_params.append(end_date)
 
     safety_query += " ORDER BY inspection_date ASC"
@@ -2895,16 +2895,16 @@ def api_comprehensive_profile(emp_no):
     perf_query = """
         SELECT score, grade, year, month
         FROM performance_records
-        WHERE emp_no = ?
+        WHERE emp_no = %s
     """
     perf_params = [emp_no]
 
     if start_date:
-        perf_query += f" AND ({get_year_month_concat()}) >= ?"
+        perf_query += f" AND ({get_year_month_concat()}) >= %s"
         perf_params.append(start_date)
 
     if end_date:
-        perf_query += f" AND ({get_year_month_concat()}) <= ?"
+        perf_query += f" AND ({get_year_month_concat()}) <= %s"
         perf_params.append(end_date)
 
     perf_query += " ORDER BY year, month"
@@ -2969,7 +2969,7 @@ def api_comprehensive_profile(emp_no):
             # 查询上月绩效
             cur.execute(f"""
                 SELECT score, grade FROM performance_records
-                WHERE emp_no = ? AND ({get_year_month_concat()}) = ?
+                WHERE emp_no = %s AND ({get_year_month_concat()}) = %s
             """, [emp_no, prev_date])
             prev_perf_row = cur.fetchone()
             if prev_perf_row:
@@ -2985,7 +2985,7 @@ def api_comprehensive_profile(emp_no):
             cur.execute("""
                 SELECT assessment
                 FROM safety_inspection_records
-                WHERE inspected_person = ? AND strftime('%Y-%m', inspection_date) = ?
+                WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
             """, [emp_name, prev_date])
 
             prev_violations = []
@@ -3001,7 +3001,7 @@ def api_comprehensive_profile(emp_no):
             # 查询上月培训
             cur.execute("""
                 SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                WHERE emp_no = ? AND strftime('%Y-%m', training_date) = ?
+                WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
             """, [emp_no, prev_date])
             prev_training_rows = cur.fetchall()
             # 月度模式，周期30天
@@ -3049,7 +3049,7 @@ def api_comprehensive_profile(emp_no):
                 # 绩效
                 cur.execute(f"""
                     SELECT score, grade FROM performance_records
-                    WHERE emp_no = ? AND ({get_year_month_concat()}) = ?
+                    WHERE emp_no = %s AND ({get_year_month_concat()}) = %s
                 """, [emp_no, month_str])
                 month_perf_row = cur.fetchone()
                 if month_perf_row:
@@ -3067,7 +3067,7 @@ def api_comprehensive_profile(emp_no):
                 cur.execute("""
                     SELECT assessment, inspection_date
                     FROM safety_inspection_records
-                    WHERE inspected_person = ? AND strftime('%Y-%m', inspection_date) = ?
+                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
                     ORDER BY inspection_date
                 """, [emp_name, month_str])
                 month_safety_rows = cur.fetchall()
@@ -3097,7 +3097,7 @@ def api_comprehensive_profile(emp_no):
                 # 培训
                 cur.execute("""
                     SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                    WHERE emp_no = ? AND strftime('%Y-%m', training_date) = ?
+                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
                 """, [emp_no, month_str])
                 month_training_rows = cur.fetchall()
                 if month_training_rows:
@@ -3195,7 +3195,7 @@ def api_comprehensive_profile(emp_no):
             # 查询该月绩效分
             cur.execute(f"""
                 SELECT score, grade FROM performance_records
-                WHERE emp_no = ? AND ({get_year_month_concat()}) = ?
+                WHERE emp_no = %s AND ({get_year_month_concat()}) = %s
             """, [emp_no, month_str])
             month_perf_row = cur.fetchone()
             if month_perf_row:
@@ -3210,7 +3210,7 @@ def api_comprehensive_profile(emp_no):
             cur.execute("""
                 SELECT assessment, inspection_date
                 FROM safety_inspection_records
-                WHERE inspected_person = ? AND strftime('%Y-%m', inspection_date) = ?
+                WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%Y-%m') = %s
                 ORDER BY inspection_date
             """, [emp_name, month_str])
             month_safety_rows = cur.fetchall()
@@ -3233,7 +3233,7 @@ def api_comprehensive_profile(emp_no):
             # 查询该月培训分
             cur.execute("""
                 SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                WHERE emp_no = ? AND strftime('%Y-%m', training_date) = ?
+                WHERE emp_no = %s AND DATE_FORMAT(training_date, '%Y-%m') = %s
             """, [emp_no, month_str])
             month_training_rows = cur.fetchall()
             if month_training_rows:
@@ -3377,10 +3377,10 @@ def api_student_detail(emp_no):
     time_filter = ""
     time_params = [emp_no]
     if year and month:
-        time_filter = " AND strftime('%Y', training_date) = ? AND strftime('%m', training_date) = ?"
+        time_filter = " AND YEAR(training_date) = %s AND MONTH(training_date) = %s"
         time_params.extend([str(year), str(month).zfill(2)])
     elif year:
-        time_filter = " AND strftime('%Y', training_date) = ?"
+        time_filter = " AND YEAR(training_date) = %s"
         time_params.append(str(year))
 
     # 查询该学员各项目分类的平均分
@@ -3392,7 +3392,7 @@ def api_student_detail(emp_no):
         FROM training_records tr
         LEFT JOIN training_projects p ON tr.project_id = p.id
         LEFT JOIN training_project_categories c ON p.category_id = c.id
-        WHERE tr.emp_no = ? AND c.name IS NOT NULL{time_filter}
+        WHERE tr.emp_no = %s AND c.name IS NOT NULL{time_filter}
         GROUP BY c.id, c.name
         ORDER BY c.display_order ASC
     """
@@ -3413,16 +3413,16 @@ def api_student_detail(emp_no):
             'categories': sorted(list(student_data.keys()))
         })
 
-    placeholders = ','.join('?' * len(accessible_dept_ids))
+    placeholders = ','.join(['%s'] * len(accessible_dept_ids))
 
     # 构建团队查询的时间筛选
     team_time_filter = ""
     team_time_params = accessible_dept_ids.copy()
     if year and month:
-        team_time_filter = " AND strftime('%Y', tr.training_date) = ? AND strftime('%m', tr.training_date) = ?"
+        team_time_filter = " AND YEAR(tr.training_date) = %s AND MONTH(tr.training_date) = %s"
         team_time_params.extend([str(year), str(month).zfill(2)])
     elif year:
-        team_time_filter = " AND strftime('%Y', tr.training_date) = ?"
+        team_time_filter = " AND YEAR(tr.training_date) = %s"
         team_time_params.append(str(year))
 
     query = f"""
@@ -3467,11 +3467,11 @@ def api_student_growth(emp_no):
     # 查询该学员按月份的平均分趋势
     query = """
         SELECT
-            strftime('%Y-%m', training_date) as month,
+            DATE_FORMAT(training_date, '%Y-%m') as month,
             ROUND(AVG(score), 1) as avg_score,
             COUNT(*) as count
         FROM training_records
-        WHERE emp_no = ?
+        WHERE emp_no = %s
         GROUP BY month
         ORDER BY month ASC
     """
@@ -3550,7 +3550,7 @@ def api_risk_mining():
             cur.execute("""
                 SELECT d.path FROM users u
                 JOIN departments d ON u.department_id = d.id
-                WHERE u.id = ?
+                WHERE u.id = %s
             """, (user_id,))
             row = cur.fetchone()
             if row:

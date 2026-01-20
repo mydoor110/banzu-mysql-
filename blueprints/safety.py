@@ -84,7 +84,7 @@ def upload_inspection():
         # ====== 方案3: 检查文件是否已导入 ======
         cur.execute("""
             SELECT COUNT(*) FROM safety_inspection_records
-            WHERE source_file = ?
+            WHERE source_file = %s
         """, (filename,))
 
         if cur.fetchone()[0] > 0:
@@ -260,7 +260,7 @@ def upload_inspection():
                 cur.execute("""
                     SELECT emp_no, name, department_id
                     FROM employees
-                    WHERE name = ?
+                    WHERE name = %s
                     ORDER BY emp_no
                 """, (person_name,))
 
@@ -314,7 +314,7 @@ def upload_inspection():
                     # 查询被检查人的部门
                     cur.execute("""
                         SELECT department_id FROM employees
-                        WHERE name = ?
+                        WHERE name = %s
                         LIMIT 1
                     """, (inspected_person,))
                     emp_row = cur.fetchone()
@@ -330,10 +330,10 @@ def upload_inspection():
                 # 检查是否已存在完全相同的记录（基于关键字段）
                 cur.execute("""
                     SELECT COUNT(*) FROM safety_inspection_records
-                    WHERE category = ?
-                    AND inspection_date = ?
-                    AND location = ?
-                    AND hazard_description = ?
+                    WHERE category = %s
+                    AND inspection_date = %s
+                    AND location = %s
+                    AND hazard_description = %s
                 """, (
                     record_data['category'],
                     record_data['inspection_date'],
@@ -354,7 +354,7 @@ def upload_inspection():
                         responsible_team, assessment, rectification_status,
                         rectifier, work_type, responsibility_location,
                         inspection_item, created_by, source_file
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     record_data['category'], record_data['inspection_date'],
                     record_data['location'], record_data['hazard_description'],
@@ -515,7 +515,7 @@ def confirm_duplicates():
                     # 查询选中员工的部门，验证权限
                     cur.execute("""
                         SELECT department_id FROM employees
-                        WHERE emp_no = ?
+                        WHERE emp_no = %s
                     """, (selected_emp_no,))
                     emp_row = cur.fetchone()
 
@@ -529,7 +529,7 @@ def confirm_duplicates():
                     # 无重名情况，按名字查询部门验证权限
                     cur.execute("""
                         SELECT department_id FROM employees
-                        WHERE name = ?
+                        WHERE name = %s
                         LIMIT 1
                     """, (inspected_person,))
                     emp_row = cur.fetchone()
@@ -543,10 +543,10 @@ def confirm_duplicates():
                 # 检查是否已存在完全相同的记录
                 cur.execute("""
                     SELECT COUNT(*) FROM safety_inspection_records
-                    WHERE category = ?
-                    AND inspection_date = ?
-                    AND location = ?
-                    AND hazard_description = ?
+                    WHERE category = %s
+                    AND inspection_date = %s
+                    AND location = %s
+                    AND hazard_description = %s
                 """, (
                     record_data['category'],
                     record_data['inspection_date'],
@@ -566,7 +566,7 @@ def confirm_duplicates():
                         responsible_team, assessment, rectification_status,
                         rectifier, work_type, responsibility_location,
                         inspection_item, created_by, source_file
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     record_data['category'], record_data['inspection_date'],
                     record_data['location'], record_data['hazard_description'],
@@ -651,7 +651,7 @@ def confirm_duplicates():
         for emp in employees:
             dept_name = "未分配部门"
             if emp['dept_id']:
-                cur.execute("SELECT name FROM departments WHERE id = ?", (emp['dept_id'],))
+                cur.execute("SELECT name FROM departments WHERE id = %s", (emp['dept_id'],))
                 dept_row = cur.fetchone()
                 if dept_row:
                     dept_name = dept_row[0]
@@ -691,7 +691,7 @@ def records():
 
     # 获取当前用户角色
     user_id = session.get('user_id')
-    cur.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
     row = cur.fetchone()
     user_role = row['role'] if row else 'user'
 
@@ -716,7 +716,7 @@ def records():
         )
 
     # 构建查询 - 通过被检查人姓名关联employees表进行部门过滤
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     base_query = f"""
         SELECT sr.*
         FROM safety_inspection_records sr
@@ -731,19 +731,19 @@ def records():
         base_query += " AND " + " AND ".join(date_conditions)
         params.extend(date_params)
     if category_filter:
-        base_query += " AND sr.category LIKE ?"
+        base_query += " AND sr.category LIKE %s"
         params.append(f"%{category_filter}%")
     if team_filter:
-        base_query += " AND sr.responsible_team LIKE ?"
+        base_query += " AND sr.responsible_team LIKE %s"
         params.append(f"%{team_filter}%")
     if inspected_person_filter:
-        base_query += " AND sr.inspected_person LIKE ?"
+        base_query += " AND sr.inspected_person LIKE %s"
         params.append(f"%{inspected_person_filter}%")
     if work_type_filter:
-        base_query += " AND sr.work_type LIKE ?"
+        base_query += " AND sr.work_type LIKE %s"
         params.append(f"%{work_type_filter}%")
     if rectification_status_filter:
-        base_query += " AND sr.rectification_status LIKE ?"
+        base_query += " AND sr.rectification_status LIKE %s"
         params.append(f"%{rectification_status_filter}%")
 
     base_query += " ORDER BY sr.inspection_date DESC, sr.id DESC"
@@ -827,7 +827,7 @@ def export():
         flash("无权限访问数据", "warning")
         return redirect(url_for("safety.records"))
 
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     base_query = f"""
         SELECT sr.*
         FROM safety_inspection_records sr
@@ -842,19 +842,19 @@ def export():
         base_query += " AND " + " AND ".join(date_conditions)
         params.extend(date_params)
     if category_filter:
-        base_query += " AND sr.category LIKE ?"
+        base_query += " AND sr.category LIKE %s"
         params.append(f"%{category_filter}%")
     if team_filter:
-        base_query += " AND sr.responsible_team LIKE ?"
+        base_query += " AND sr.responsible_team LIKE %s"
         params.append(f"%{team_filter}%")
     if inspected_person_filter:
-        base_query += " AND sr.inspected_person LIKE ?"
+        base_query += " AND sr.inspected_person LIKE %s"
         params.append(f"%{inspected_person_filter}%")
     if work_type_filter:
-        base_query += " AND sr.work_type LIKE ?"
+        base_query += " AND sr.work_type LIKE %s"
         params.append(f"%{work_type_filter}%")
     if rectification_status_filter:
-        base_query += " AND sr.rectification_status LIKE ?"
+        base_query += " AND sr.rectification_status LIKE %s"
         params.append(f"%{rectification_status_filter}%")
 
     base_query += " ORDER BY sr.inspection_date DESC"
@@ -907,7 +907,7 @@ def api_data():
     if not dept_ids:
         return jsonify([])
 
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     base_query = f"""
         SELECT sr.*
         FROM safety_inspection_records sr
@@ -918,21 +918,21 @@ def api_data():
 
     start_date = request.args.get("start_date")
     if start_date:
-        base_query += " AND sr.inspection_date >= ?"
+        base_query += " AND sr.inspection_date >= %s"
         params.append(start_date)
     end_date = request.args.get("end_date")
     if end_date:
-        base_query += " AND sr.inspection_date <= ?"
+        base_query += " AND sr.inspection_date <= %s"
         params.append(end_date)
 
     category = request.args.get("category")
     if category:
-        base_query += " AND sr.category LIKE ?"
+        base_query += " AND sr.category LIKE %s"
         params.append(f"%{category}%")
 
     team = request.args.get("team")
     if team:
-        base_query += " AND sr.responsible_team LIKE ?"
+        base_query += " AND sr.responsible_team LIKE %s"
         params.append(f"%{team}%")
 
     base_query += " ORDER BY sr.inspection_date DESC"
@@ -976,14 +976,14 @@ def edit_record(record_id):
         # 更新记录
         cur.execute("""
             UPDATE safety_inspection_records
-            SET category = ?, inspection_date = ?, location = ?,
-                hazard_description = ?, corrective_measures = ?,
-                deadline_date = ?, inspected_person = ?,
-                responsible_team = ?, assessment = ?,
-                rectification_status = ?, rectifier = ?,
-                work_type = ?, responsibility_location = ?,
-                inspection_item = ?
-            WHERE id = ?
+            SET category = %s, inspection_date = %s, location = %s,
+                hazard_description = %s, corrective_measures = %s,
+                deadline_date = %s, inspected_person = %s,
+                responsible_team = %s, assessment = %s,
+                rectification_status = %s, rectifier = %s,
+                work_type = %s, responsibility_location = %s,
+                inspection_item = %s
+            WHERE id = %s
         """, (category, inspection_date, location, hazard_description,
               corrective_measures, deadline_date, inspected_person,
               responsible_team, assessment, rectification_status,
@@ -1007,7 +1007,7 @@ def delete_record(record_id):
 
     try:
         # 删除记录
-        cur.execute("DELETE FROM safety_inspection_records WHERE id = ?", (record_id,))
+        cur.execute("DELETE FROM safety_inspection_records WHERE id = %s", (record_id,))
         conn.commit()
         flash('安全检查记录已删除', 'success')
     except Exception as e:
@@ -1031,7 +1031,7 @@ def batch_delete_records():
 
     try:
         # 批量删除记录
-        placeholders = ','.join('?' * len(record_ids))
+        placeholders = ','.join(['%s'] * len(record_ids))
         cur.execute(f"DELETE FROM safety_inspection_records WHERE id IN ({placeholders})", record_ids)
         conn.commit()
         flash(f'成功删除 {len(record_ids)} 条安全检查记录', 'success')
@@ -1085,7 +1085,7 @@ def api_analytics_severity_distribution():
     # 使用统一的日期筛选函数
     start_date, end_date = parse_date_filters('current_month')
 
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT sr.assessment
         FROM safety_inspection_records sr
@@ -1137,7 +1137,7 @@ def api_analytics_daily_trend():
     # 使用统一的日期筛选函数
     start_date, end_date = parse_date_filters('current_month')
 
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT sr.inspection_date, sr.assessment
         FROM safety_inspection_records sr
@@ -1201,7 +1201,7 @@ def api_analytics_top_loss_items():
     # 使用统一的日期筛选函数
     start_date, end_date = parse_date_filters('current_month')
 
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT sr.inspection_item, sr.assessment
         FROM safety_inspection_records sr
@@ -1258,7 +1258,7 @@ def api_analytics_personnel_risk_matrix():
     # 使用统一的日期筛选函数
     start_date, end_date = parse_date_filters('current_month')
 
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT
             sr.inspected_person,
@@ -1330,7 +1330,7 @@ def api_analytics_top_contributors():
     # 使用统一的日期筛选函数
     start_date, end_date = parse_date_filters('current_month')
 
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT sr.rectifier
         FROM safety_inspection_records sr
@@ -1389,7 +1389,7 @@ def api_analytics_severity_drilldown():
     except ValueError:
         return jsonify({"canDrilldown": False, "message": "分数格式错误"})
 
-    placeholders = ','.join('?' * len(dept_ids))
+    placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT
             sr.id,
@@ -1413,11 +1413,11 @@ def api_analytics_severity_drilldown():
     # 添加日期筛选
     start_date = request.args.get('start_date')
     if start_date:
-        query += " AND sr.inspection_date >= ?"
+        query += " AND sr.inspection_date >= %s"
         params.append(start_date)
     end_date = request.args.get('end_date')
     if end_date:
-        query += " AND sr.inspection_date <= ?"
+        query += " AND sr.inspection_date <= %s"
         params.append(end_date)
 
     query += " ORDER BY sr.inspection_date DESC"

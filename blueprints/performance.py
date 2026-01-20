@@ -6,7 +6,7 @@
 """
 import os
 import re
-import sqlite3
+import pymysql
 from datetime import datetime
 from typing import Dict, List, Tuple
 
@@ -131,7 +131,7 @@ def build_yearly_matrix(uid: int, year: int, accessible_user_ids=None):
         SELECT pr.emp_no, pr.name, pr.year, pr.month, pr.score, pr.grade
         FROM performance_records pr
         {join_clause}
-        WHERE {where_clause} AND pr.year=?
+        WHERE {where_clause} AND pr.year=%s
         ORDER BY CAST(pr.emp_no as INTEGER), pr.month
         """,
         dept_params + [year],
@@ -197,18 +197,18 @@ def build_calculator_dataset(uid: int, year: int, mapping: Dict[str, float]):
             SELECT pr.emp_no, pr.name, pr.year, pr.month, pr.grade
             FROM performance_records pr
             {join_clause}
-            WHERE {where_clause} AND pr.year=?
+            WHERE {where_clause} AND pr.year=%s
             ORDER BY CAST(pr.emp_no as INTEGER), pr.month
             """,
             dept_params + [year],
         )
-    except sqlite3.OperationalError:
+    except pymysql.err.OperationalError:
         cur.execute(
             f"""
             SELECT pr.emp_no, pr.name, pr.year, pr.month, pr.grade
             FROM performance_records pr
             {join_clause}
-            WHERE {where_clause} AND pr.year=?
+            WHERE {where_clause} AND pr.year=%s
             ORDER BY pr.month
             """,
             dept_params + [year],
@@ -258,7 +258,7 @@ def get_or_init_grade_map(uid: int = None):
     if not rows:
         # 初始化默认档位映射
         for grade, value in DEFAULT_GRADE_MAP.items():
-            cur.execute("INSERT OR REPLACE INTO grade_map(grade, value) VALUES(?,?)", (grade, float(value)))
+            cur.execute("REPLACE INTO grade_map(grade, value) VALUES(%s,%s)", (grade, float(value)))
         conn.commit()
         cur.execute("SELECT grade, value FROM grade_map")
         rows = cur.fetchall()
@@ -286,7 +286,7 @@ def set_quarter_grade_options(uid: int, entries: List[Tuple[str, str]], default_
         cur.execute(
             """
             INSERT INTO quarter_grade_options(grade, display_order, is_default, color)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
             """,
             (grade, idx, 1 if grade == default_grade else 0, color),
         )
@@ -344,7 +344,7 @@ def build_quarter_dataset(uid: int, year: int, options=None):
         SELECT pr.emp_no, pr.name, pr.month, pr.score, pr.grade
         FROM performance_records pr
         {join_clause}
-        WHERE {where_clause} AND pr.year=?
+        WHERE {where_clause} AND pr.year=%s
         ORDER BY pr.month
         """,
         dept_params + [year]
@@ -352,7 +352,7 @@ def build_quarter_dataset(uid: int, year: int, options=None):
     perf_rows = cur.fetchall()
 
     # quarter_overrides 不再使用 user_id 过滤
-    cur.execute("SELECT emp_no, quarter, grade FROM quarter_overrides WHERE year=?", (year,))
+    cur.execute("SELECT emp_no, quarter, grade FROM quarter_overrides WHERE year=%s", (year,))
     overrides = {(row["emp_no"], row["quarter"]): row["grade"] for row in cur.fetchall()}
 
     month_groups = {1: (1, 2, 3), 2: (4, 5, 6), 3: (7, 8, 9), 4: (10, 11, 12)}
@@ -572,7 +572,7 @@ def upload():
                 cur.execute(
                     """
                     INSERT INTO performance_records(emp_no, name, year, month, score, grade, src_file, created_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT(emp_no, year, month) DO UPDATE SET
                         name=excluded.name,
                         score=excluded.score,
@@ -672,7 +672,7 @@ def records():
     conn = get_db()
     cur = conn.cursor()
     user_id = session.get('user_id')
-    cur.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
     row = cur.fetchone()
     user_role = row['role'] if row else 'user'
 
@@ -684,7 +684,7 @@ def records():
             SELECT pr.id, pr.emp_no, pr.name, pr.year, pr.month, pr.score, pr.grade
             FROM performance_records pr
             {join_clause}
-            WHERE {where_clause} AND pr.year=? AND pr.month=?
+            WHERE {where_clause} AND pr.year=%s AND pr.month=%s
             ORDER BY CAST(pr.emp_no as INTEGER)
             """,
             dept_params + [year, month],
@@ -799,7 +799,7 @@ def range_view():
                 SELECT pr.emp_no, pr.name, pr.year, pr.month, pr.score, pr.grade
                 FROM performance_records pr
                 {join_clause}
-                WHERE {where_clause} AND (pr.year*100 + pr.month) BETWEEN ? AND ?
+                WHERE {where_clause} AND (pr.year*100 + pr.month) BETWEEN %s AND %s
                 ORDER BY CAST(pr.emp_no as INTEGER), pr.year, pr.month
                 """,
                 dept_params + [start, end],
@@ -866,7 +866,7 @@ def export_single():
         SELECT pr.emp_no, pr.name, pr.year, pr.month, pr.score, pr.grade
         FROM performance_records pr
         {join_clause}
-        WHERE {where_clause} AND pr.year=? AND pr.month=?
+        WHERE {where_clause} AND pr.year=%s AND pr.month=%s
         ORDER BY CAST(pr.emp_no as INTEGER)
         """,
         dept_params + [year, month],
@@ -942,7 +942,7 @@ def export_range():
         SELECT pr.emp_no, pr.name, pr.year, pr.month, pr.score, pr.grade
         FROM performance_records pr
         {join_clause}
-        WHERE {where_clause} AND (pr.year*100 + pr.month) BETWEEN ? AND ?
+        WHERE {where_clause} AND (pr.year*100 + pr.month) BETWEEN %s AND %s
         ORDER BY CAST(pr.emp_no as INTEGER), pr.year, pr.month
         """,
         dept_params + [start, end],
@@ -1201,7 +1201,7 @@ def calculator():
         cur = conn.cursor()
         for grade, value in new_map.items():
             cur.execute(
-                "INSERT OR REPLACE INTO grade_map(grade, value) VALUES(?,?)",
+                "REPLACE INTO grade_map(grade, value) VALUES(%s,%s)",
                 (grade, value),
             )
         conn.commit()
@@ -1288,7 +1288,7 @@ def quarters():
             cur.execute(
                 """
                 INSERT INTO quarter_overrides(emp_no, year, quarter, grade)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
                 ON CONFLICT(emp_no, year, quarter) DO UPDATE SET grade=excluded.grade
                 """,
                 (emp_no, year, quarter, grade),
@@ -1338,8 +1338,8 @@ def edit_record(record_id):
         # 更新记录
         cur.execute("""
             UPDATE performance_records
-            SET emp_no = ?, name = ?, year = ?, month = ?, score = ?, grade = ?
-            WHERE id = ?
+            SET emp_no = %s, name = %s, year = %s, month = %s, score = %s, grade = %s
+            WHERE id = %s
         """, (emp_no, name, int(year), int(month), float(score), grade, record_id))
 
         conn.commit()
@@ -1359,7 +1359,7 @@ def delete_record(record_id):
 
     try:
         # 删除记录
-        cur.execute("DELETE FROM performance_records WHERE id = ?", (record_id,))
+        cur.execute("DELETE FROM performance_records WHERE id = %s", (record_id,))
         conn.commit()
         flash('绩效记录已删除', 'success')
     except Exception as e:
@@ -1383,7 +1383,7 @@ def batch_delete_records():
 
     try:
         # 批量删除记录
-        placeholders = ','.join('?' * len(record_ids))
+        placeholders = ','.join(['%s'] * len(record_ids))
         cur.execute(f"DELETE FROM performance_records WHERE id IN ({placeholders})", record_ids)
         conn.commit()
         flash(f'成功删除 {len(record_ids)} 条绩效记录', 'success')

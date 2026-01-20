@@ -46,33 +46,15 @@ class SecurityConfig:
         "object-src": "'none'"
     }
 
-# Database configuration
+# Database configuration (MySQL only)
 class DatabaseConfig:
-    # Database type: 'sqlite' or 'mysql'
-    DB_TYPE = os.environ.get("DB_TYPE", "sqlite")
-
-    # SQLite settings (used when DB_TYPE='sqlite')
-    SQLITE_PATH = DB_PATH
-
-    # MySQL settings (used when DB_TYPE='mysql')
+    # MySQL connection settings
     MYSQL_HOST = os.environ.get("MYSQL_HOST", "localhost")
     MYSQL_PORT = int(os.environ.get("MYSQL_PORT", "3306"))
     MYSQL_USER = os.environ.get("MYSQL_USER", "root")
     MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "")
     MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", "team_management")
     MYSQL_CHARSET = os.environ.get("MYSQL_CHARSET", "utf8mb4")
-
-    # Enable foreign key constraints
-    FOREIGN_KEYS = True
-
-    # SQLite Performance settings
-    JOURNAL_MODE = "WAL"  # Write-Ahead Logging for better performance
-    SYNCHRONOUS = "NORMAL"  # Balance between performance and safety
-    CACHE_SIZE = 2000  # Cache size in pages
-
-    # Connection settings
-    TIMEOUT = 20.0  # Database lock timeout in seconds
-    CHECK_SAME_THREAD = False  # Allow multiple threads (use with caution)
 
 # Application environment
 class Config:

@@ -76,7 +76,7 @@ class AlgorithmConfigService:
             # 1. 查询预设方案
             cur.execute("""
                 SELECT preset_name, config_data FROM algorithm_presets
-                WHERE preset_key = ?
+                WHERE preset_key = %s
             """, (preset_key,))
             preset_row = cur.fetchone()
 
@@ -97,19 +97,19 @@ class AlgorithmConfigService:
             cur.execute("""
                 INSERT OR REPLACE INTO algorithm_active_config
                 (id, based_on_preset, is_customized, config_data, updated_by, updated_at)
-                VALUES (1, ?, 0, ?, ?, ?)
+                VALUES (1, %s, 0, %s, %s, %s)
             """, (preset_key, new_config_data, user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
 
             # 4. 记录变更日志
             if not username:
-                cur.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+                cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
                 user_row = cur.fetchone()
                 username = user_row['username'] if user_row else f"用户{user_id}"
 
             cur.execute("""
                 INSERT INTO algorithm_config_logs
                 (action, preset_name, old_config, new_config, change_reason, changed_by, changed_by_name, ip_address)
-                VALUES ('APPLY_PRESET', ?, ?, ?, ?, ?, ?, ?)
+                VALUES ('APPLY_PRESET', %s, %s, %s, %s, %s, %s, %s)
             """, (preset_name, old_config_data, new_config_data, reason, user_id, username, ip_address))
 
             conn.commit()
@@ -159,19 +159,19 @@ class AlgorithmConfigService:
             cur.execute("""
                 INSERT OR REPLACE INTO algorithm_active_config
                 (id, based_on_preset, is_customized, config_data, updated_by, updated_at)
-                VALUES (1, NULL, 1, ?, ?, ?)
+                VALUES (1, NULL, 1, %s, %s, %s)
             """, (new_config_json, user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
 
             # 4. 记录变更日志
             if not username:
-                cur.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+                cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
                 user_row = cur.fetchone()
                 username = user_row['username'] if user_row else f"用户{user_id}"
 
             cur.execute("""
                 INSERT INTO algorithm_config_logs
                 (action, old_config, new_config, change_reason, changed_by, changed_by_name, ip_address)
-                VALUES ('CUSTOM_UPDATE', ?, ?, ?, ?, ?, ?)
+                VALUES ('CUSTOM_UPDATE', %s, %s, %s, %s, %s, %s)
             """, (old_config_data, new_config_json, reason, user_id, username, ip_address))
 
             conn.commit()
@@ -380,7 +380,7 @@ class AlgorithmConfigService:
                 changed_by, changed_by_name, changed_at, ip_address
             FROM algorithm_config_logs
             ORDER BY changed_at DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
         """, (limit, offset))
 
         logs = []

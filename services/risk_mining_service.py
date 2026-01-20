@@ -110,8 +110,8 @@ class RiskMiningService:
         query = """
             SELECT emp_no, name, year, month, score, grade
             FROM performance_records
-            WHERE (year > ? OR (year = ? AND month >= ?))
-              AND (year < ? OR (year = ? AND month <= ?))
+            WHERE (year > %s OR (year = %s AND month >= %s))
+              AND (year < %s OR (year = %s AND month <= %s))
             ORDER BY emp_no, year, month
         """
 
@@ -149,7 +149,7 @@ class RiskMiningService:
             SELECT id, category, inspection_date, hazard_description,
                    inspected_person, responsible_team, assessment
             FROM safety_inspection_records
-            WHERE inspection_date >= ? AND inspection_date <= ?
+            WHERE inspection_date >= %s AND inspection_date <= %s
         """
 
         return pd.read_sql_query(query, conn, params=(start_date, end_date))
@@ -181,7 +181,7 @@ class RiskMiningService:
             SELECT id, emp_no, name, training_date, problem_type,
                    specific_problem, score, is_qualified, is_disqualified
             FROM training_records
-            WHERE training_date >= ? AND training_date <= ?
+            WHERE training_date >= %s AND training_date <= %s
         """
 
         return pd.read_sql_query(query, conn, params=(start_date, end_date))
@@ -393,7 +393,7 @@ class RiskMiningService:
         cur = conn.cursor()
 
         # 先获取员工姓名
-        cur.execute("SELECT name FROM employees WHERE emp_no = ?", (emp_no,))
+        cur.execute("SELECT name FROM employees WHERE emp_no = %s", (emp_no,))
         row = cur.fetchone()
         if not row:
             return []
@@ -413,10 +413,10 @@ class RiskMiningService:
                        hazard_description as issue,
                        assessment as score
                 FROM safety_inspection_records
-                WHERE inspected_person = ?
-                  AND inspection_date >= ? AND inspection_date <= ?
+                WHERE inspected_person = %s
+                  AND inspection_date >= %s AND inspection_date <= %s
                 ORDER BY inspection_date DESC, id DESC
-                LIMIT ?
+                LIMIT %s
             """, (emp_name, start_date, end_date, limit))
         else:
             cur.execute("""
@@ -424,9 +424,9 @@ class RiskMiningService:
                        hazard_description as issue,
                        assessment as score
                 FROM safety_inspection_records
-                WHERE inspected_person = ?
+                WHERE inspected_person = %s
                 ORDER BY inspection_date DESC, id DESC
-                LIMIT ?
+                LIMIT %s
             """, (emp_name, limit))
 
         return [dict(row) for row in cur.fetchall()]
@@ -449,7 +449,7 @@ class RiskMiningService:
         cur = conn.cursor()
 
         # 先获取员工姓名
-        cur.execute("SELECT name FROM employees WHERE emp_no = ?", (emp_no,))
+        cur.execute("SELECT name FROM employees WHERE emp_no = %s", (emp_no,))
         row = cur.fetchone()
         if not row:
             return []
@@ -469,8 +469,8 @@ class RiskMiningService:
                        hazard_description as issue,
                        assessment as score
                 FROM safety_inspection_records
-                WHERE inspected_person = ?
-                  AND inspection_date >= ? AND inspection_date <= ?
+                WHERE inspected_person = %s
+                  AND inspection_date >= %s AND inspection_date <= %s
                   AND (assessment LIKE '%3分%'
                        OR assessment LIKE '%双倍%'
                        OR assessment LIKE '%红线%'
@@ -483,7 +483,7 @@ class RiskMiningService:
                        hazard_description as issue,
                        assessment as score
                 FROM safety_inspection_records
-                WHERE inspected_person = ?
+                WHERE inspected_person = %s
                   AND (assessment LIKE '%3分%'
                        OR assessment LIKE '%双倍%'
                        OR assessment LIKE '%红线%'
@@ -523,8 +523,8 @@ class RiskMiningService:
                        specific_problem as problem,
                        training_date as date
                 FROM training_records
-                WHERE emp_no = ? AND is_disqualified = 1
-                  AND training_date >= ? AND training_date <= ?
+                WHERE emp_no = %s AND is_disqualified = 1
+                  AND training_date >= %s AND training_date <= %s
                 ORDER BY training_date DESC, id DESC
             """, (emp_no, start_date, end_date))
         else:
@@ -533,7 +533,7 @@ class RiskMiningService:
                        specific_problem as problem,
                        training_date as date
                 FROM training_records
-                WHERE emp_no = ? AND is_disqualified = 1
+                WHERE emp_no = %s AND is_disqualified = 1
                 ORDER BY training_date DESC, id DESC
             """, (emp_no,))
 

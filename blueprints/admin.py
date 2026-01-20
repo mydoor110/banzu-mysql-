@@ -6,7 +6,7 @@
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file
 from werkzeug.security import generate_password_hash
-import sqlite3
+import pymysql
 import json
 from datetime import datetime, timedelta
 from models.database import get_db
@@ -44,7 +44,7 @@ def users():
             try:
                 department_id = int(department_id) if department_id else None
                 cur.execute(
-                    "INSERT INTO users(username, password_hash, department_id, role) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO users(username, password_hash, department_id, role) VALUES (%s, %s, %s, %s)",
                     (username, generate_password_hash(password), department_id, role)
                 )
                 new_user_id = cur.lastrowid
@@ -52,13 +52,13 @@ def users():
                 # 如果角色是部门管理员且指定了部门,同步更新部门的负责人
                 if role == 'manager' and department_id:
                     cur.execute(
-                        "UPDATE departments SET manager_user_id = ? WHERE id = ?",
+                        "UPDATE departments SET manager_user_id = %s WHERE id = %s",
                         (new_user_id, department_id)
                     )
 
                 conn.commit()
                 flash('用户已创建', 'success')
-            except sqlite3.IntegrityError:
+            except pymysql.err.IntegrityError:
                 flash('用户名已存在', 'danger')
             except Exception as e:
                 flash(f'创建失败: {e}', 'danger')
@@ -72,40 +72,40 @@ def users():
         if username:
             try:
                 # 获取用户的旧信息
-                cur.execute("SELECT department_id, role FROM users WHERE id=?", (user_id,))
+                cur.execute("SELECT department_id, role FROM users WHERE id=%s", (user_id,))
                 old_info = cur.fetchone()
                 old_dept_id = old_info['department_id'] if old_info else None
                 old_role = old_info['role'] if old_info else None
 
                 department_id = int(department_id) if department_id else None
-                cur.execute("UPDATE users SET username=?, department_id=?, role=? WHERE id=?",
+                cur.execute("UPDATE users SET username=%s,department_id=%s, role=%s WHERE id=%s",
                           (username, department_id, role, user_id))
 
                 # 双向同步部门负责人
                 # 1. 如果从manager变为非manager,清除原部门的负责人设置
                 if old_role == 'manager' and role != 'manager' and old_dept_id:
                     cur.execute(
-                        "UPDATE departments SET manager_user_id = NULL WHERE id = ? AND manager_user_id = ?",
+                        "UPDATE departments SET manager_user_id = NULL WHERE id = %s AND manager_user_id = %s",
                         (old_dept_id, user_id)
                     )
 
                 # 2. 如果用户换了部门且之前是manager,清除旧部门的负责人
                 if old_role == 'manager' and old_dept_id and old_dept_id != department_id:
                     cur.execute(
-                        "UPDATE departments SET manager_user_id = NULL WHERE id = ? AND manager_user_id = ?",
+                        "UPDATE departments SET manager_user_id = NULL WHERE id = %s AND manager_user_id = %s",
                         (old_dept_id, user_id)
                     )
 
                 # 3. 如果新角色是manager且有部门,设置为该部门的负责人
                 if role == 'manager' and department_id:
                     cur.execute(
-                        "UPDATE departments SET manager_user_id = ? WHERE id = ?",
+                        "UPDATE departments SET manager_user_id = %s WHERE id = %s",
                         (user_id, department_id)
                     )
 
                 conn.commit()
                 flash('用户信息更新成功', 'success')
-            except sqlite3.IntegrityError:
+            except pymysql.err.IntegrityError:
                 flash('用户名已存在', 'danger')
         return redirect(url_for('admin.users'))
 
@@ -113,7 +113,7 @@ def users():
         user_id = request.args.get('id', type=int)
         new_pw = request.args.get('newpw', default='123456')
         if user_id:
-            cur.execute("UPDATE users SET password_hash=? WHERE id=?",
+            cur.execute("UPDATE users SET password_hash=%s WHERE id=%s",
                        (generate_password_hash(new_pw), user_id))
             conn.commit()
             flash(f'已重置用户 {user_id} 密码', 'success')
@@ -124,7 +124,7 @@ def users():
         if user_id == 1:
             flash('管理员不可删除', 'warning')
         elif user_id:
-            cur.execute("DELETE FROM users WHERE id=?", (user_id,))
+            cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
             conn.commit()
             flash(f'已删除用户 {user_id}', 'success')
         return redirect(url_for('admin.users'))
@@ -254,19 +254,19 @@ def import_logs():
     params = []
 
     if module_filter:
-        conditions.append("module = ?")
+        conditions.append("module = %s")
         params.append(module_filter)
 
     if user_filter:
-        conditions.append("username LIKE ?")
+        conditions.append("username LIKE %s")
         params.append(f"%{user_filter}%")
 
     if start_date:
-        conditions.append("DATE(created_at) >= ?")
+        conditions.append("DATE(created_at) >= %s")
         params.append(start_date)
 
     if end_date:
-        conditions.append("DATE(created_at) <= ?")
+        conditions.append("DATE(created_at) <= %s")
         params.append(end_date)
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
@@ -297,7 +297,7 @@ def import_logs():
         LEFT JOIN departments d ON il.department_id = d.id
         WHERE {where_clause}
         ORDER BY il.created_at DESC
-        LIMIT ? OFFSET ?
+        LIMIT %s OFFSET %s
     """, params + [per_page, offset])
 
     logs = cur.fetchall()
@@ -389,7 +389,7 @@ def import_log_detail(log_id):
             END as module_display
         FROM import_logs il
         LEFT JOIN departments d ON il.department_id = d.id
-        WHERE il.id = ?
+        WHERE il.id = %s
     """, (log_id,))
 
     log = cur.fetchone()
@@ -432,19 +432,19 @@ def export_import_logs():
     params = []
 
     if module_filter:
-        conditions.append("module = ?")
+        conditions.append("module = %s")
         params.append(module_filter)
 
     if user_filter:
-        conditions.append("username LIKE ?")
+        conditions.append("username LIKE %s")
         params.append(f"%{user_filter}%")
 
     if start_date:
-        conditions.append("DATE(created_at) >= ?")
+        conditions.append("DATE(created_at) >= %s")
         params.append(start_date)
 
     if end_date:
-        conditions.append("DATE(created_at) <= ?")
+        conditions.append("DATE(created_at) <= %s")
         params.append(end_date)
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"

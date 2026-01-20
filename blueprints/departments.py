@@ -5,7 +5,6 @@
 负责部门层级结构管理和用户分配
 """
 from flask import Blueprint, render_template, request, redirect, url_for, flash
-import sqlite3
 from models.database import get_db
 from .decorators import admin_required
 
@@ -38,7 +37,7 @@ def index():
                     # 计算层级和路径
                     if parent_id:
                         # 获取父部门的层级和路径
-                        cur.execute("SELECT level, path FROM departments WHERE id=?", (parent_id,))
+                        cur.execute("SELECT level, path FROM departments WHERE id=%s", (parent_id,))
                         parent = cur.fetchone()
                         if parent:
                             level = parent['level'] + 1
@@ -53,7 +52,7 @@ def index():
 
                     # 插入新部门(不包含path,稍后更新)
                     cur.execute(
-                        "INSERT INTO departments(name, parent_id, description, manager_user_id, level) VALUES (?, ?, ?, ?, ?)",
+                        "INSERT INTO departments(name, parent_id, description, manager_user_id, level) VALUES (%s, %s, %s, %s, %s)",
                         (name, parent_id, description, manager_user_id, level)
                     )
                     new_dept_id = cur.lastrowid
@@ -64,7 +63,7 @@ def index():
                     else:
                         new_path = f"/{new_dept_id}"
 
-                    cur.execute("UPDATE departments SET path=? WHERE id=?", (new_path, new_dept_id))
+                    cur.execute("UPDATE departments SET path=%s WHERE id=%s", (new_path, new_dept_id))
                     conn.commit()
                     flash(f'部门创建成功 (层级: {level})', 'success')
                 except Exception as e:
@@ -118,19 +117,19 @@ def detail(dept_id):
 
             if name:
                 # 获取原负责人信息
-                cur.execute("SELECT manager_user_id FROM departments WHERE id=?", (dept_id,))
+                cur.execute("SELECT manager_user_id FROM departments WHERE id=%s", (dept_id,))
                 old_manager = cur.fetchone()
                 old_manager_id = old_manager['manager_user_id'] if old_manager else None
 
                 # 更新部门信息
-                cur.execute("UPDATE departments SET name=?, description=?, manager_user_id=? WHERE id=?",
+                cur.execute("UPDATE departments SET name=%s, description=%s, manager_user_id=%s WHERE id=%s",
                           (name, description, manager_user_id, dept_id))
 
                 # 双向同步用户信息
                 # 1. 如果设置了新的负责人,更新该用户的部门和角色
                 if manager_user_id:
                     cur.execute(
-                        "UPDATE users SET department_id = ?, role = 'manager' WHERE id = ?",
+                        "UPDATE users SET department_id = %s, role = 'manager' WHERE id = %s",
                         (dept_id, manager_user_id)
                     )
 
@@ -138,14 +137,14 @@ def detail(dept_id):
                 if old_manager_id and old_manager_id != manager_user_id:
                     # 检查该用户是否还是其他部门的负责人
                     cur.execute(
-                        "SELECT COUNT(*) as cnt FROM departments WHERE manager_user_id = ?",
+                        "SELECT COUNT(*) as cnt FROM departments WHERE manager_user_id = %s",
                         (old_manager_id,)
                     )
                     other_dept_count = cur.fetchone()[0]
                     # 如果不再是任何部门的负责人,将角色改为普通用户
                     if other_dept_count == 0:
                         cur.execute(
-                            "UPDATE users SET role = 'user' WHERE id = ?",
+                            "UPDATE users SET role = 'user' WHERE id = %s",
                             (old_manager_id,)
                         )
 
@@ -155,22 +154,22 @@ def detail(dept_id):
         elif action == 'assign_user':
             user_id = request.form.get('user_id', type=int)
             if user_id:
-                cur.execute("UPDATE users SET department_id=? WHERE id=?", (dept_id, user_id))
+                cur.execute("UPDATE users SET department_id=%s WHERE id=%s", (dept_id, user_id))
                 conn.commit()
                 flash('用户分配成功', 'success')
                 
         elif action == 'remove_user':
             user_id = request.form.get('user_id', type=int)
             if user_id:
-                cur.execute("UPDATE users SET department_id=NULL WHERE id=?", (user_id,))
+                cur.execute("UPDATE users SET department_id=NULL WHERE id=%s", (user_id,))
                 conn.commit()
                 flash('用户已移出', 'success')
                 
         elif action == 'delete':
             # 检查是否可以删除
-            cur.execute("SELECT COUNT(*) as cnt FROM departments WHERE parent_id=?", (dept_id,))
+            cur.execute("SELECT COUNT(*) as cnt FROM departments WHERE parent_id=%s", (dept_id,))
             sub_count = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) as cnt FROM users WHERE department_id=?", (dept_id,))
+            cur.execute("SELECT COUNT(*) as cnt FROM users WHERE department_id=%s", (dept_id,))
             user_count = cur.fetchone()[0]
             
             if sub_count > 0:
@@ -180,7 +179,7 @@ def detail(dept_id):
             elif dept_id == 1:
                 flash('无法删除根部门', 'warning')
             else:
-                cur.execute("DELETE FROM departments WHERE id=?", (dept_id,))
+                cur.execute("DELETE FROM departments WHERE id=%s", (dept_id,))
                 conn.commit()
                 flash('部门删除成功', 'success')
                 return redirect(url_for('departments.index'))
@@ -188,7 +187,7 @@ def detail(dept_id):
         return redirect(url_for('departments.detail', dept_id=dept_id))
         
     # 获取部门信息
-    cur.execute("SELECT * FROM departments WHERE id=?", (dept_id,))
+    cur.execute("SELECT * FROM departments WHERE id=%s", (dept_id,))
     dept = cur.fetchone()
     
     if not dept:
@@ -205,7 +204,7 @@ def detail(dept_id):
             emp_no, name, position, class_name,
             certification_date, solo_driving_date
         FROM employees
-        WHERE department_id=?
+        WHERE department_id=%s
         ORDER BY CAST(emp_no as INTEGER)
     """, (dept_id,))
     employees = []

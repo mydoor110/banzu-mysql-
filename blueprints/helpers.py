@@ -63,7 +63,7 @@ def is_admin():
     user_id = current_user_id()
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
     row = cur.fetchone()
 
     return row and row['role'] == 'admin'
@@ -82,7 +82,7 @@ def get_user_role():
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
     row = cur.fetchone()
 
     return row['role'] if row else None
@@ -132,7 +132,7 @@ def get_user_info(user_id=None):
                d.name as department_name, d.id as department_id
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
-        WHERE u.id = ?
+        WHERE u.id = %s
     """, (user_id,))
     row = cur.fetchone()
 
@@ -280,7 +280,7 @@ def get_user_department():
         SELECT u.department_id, u.role, d.name as dept_name, d.level, d.path
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id
-        WHERE u.id = ?
+        WHERE u.id = %s
         """,
         (uid,)
     )
@@ -318,7 +318,7 @@ def get_accessible_departments(user_dept_info=None):
         # 普通用户可以看到自己的部门及所有子部门
         user_path = user_dept_info['path'] or f"/{user_dept_info['department_id']}"
         cur.execute(
-            "SELECT id, name, level, path FROM departments WHERE path LIKE ? OR id = ? ORDER BY level, name",
+            "SELECT id, name, level, path FROM departments WHERE path LIKE ? OR id = %s ORDER BY level, name",
             (f"{user_path}/%", user_dept_info['department_id'])
         )
 
@@ -355,7 +355,7 @@ def get_accessible_user_ids():
     cur = conn.cursor()
     placeholders = ','.join('?' * len(dept_ids))
     cur.execute(
-        f"SELECT id FROM users WHERE department_id IN ({placeholders}) OR id = ?",
+        f"SELECT id FROM users WHERE department_id IN ({placeholders}) OR id = %s",
         dept_ids + [current_user_id()]
     )
     user_ids = [row[0] for row in cur.fetchall()]
@@ -420,10 +420,10 @@ def get_employee_department_id(emp_no):
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT department_id FROM employees WHERE emp_no = ?", (emp_no,))
+    cur.execute("SELECT department_id FROM employees WHERE emp_no = %s", (emp_no,))
     row = cur.fetchone()
 
-    return row[0] if row else None
+    return row['department_id'] if row else None
 
 
 def calculate_years_from_date(date_str):
@@ -501,7 +501,7 @@ def log_import_operation(module, operation, file_name=None, total_rows=0,
             SELECT u.username, u.role, u.department_id, d.name as department_name
             FROM users u
             LEFT JOIN departments d ON u.department_id = d.id
-            WHERE u.id = ?
+            WHERE u.id = %s
         """, (user_id,))
         user_info = cur.fetchone()
 

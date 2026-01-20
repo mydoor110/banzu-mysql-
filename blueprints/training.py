@@ -206,7 +206,7 @@ def upload_daily_report():
 
                     # 权限验证：检查该员工是否属于当前用户可访问的部门
                     if accessible_dept_ids is not None:  # 非管理员需要验证
-                        cur.execute("SELECT department_id FROM employees WHERE emp_no = ?", (emp_no,))
+                        cur.execute("SELECT department_id FROM employees WHERE emp_no = %s", (emp_no,))
                         emp_dept_row = cur.fetchone()
 
                         # 如果员工不存在或不属于可访问部门，静默跳过
@@ -280,7 +280,7 @@ def upload_daily_report():
         for project_name in all_project_names:
             cur.execute("""
                 SELECT id, category_id FROM training_projects
-                WHERE name = ?
+                WHERE name = %s
             """, (project_name,))
             row = cur.fetchone()
             if row:
@@ -416,7 +416,7 @@ def _import_training_records(all_records_data, existing_projects, uid, conn):
                 # 查找该人员在该日期的失格记录
                 cur.execute("""
                     SELECT id FROM training_records
-                    WHERE emp_no = ? AND training_date = ?
+                    WHERE emp_no = %s AND training_date = %s
                     AND is_qualified = 0
                     LIMIT 1
                 """, (record['emp_no'], retake_date))
@@ -427,11 +427,11 @@ def _import_training_records(all_records_data, existing_projects, uid, conn):
         # 检查是否已存在完全相同的记录
         cur.execute("""
             SELECT COUNT(*) FROM training_records
-            WHERE emp_no = ?
-            AND training_date = ?
-            AND project_id = ?
-            AND problem_type = ?
-            AND specific_problem = ?
+            WHERE emp_no = %s
+            AND training_date = %s
+            AND project_id = %s
+            AND problem_type = %s
+            AND specific_problem = %s
         """, (
             record['emp_no'],
             record['training_date'],
@@ -452,7 +452,7 @@ def _import_training_records(all_records_data, existing_projects, uid, conn):
                 time_spent, score, assessor, remarks,
                 is_qualified, is_disqualified, is_retake,
                 retake_of_record_id, created_by, source_file
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             record['emp_no'],
             record['name'],
@@ -558,7 +558,7 @@ def confirm_projects():
                 # 检查项目是否已存在（避免重复创建）
                 cur.execute("""
                     SELECT id, category_id FROM training_projects
-                    WHERE name = ?
+                    WHERE name = %s
                 """, (project_name,))
                 row = cur.fetchone()
 
@@ -570,7 +570,7 @@ def confirm_projects():
                     try:
                         cur.execute("""
                             INSERT INTO training_projects (name, category_id, is_active)
-                            VALUES (?, ?, 1)
+                            VALUES (%s, %s, 1)
                         """, (project_name, category_id))
                         new_project_id = cur.lastrowid
                         existing_projects[project_name] = (new_project_id, category_id)
@@ -670,7 +670,7 @@ def records():
 
     # 获取当前用户角色
     user_id = session.get('user_id')
-    cur.execute("SELECT role FROM users WHERE id = ?", (user_id,))
+    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
     row = cur.fetchone()
     user_role = row['role'] if row else 'user'
 
@@ -697,22 +697,22 @@ def records():
         base_query += " AND " + " AND ".join(date_conditions)
         params.extend(date_params)
     if name_filter:
-        base_query += " AND tr.name LIKE ?"
+        base_query += " AND tr.name LIKE %s"
         params.append(f"%{name_filter}%")
     if qualified_filter in ["0", "1"]:
-        base_query += " AND tr.is_qualified = ?"
+        base_query += " AND tr.is_qualified = %s"
         params.append(int(qualified_filter))
     if team_name_filter:
-        base_query += " AND tr.team_name LIKE ?"
+        base_query += " AND tr.team_name LIKE %s"
         params.append(f"%{team_name_filter}%")
     if project_filter:
-        base_query += " AND tp.name LIKE ?"
+        base_query += " AND tp.name LIKE %s"
         params.append(f"%{project_filter}%")
     if category_filter:
-        base_query += " AND tpc.name LIKE ?"
+        base_query += " AND tpc.name LIKE %s"
         params.append(f"%{category_filter}%")
     if problem_type_filter:
-        base_query += " AND tr.problem_type LIKE ?"
+        base_query += " AND tr.problem_type LIKE %s"
         params.append(f"%{problem_type_filter}%")
 
     base_query += " ORDER BY tr.training_date DESC, tr.name"
@@ -829,22 +829,22 @@ def disqualified():
 
     # 添加筛选条件
     if start_date:
-        base_query += " AND tr.training_date >= ?"
+        base_query += " AND tr.training_date >= %s"
         params.append(start_date)
     if end_date:
-        base_query += " AND tr.training_date <= ?"
+        base_query += " AND tr.training_date <= %s"
         params.append(end_date)
     if team_filter:
-        base_query += " AND tr.team_name LIKE ?"
+        base_query += " AND tr.team_name LIKE %s"
         params.append(f"%{team_filter}%")
     if name_filter:
-        base_query += " AND tr.name LIKE ?"
+        base_query += " AND tr.name LIKE %s"
         params.append(f"%{name_filter}%")
     if project_filter:
-        base_query += " AND tp.name LIKE ?"
+        base_query += " AND tp.name LIKE %s"
         params.append(f"%{project_filter}%")
     if problem_type_filter:
-        base_query += " AND tr.problem_type LIKE ?"
+        base_query += " AND tr.problem_type LIKE %s"
         params.append(f"%{problem_type_filter}%")
 
     base_query += " ORDER BY tr.training_date DESC"
@@ -915,7 +915,7 @@ def get_record_detail(record_id):
         LEFT JOIN training_projects tp ON tr.project_id = tp.id
         LEFT JOIN training_project_categories tpc ON tp.category_id = tpc.id
         {join_clause}
-        WHERE {where_clause} AND tr.id = ?
+        WHERE {where_clause} AND tr.id = %s
     """
     params = dept_params + [record_id]
 
@@ -963,19 +963,19 @@ def export():
         base_query += " AND " + " AND ".join(date_conditions)
         params.extend(date_params)
     if name_filter:
-        base_query += " AND tr.name LIKE ?"
+        base_query += " AND tr.name LIKE %s"
         params.append(f"%{name_filter}%")
     if qualified_filter in ["0", "1"]:
-        base_query += " AND tr.is_qualified = ?"
+        base_query += " AND tr.is_qualified = %s"
         params.append(int(qualified_filter))
     if team_name_filter:
-        base_query += " AND tr.team_name LIKE ?"
+        base_query += " AND tr.team_name LIKE %s"
         params.append(f"%{team_name_filter}%")
     if category_filter:
-        base_query += " AND tpc.name LIKE ?"
+        base_query += " AND tpc.name LIKE %s"
         params.append(f"%{category_filter}%")
     if problem_type_filter:
-        base_query += " AND tr.problem_type LIKE ?"
+        base_query += " AND tr.problem_type LIKE %s"
         params.append(f"%{problem_type_filter}%")
 
     base_query += " ORDER BY tr.training_date DESC"
@@ -1045,12 +1045,12 @@ def api_data():
 
     name = request.args.get("name")
     if name:
-        base_query += " AND tr.name LIKE ?"
+        base_query += " AND tr.name LIKE %s"
         params.append(f"%{name}%")
 
     qualified = request.args.get("qualified")
     if qualified in ["0", "1"]:
-        base_query += " AND tr.is_qualified = ?"
+        base_query += " AND tr.is_qualified = %s"
         params.append(int(qualified))
 
     base_query += " ORDER BY tr.training_date DESC"
@@ -1092,7 +1092,7 @@ def edit_record(record_id):
     # 根据项目名称查找 project_id
     project_id = None
     if project_name:
-        cur.execute("SELECT id FROM training_projects WHERE name = ?", (project_name,))
+        cur.execute("SELECT id FROM training_projects WHERE name = %s", (project_name,))
         project_row = cur.fetchone()
         if project_row:
             project_id = project_row['id']
@@ -1101,11 +1101,11 @@ def edit_record(record_id):
         # 更新记录
         cur.execute("""
             UPDATE training_records
-            SET emp_no = ?, name = ?, team_name = ?, training_date = ?,
-                project_id = ?, problem_type = ?, specific_problem = ?,
-                corrective_measures = ?, time_spent = ?, score = ?,
-                assessor = ?, remarks = ?, is_qualified = ?
-            WHERE id = ?
+            SET emp_no = %s, name = %s, team_name = %s, training_date = %s,
+                project_id = %s, problem_type = %s, specific_problem = %s,
+                corrective_measures = %s, time_spent = %s, score = %s,
+                assessor = %s, remarks = %s, is_qualified = %s
+            WHERE id = %s
         """, (emp_no, name, team_name, training_date,
               project_id, problem_type, specific_problem, corrective_measures,
               time_spent, int(score) if score else None,
@@ -1128,7 +1128,7 @@ def delete_record(record_id):
 
     try:
         # 删除记录
-        cur.execute("DELETE FROM training_records WHERE id = ?", (record_id,))
+        cur.execute("DELETE FROM training_records WHERE id = %s", (record_id,))
         conn.commit()
         flash('培训记录已删除', 'success')
     except Exception as e:
@@ -1152,7 +1152,7 @@ def batch_delete_records():
 
     try:
         # 批量删除记录
-        placeholders = ','.join('?' * len(record_ids))
+        placeholders = ','.join(['%s'] * len(record_ids))
         cur.execute(f"DELETE FROM training_records WHERE id IN ({placeholders})", record_ids)
         conn.commit()
         flash(f'成功删除 {len(record_ids)} 条培训记录', 'success')
@@ -1242,7 +1242,7 @@ def add_project_category():
         cur.execute("""
             INSERT INTO training_project_categories
             (name, description, display_order)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
         """, (name, description, display_order))
         conn.commit()
         flash(f'项目分类"{name}"添加成功', 'success')
@@ -1273,8 +1273,8 @@ def edit_project_category():
     try:
         cur.execute("""
             UPDATE training_project_categories
-            SET name = ?, description = ?, display_order = ?
-            WHERE id = ?
+            SET name = %s, description = %s, display_order = %s
+            WHERE id = %s
         """, (name, description, display_order, category_id))
         conn.commit()
         flash(f'项目分类"{name}"更新成功', 'success')
@@ -1301,7 +1301,7 @@ def delete_project_category():
 
     # 检查是否有关联的项目
     cur.execute("""
-        SELECT COUNT(*) FROM training_projects WHERE category_id = ?
+        SELECT COUNT(*) FROM training_projects WHERE category_id = %s
     """, (category_id,))
     project_count = cur.fetchone()[0]
 
@@ -1310,7 +1310,7 @@ def delete_project_category():
         return redirect(url_for('training.project_categories'))
 
     try:
-        cur.execute("DELETE FROM training_project_categories WHERE id = ?", (category_id,))
+        cur.execute("DELETE FROM training_project_categories WHERE id = %s", (category_id,))
         conn.commit()
         flash('项目分类删除成功', 'success')
     except Exception as e:
@@ -1358,15 +1358,15 @@ def projects():
     params = []
 
     if category_id:
-        query += " AND p.category_id = ?"
+        query += " AND p.category_id = %s"
         params.append(category_id)
 
     if is_active is not None and is_active != '':
-        query += " AND p.is_active = ?"
+        query += " AND p.is_active = %s"
         params.append(int(is_active))
 
     if search:
-        query += " AND p.name LIKE ?"
+        query += " AND p.name LIKE %s"
         params.append(f'%{search}%')
 
     query += " GROUP BY p.id ORDER BY c.display_order ASC, p.name ASC"
@@ -1415,7 +1415,7 @@ def add_project():
         cur.execute("""
             INSERT INTO training_projects
             (name, category_id, description, is_active)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
         """, (name, category_id, description, is_active))
         conn.commit()
         flash(f'培训项目"{name}"添加成功', 'success')
@@ -1447,8 +1447,8 @@ def edit_project():
     try:
         cur.execute("""
             UPDATE training_projects
-            SET name = ?, category_id = ?, description = ?, is_active = ?
-            WHERE id = ?
+            SET name = %s, category_id = %s, description = %s, is_active = %s
+            WHERE id = %s
         """, (name, category_id, description, is_active, project_id))
         conn.commit()
         flash(f'培训项目"{name}"更新成功', 'success')
@@ -1474,7 +1474,7 @@ def delete_project():
     cur = conn.cursor()
 
     # 检查是否有关联的培训记录
-    cur.execute("SELECT COUNT(*) FROM training_records WHERE project_id = ?", (project_id,))
+    cur.execute("SELECT COUNT(*) FROM training_records WHERE project_id = %s", (project_id,))
     record_count = cur.fetchone()[0]
 
     if record_count > 0:
@@ -1482,7 +1482,7 @@ def delete_project():
         return redirect(url_for('training.projects'))
 
     try:
-        cur.execute("DELETE FROM training_projects WHERE id = ?", (project_id,))
+        cur.execute("DELETE FROM training_projects WHERE id = %s", (project_id,))
         conn.commit()
         flash('培训项目删除成功', 'success')
     except Exception as e:
@@ -1513,12 +1513,12 @@ def batch_delete_projects():
     for project_id in project_ids:
         try:
             # 检查是否有关联的培训记录
-            cur.execute("SELECT COUNT(*) FROM training_records WHERE project_id = ?", (project_id,))
+            cur.execute("SELECT COUNT(*) FROM training_records WHERE project_id = %s", (project_id,))
             record_count = cur.fetchone()[0]
 
             if record_count > 0:
                 # 获取项目名称用于提示
-                cur.execute("SELECT name FROM training_projects WHERE id = ?", (project_id,))
+                cur.execute("SELECT name FROM training_projects WHERE id = %s", (project_id,))
                 row = cur.fetchone()
                 if row:
                     errors.append(f'"{row[0]}"有{record_count}条记录')
@@ -1526,7 +1526,7 @@ def batch_delete_projects():
                 continue
 
             # 删除项目
-            cur.execute("DELETE FROM training_projects WHERE id = ?", (project_id,))
+            cur.execute("DELETE FROM training_projects WHERE id = %s", (project_id,))
             deleted_count += 1
 
         except Exception as e:
@@ -1615,7 +1615,7 @@ def batch_add_projects():
 
                     cur.execute("""
                         INSERT INTO training_project_categories (name, display_order)
-                        VALUES (?, ?)
+                        VALUES (%s, %s)
                     """, (category_name, max_order + 1))
                     category_id = cur.lastrowid
                     category_map[category_name] = category_id
@@ -1637,7 +1637,7 @@ def batch_add_projects():
         try:
             cur.execute("""
                 INSERT INTO training_projects (name, category_id, is_active)
-                VALUES (?, ?, ?)
+                VALUES (%s, %s, %s)
             """, (project_name, category_id, is_active))
             added_count += 1
         except Exception as e:

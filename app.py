@@ -24,12 +24,12 @@ except ImportError:
 
 # 导入配置
 from config.settings import (
-    APP_TITLE, SECRET_KEY, DB_PATH,
+    APP_TITLE, SECRET_KEY,
     UPLOAD_DIR, EXPORT_DIR
 )
 
 # 导入数据库工具
-from models.database import get_db, close_db, init_database, bootstrap_data, is_mysql, get_param_placeholder
+from models.database import get_db, close_db, init_database, bootstrap_data
 
 # ==================== Flask 应用初始化 ====================
 
@@ -77,13 +77,12 @@ def _init_algorithm_config():
     """初始化算法配置预设"""
     conn = get_db()
     cur = conn.cursor()
-    placeholder = get_param_placeholder()
 
     # 检查算法预设表是否存在且为空
     try:
         cur.execute("SELECT COUNT(1) as cnt FROM algorithm_presets")
         result = cur.fetchone()
-        count = result[0] if isinstance(result, (list, tuple)) else result.get('cnt', 0)
+        count = result['cnt'] if result else 0
         if count > 0:
             conn.close()
             return  # 已初始化
@@ -221,20 +220,20 @@ def _init_algorithm_config():
     ]
     for preset_name, preset_key, description, config_data in presets:
         cur.execute(
-            f"INSERT INTO algorithm_presets (preset_name, preset_key, description, config_data) VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})",
+            "INSERT INTO algorithm_presets (preset_name, preset_key, description, config_data) VALUES (%s, %s, %s, %s)",
             (preset_name, preset_key, description, config_data)
         )
 
     # 初始化当前配置为"标准"档
     from datetime import datetime
     cur.execute(
-        f"INSERT INTO algorithm_active_config (id, based_on_preset, is_customized, config_data, updated_at) VALUES (1, 'standard', 0, {placeholder}, {placeholder})",
+        "INSERT INTO algorithm_active_config (id, based_on_preset, is_customized, config_data, updated_at) VALUES (1, 'standard', 0, %s, %s)",
         (json.dumps(standard_config, ensure_ascii=False), datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     )
 
     # 记录初始化日志
     cur.execute(
-        f"INSERT INTO algorithm_config_logs (action, preset_name, new_config, change_reason, changed_by, changed_by_name) VALUES ('INIT', 'standard', {placeholder}, '系统初始化', 1, 'system')",
+        "INSERT INTO algorithm_config_logs (action, preset_name, new_config, change_reason, changed_by, changed_by_name) VALUES ('INIT', 'standard', %s, '系统初始化', 1, 'system')",
         (json.dumps(standard_config, ensure_ascii=False),)
     )
 
