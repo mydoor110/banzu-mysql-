@@ -103,7 +103,7 @@
                             <span class="badge bg-secondary">停用</span>
                             {% endif %}
                         </td>
-                        <td>{{ proj.created_at[:10] }}</td>
+                        <td>{{ proj.created_at[:10] if proj.created_at else '-' }}</td>
                         <td>
                             <button class="btn btn-sm btn-outline-primary"
                                     onclick="editProject({{ proj.id }}, '{{ proj.name }}', {{ proj.category_id }}, '{{ proj.description or '' }}', {{ proj.is_active }})">

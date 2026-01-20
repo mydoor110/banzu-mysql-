@@ -1378,6 +1378,9 @@ def projects():
 
     projects = []
     for row in cur.fetchall():
+        created_at = row['created_at']
+        if created_at:
+            created_at = str(created_at)[:19]
         projects.append({
             'id': row['id'],
             'name': row['name'],
@@ -1385,7 +1388,7 @@ def projects():
             'category_name': row['category_name'] or '未分类',
             'description': row['description'],
             'is_active': row['is_active'],
-            'created_at': row['created_at'],
+            'created_at': created_at or '',
             'record_count': row['record_count']
         })
 
