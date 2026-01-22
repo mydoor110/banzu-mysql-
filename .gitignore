@@ -98,3 +98,13 @@ CLAUDE.md
 
 # ==================== 原代码备份 ====================
 原代码/
+
+# ==================== 临时文件清理 ====================
+*.pdf
+check_db_indexes.py
+check_db_indexes.sh
+optimize_indexes.sql
+debug_pdf_content.py
+diagnose_pdf_performance.py
+reproduce_pdf_slowness.py
+test_radar_data.py

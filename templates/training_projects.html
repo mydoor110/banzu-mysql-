@@ -113,6 +113,13 @@
                                 onclick="editProject({{ proj.id }}, '{{ proj.name }}', {{ proj.category_id }}, '{{ proj.description or '' }}', {{ proj.is_active }})">
                                 <i class="bi bi-pencil"></i> 编辑
                             </button>
+                            <form method="POST" action="{{ url_for('training.archive_project', project_id=proj.id) }}" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-warning" 
+                                        onclick="return confirm('确定要归档项目「{{ proj.name }}」吗？\n归档后项目将不再显示在列表中，但历史记录会保留。')">
+                                    <i class="bi bi-archive"></i> 归档
+                                </button>
+                            </form>
                         </td>
                     </tr>
                     {% endfor %}

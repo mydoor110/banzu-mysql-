@@ -30,10 +30,16 @@ from config.settings import (
 # 导入数据库工具
 from models.database import get_db, close_db, init_database, bootstrap_data
 
+# 导入日志配置
+from utils.logger import setup_logging
+
 # ==================== Flask 应用初始化 ====================
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = SECRET_KEY
+
+# Initialize logging
+setup_logging(app)
 
 # Security configurations
 app.config["WTF_CSRF_TIME_LIMIT"] = None
