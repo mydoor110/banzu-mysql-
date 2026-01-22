@@ -182,7 +182,6 @@ def run_performance_import_task(app, task_id, file_path, file_name, user_id, use
             conn.commit()
             print(f"Task {task_id} failed: {e}")
         finally:
-            conn.close()
             # Clean up file
             if os.path.exists(file_path):
                 os.remove(file_path)

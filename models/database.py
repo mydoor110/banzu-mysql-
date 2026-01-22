@@ -35,8 +35,8 @@ def close_db():
     if hasattr(_local, 'connection') and _local.connection:
         try:
             _local.connection.close()
-        except pymysql.Error:
-            pass  # Ignore if already closed
+        except Exception:
+            pass  # Ignore if already closed or other errors
         finally:
             _local.connection = None
 
