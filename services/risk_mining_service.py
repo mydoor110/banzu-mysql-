@@ -495,10 +495,10 @@ class RiskMiningService:
                 FROM safety_inspection_records
                 WHERE inspected_person = %s
                   AND inspection_date >= %s AND inspection_date <= %s
-                  AND (assessment LIKE '%3分%'
-                       OR assessment LIKE '%双倍%'
-                       OR assessment LIKE '%红线%'
-                       OR assessment LIKE '%严重%')
+                  AND (assessment LIKE '%%3分%%'
+                       OR assessment LIKE '%%双倍%%'
+                       OR assessment LIKE '%%红线%%'
+                       OR assessment LIKE '%%严重%%')
                 ORDER BY inspection_date DESC, id DESC
             """, (emp_name, start_date, end_date))
         else:
@@ -508,10 +508,10 @@ class RiskMiningService:
                        assessment as score
                 FROM safety_inspection_records
                 WHERE inspected_person = %s
-                  AND (assessment LIKE '%3分%'
-                       OR assessment LIKE '%双倍%'
-                       OR assessment LIKE '%红线%'
-                       OR assessment LIKE '%严重%')
+                  AND (assessment LIKE '%%3分%%'
+                       OR assessment LIKE '%%双倍%%'
+                       OR assessment LIKE '%%红线%%'
+                       OR assessment LIKE '%%严重%%')
                 ORDER BY inspection_date DESC, id DESC
             """, (emp_name,))
 

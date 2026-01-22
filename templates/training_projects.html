@@ -5,6 +5,11 @@
     <h2>培训项目管理</h2>
     <div>
         <a href="{{ url_for('training.index') }}" class="btn btn-secondary">返回</a>
+        {% if archived_count > 0 %}
+        <a href="{{ url_for('training.archived_projects') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-archive"></i> 归档项目 ({{ archived_count }})
+        </a>
+        {% endif %}
         <a href="{{ url_for('training.project_categories') }}" class="btn btn-info">
             <i class="bi bi-folder"></i> 分类管理
         </a>
@@ -29,7 +34,8 @@
                 <select name="category_id" class="form-select" onchange="this.form.submit()">
                     <option value="">全部分类</option>
                     {% for cat in categories %}
-                    <option value="{{ cat.id }}" {% if request.args.get('category_id') == cat.id|string %}selected{% endif %}>
+                    <option value="{{ cat.id }}" {% if request.args.get('category_id')==cat.id|string %}selected{% endif
+                        %}>
                         {{ cat.name }}
                     </option>
                     {% endfor %}
@@ -39,14 +45,14 @@
                 <label class="form-label">状态</label>
                 <select name="is_active" class="form-select" onchange="this.form.submit()">
                     <option value="">全部</option>
-                    <option value="1" {% if request.args.get('is_active') == '1' %}selected{% endif %}>启用</option>
-                    <option value="0" {% if request.args.get('is_active') == '0' %}selected{% endif %}>停用</option>
+                    <option value="1" {% if request.args.get('is_active')=='1' %}selected{% endif %}>启用</option>
+                    <option value="0" {% if request.args.get('is_active')=='0' %}selected{% endif %}>停用</option>
                 </select>
             </div>
             <div class="col-md-4">
                 <label class="form-label">搜索</label>
                 <input type="text" name="search" class="form-control" placeholder="项目名称"
-                       value="{{ request.args.get('search', '') }}">
+                    value="{{ request.args.get('search', '') }}">
             </div>
         </form>
     </div>
@@ -76,10 +82,8 @@
                     <tr class="{% if not proj.is_active %}table-secondary{% endif %}">
                         <td>
                             {% if proj.record_count == 0 %}
-                            <input type="checkbox" class="form-check-input project-checkbox"
-                                   value="{{ proj.id }}"
-                                   data-name="{{ proj.name }}"
-                                   onchange="updateBatchDeleteBtn()">
+                            <input type="checkbox" class="form-check-input project-checkbox" value="{{ proj.id }}"
+                                data-name="{{ proj.name }}" onchange="updateBatchDeleteBtn()">
                             {% else %}
                             <span class="text-muted" title="有关联记录,无法删除">
                                 <i class="bi bi-lock"></i>
@@ -106,7 +110,7 @@
                         <td>{{ proj.created_at[:10] if proj.created_at else '-' }}</td>
                         <td>
                             <button class="btn btn-sm btn-outline-primary"
-                                    onclick="editProject({{ proj.id }}, '{{ proj.name }}', {{ proj.category_id }}, '{{ proj.description or '' }}', {{ proj.is_active }})">
+                                onclick="editProject({{ proj.id }}, '{{ proj.name }}', {{ proj.category_id }}, '{{ proj.description or '' }}', {{ proj.is_active }})">
                                 <i class="bi bi-pencil"></i> 编辑
                             </button>
                         </td>
@@ -156,7 +160,8 @@
                     </div>
                     <div class="mb-3">
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="is_active" id="add_is_active" value="1" checked>
+                            <input class="form-check-input" type="checkbox" name="is_active" id="add_is_active"
+                                value="1" checked>
                             <label class="form-check-label" for="add_is_active">
                                 启用此项目
                             </label>
@@ -202,7 +207,8 @@
                     </div>
                     <div class="mb-3">
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="is_active" id="edit_is_active" value="1">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="edit_is_active"
+                                value="1">
                             <label class="form-check-label" for="edit_is_active">
                                 启用此项目
                             </label>
@@ -243,14 +249,10 @@
                     <div class="mb-3">
                         <label class="form-label">
                             粘贴数据 <span class="text-danger">*</span>
-                            <small class="text-muted">(示例: "理论培训	安全规程" 或 "安全规程")</small>
+                            <small class="text-muted">(示例: "理论培训 安全规程" 或 "安全规程")</small>
                         </label>
-                        <textarea class="form-control font-monospace"
-                                  name="batch_data"
-                                  id="batch_data"
-                                  rows="10"
-                                  required
-                                  placeholder="理论培训	安全规程&#10;实操培训	设备操作&#10;技能培训	故障排查"></textarea>
+                        <textarea class="form-control font-monospace" name="batch_data" id="batch_data" rows="10"
+                            required placeholder="理论培训	安全规程&#10;实操培训	设备操作&#10;技能培训	故障排查"></textarea>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">默认分类（可选）</label>
@@ -266,7 +268,8 @@
                     </div>
                     <div class="mb-3">
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" name="is_active" id="batch_is_active" value="1" checked>
+                            <input class="form-check-input" type="checkbox" name="is_active" id="batch_is_active"
+                                value="1" checked>
                             <label class="form-check-label" for="batch_is_active">
                                 启用添加的项目
                             </label>
@@ -274,7 +277,8 @@
                     </div>
                     <div id="previewSection" style="display:none;">
                         <h6>数据预览：</h6>
-                        <div id="previewContent" class="border rounded p-2 bg-light" style="max-height: 200px; overflow-y: auto;"></div>
+                        <div id="previewContent" class="border rounded p-2 bg-light"
+                            style="max-height: 200px; overflow-y: auto;"></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -291,111 +295,111 @@
 
 {% block extra_js %}
 <script>
-function editProject(id, name, categoryId, description, isActive) {
-    document.getElementById('edit_project_id').value = id;
-    document.getElementById('edit_name').value = name;
-    document.getElementById('edit_category_id').value = categoryId;
-    document.getElementById('edit_description').value = description;
-    document.getElementById('edit_is_active').checked = isActive === 1;
+    function editProject(id, name, categoryId, description, isActive) {
+        document.getElementById('edit_project_id').value = id;
+        document.getElementById('edit_name').value = name;
+        document.getElementById('edit_category_id').value = categoryId;
+        document.getElementById('edit_description').value = description;
+        document.getElementById('edit_is_active').checked = isActive === 1;
 
-    const modal = new bootstrap.Modal(document.getElementById('editProjectModal'));
-    modal.show();
-}
-
-// 全选/取消全选
-function toggleSelectAll() {
-    const selectAll = document.getElementById('selectAll');
-    const checkboxes = document.querySelectorAll('.project-checkbox');
-    checkboxes.forEach(cb => cb.checked = selectAll.checked);
-    updateBatchDeleteBtn();
-}
-
-// 更新批量删除按钮显示状态
-function updateBatchDeleteBtn() {
-    const checkboxes = document.querySelectorAll('.project-checkbox:checked');
-    const btn = document.getElementById('batchDeleteBtn');
-    if (checkboxes.length > 0) {
-        btn.style.display = 'inline-block';
-        btn.textContent = `批量删除 (${checkboxes.length})`;
-    } else {
-        btn.style.display = 'none';
-    }
-}
-
-// 批量删除项目
-function batchDeleteProjects() {
-    const checkboxes = document.querySelectorAll('.project-checkbox:checked');
-    if (checkboxes.length === 0) {
-        alert('请先选择要删除的项目');
-        return;
+        const modal = new bootstrap.Modal(document.getElementById('editProjectModal'));
+        modal.show();
     }
 
-    const projectNames = Array.from(checkboxes).map(cb => cb.dataset.name).join('、');
-    if (!confirm(`确定要删除以下 ${checkboxes.length} 个项目吗？\n\n${projectNames}\n\n此操作不可撤销。`)) {
-        return;
+    // 全选/取消全选
+    function toggleSelectAll() {
+        const selectAll = document.getElementById('selectAll');
+        const checkboxes = document.querySelectorAll('.project-checkbox');
+        checkboxes.forEach(cb => cb.checked = selectAll.checked);
+        updateBatchDeleteBtn();
     }
 
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '{{ url_for("training.batch_delete_projects") }}';
-
-    const csrfInput = document.createElement('input');
-    csrfInput.type = 'hidden';
-    csrfInput.name = 'csrf_token';
-    csrfInput.value = '{{ csrf_token() }}';
-    form.appendChild(csrfInput);
-
-    checkboxes.forEach(cb => {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'project_ids';
-        input.value = cb.value;
-        form.appendChild(input);
-    });
-
-    document.body.appendChild(form);
-    form.submit();
-}
-
-// 预览批量添加数据
-function previewBatchData() {
-    const data = document.getElementById('batch_data').value.trim();
-    if (!data) {
-        alert('请先粘贴数据');
-        return;
+    // 更新批量删除按钮显示状态
+    function updateBatchDeleteBtn() {
+        const checkboxes = document.querySelectorAll('.project-checkbox:checked');
+        const btn = document.getElementById('batchDeleteBtn');
+        if (checkboxes.length > 0) {
+            btn.style.display = 'inline-block';
+            btn.textContent = `批量删除 (${checkboxes.length})`;
+        } else {
+            btn.style.display = 'none';
+        }
     }
 
-    const lines = data.split('\n').filter(line => line.trim());
-    const previewContent = document.getElementById('previewContent');
-    const previewSection = document.getElementById('previewSection');
-
-    let html = '<table class="table table-sm table-bordered mb-0"><thead><tr><th>序号</th><th>分类</th><th>项目名称</th></tr></thead><tbody>';
-
-    lines.forEach((line, index) => {
-        const parts = line.split('\t').map(p => p.trim());
-        let category = '';
-        let projectName = '';
-
-        if (parts.length >= 2) {
-            // 两列数据：分类 + 项目名称
-            category = parts[0] || '<span class="text-muted">（空）</span>';
-            projectName = parts[1];
-        } else if (parts.length === 1) {
-            // 只有一列：项目名称
-            category = '<span class="text-muted">（使用默认分类）</span>';
-            projectName = parts[0];
+    // 批量删除项目
+    function batchDeleteProjects() {
+        const checkboxes = document.querySelectorAll('.project-checkbox:checked');
+        if (checkboxes.length === 0) {
+            alert('请先选择要删除的项目');
+            return;
         }
 
-        html += `<tr>
+        const projectNames = Array.from(checkboxes).map(cb => cb.dataset.name).join('、');
+        if (!confirm(`确定要删除以下 ${checkboxes.length} 个项目吗？\n\n${projectNames}\n\n此操作不可撤销。`)) {
+            return;
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '{{ url_for("training.batch_delete_projects") }}';
+
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = '{{ csrf_token() }}';
+        form.appendChild(csrfInput);
+
+        checkboxes.forEach(cb => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'project_ids';
+            input.value = cb.value;
+            form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
+    }
+
+    // 预览批量添加数据
+    function previewBatchData() {
+        const data = document.getElementById('batch_data').value.trim();
+        if (!data) {
+            alert('请先粘贴数据');
+            return;
+        }
+
+        const lines = data.split('\n').filter(line => line.trim());
+        const previewContent = document.getElementById('previewContent');
+        const previewSection = document.getElementById('previewSection');
+
+        let html = '<table class="table table-sm table-bordered mb-0"><thead><tr><th>序号</th><th>分类</th><th>项目名称</th></tr></thead><tbody>';
+
+        lines.forEach((line, index) => {
+            const parts = line.split('\t').map(p => p.trim());
+            let category = '';
+            let projectName = '';
+
+            if (parts.length >= 2) {
+                // 两列数据：分类 + 项目名称
+                category = parts[0] || '<span class="text-muted">（空）</span>';
+                projectName = parts[1];
+            } else if (parts.length === 1) {
+                // 只有一列：项目名称
+                category = '<span class="text-muted">（使用默认分类）</span>';
+                projectName = parts[0];
+            }
+
+            html += `<tr>
             <td>${index + 1}</td>
             <td>${category}</td>
             <td>${projectName}</td>
         </tr>`;
-    });
+        });
 
-    html += '</tbody></table>';
-    previewContent.innerHTML = html;
-    previewSection.style.display = 'block';
-}
+        html += '</tbody></table>';
+        previewContent.innerHTML = html;
+        previewSection.style.display = 'block';
+    }
 </script>
 {% endblock %}

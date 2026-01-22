@@ -112,7 +112,8 @@
         display: flex;
         flex-direction: column;
         gap: 20px;
-        overflow-y: auto;  /* 添加滚动条 */
+        overflow-y: auto;
+        /* 添加滚动条 */
     }
 
     .chart-container {
@@ -152,7 +153,7 @@
         font-size: 1.1em;
     }
 
-    /* 响应式 */
+    /* 响应式 - 平板设备 */
     @media (max-width: 1024px) {
         .capability-container {
             flex-direction: column;
@@ -161,13 +162,159 @@
 
         .student-list-panel {
             width: 100%;
-            max-height: 400px;
+            max-height: 50vh;
+            /* 增加高度以适应筛选器 */
         }
 
         .charts-panel {
             min-height: 800px;
         }
     }
+
+    /* 移动端汉堡菜单按钮 */
+    .mobile-menu-toggle {
+        display: none;
+        position: fixed;
+        top: 80px;
+        left: 15px;
+        z-index: 1001;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        width: 48px;
+        height: 48px;
+        box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .mobile-menu-toggle:hover {
+        background: #0056b3;
+        transform: scale(1.05);
+    }
+
+    .mobile-menu-toggle:active {
+        transform: scale(0.95);
+    }
+
+    /* 汉堡图标 */
+    .hamburger-icon {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .hamburger-icon span {
+        display: block;
+        width: 20px;
+        height: 2px;
+        background: white;
+        border-radius: 2px;
+        transition: all 0.3s;
+    }
+
+    /* 遮罩层 */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 999;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+
+    .sidebar-overlay.show {
+        display: block;
+        opacity: 1;
+    }
+
+    /* 响应式 - 手机设备 */
+    @media (max-width: 768px) {
+
+        /* 显示汉堡菜单按钮 */
+        .mobile-menu-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 侧边栏抽屉样式 */
+        .student-list-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 85%;
+            max-width: 320px;
+            max-height: 100vh;
+            z-index: 1000;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease-in-out;
+            box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .student-list-panel.show {
+            transform: translateX(0);
+        }
+
+        /* 优化筛选器区域内边距 */
+        .student-list-panel>div[style*="padding: 15px"] {
+            padding: 10px !important;
+        }
+
+        /* 压缩表单间距 */
+        .student-list-panel .mb-3 {
+            margin-bottom: 0.75rem !important;
+        }
+
+        /* 优化图例 */
+        .key-personnel-legend {
+            padding: 8px 12px;
+            font-size: 0.8em;
+            margin-bottom: 8px;
+        }
+
+        /* 图表区域占满宽度 */
+        .charts-panel {
+            width: 100%;
+            min-height: auto;
+        }
+    }
+
+    /* 响应式 - 小屏手机 */
+    @media (max-width: 576px) {
+        .student-list-panel {
+            max-height: 65vh;
+            /* 小屏幕最大化列表空间 */
+        }
+
+        .student-list-panel>div[style*="padding"] {
+            padding: 8px !important;
+        }
+
+        .student-list-panel .mb-3 {
+            margin-bottom: 0.5rem !important;
+        }
+
+        .key-personnel-legend {
+            padding: 6px 10px;
+            font-size: 0.75em;
+        }
+
+        /* 优化人员列表项 */
+        .student-item {
+            padding: 10px;
+            margin-bottom: 6px;
+        }
+    }
+
 
     /* 关键人员图例 */
     .key-personnel-legend {
@@ -198,7 +345,8 @@
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
-            <h2>个人综合能力画像 <span id="pageDateRange" class="badge bg-primary" style="font-size: 0.5em; vertical-align: middle;"></span></h2>
+            <h2>个人综合能力画像 <span id="pageDateRange" class="badge bg-primary"
+                    style="font-size: 0.5em; vertical-align: middle;"></span></h2>
             <p class="text-muted mb-0">整合人员、培训、安全、绩效数据的五维能力评估（按权限分级）</p>
         </div>
         <a href="{{ url_for('personnel.dashboard') }}" class="btn btn-secondary">返回</a>
@@ -234,8 +382,7 @@
 
                 <div class="mb-3">
                     <label class="form-label" style="font-size: 0.85em; font-weight: 600;">岗位</label>
-                    <input type="text" class="form-control form-control-sm" id="filterPosition"
-                           placeholder="输入岗位关键词">
+                    <input type="text" class="form-control form-control-sm" id="filterPosition" placeholder="输入岗位关键词">
                 </div>
 
                 <div class="d-flex gap-2">
@@ -260,146 +407,172 @@
         <!-- 右侧：图表区域 -->
         <div class="charts-panel">
             <div style="flex: 1; display: flex; flex-direction: column; gap: 20px; padding-top: 15px;">
-                    <!-- 综合分数卡片 -->
-                    <div class="row g-3" id="scoreCards">
-                        <div class="col-md-2">
-                            <div class="card text-center">
-                                <div class="card-body p-2">
-                                    <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">综合评分</h6>
-                                    <h3 class="mb-0" id="scoreComprehensive">--</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card text-center">
-                                <div class="card-body p-2">
-                                    <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">培训能力</h6>
-                                    <h3 class="mb-0 text-primary" id="scoreTraining">--</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card text-center">
-                                <div class="card-body p-2">
-                                    <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">安全意识</h6>
-                                    <h3 class="mb-0 text-success" id="scoreSafety">--</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card text-center">
-                                <div class="card-body p-2">
-                                    <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">工作绩效</h6>
-                                    <h3 class="mb-0 text-warning" id="scorePerformance">--</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card text-center">
-                                <div class="card-body p-2">
-                                    <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">学习能力</h6>
-                                    <h3 class="mb-0 text-info" id="scoreLearning">--</h3>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2">
-                            <div class="card text-center">
-                                <div class="card-body p-2">
-                                    <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">稳定性</h6>
-                                    <h3 class="mb-0 text-secondary" id="scoreStability">--</h3>
-                                </div>
+                <!-- 综合分数卡片 -->
+                <div class="row g-3" id="scoreCards">
+                    <div class="col-md-2">
+                        <div class="card text-center">
+                            <div class="card-body p-2">
+                                <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">综合评分</h6>
+                                <h3 class="mb-0" id="scoreComprehensive">--</h3>
                             </div>
                         </div>
                     </div>
-
-                    <!-- 五维能力雷达图 -->
-                    <div class="chart-container" style="flex: 1;">
-                        <div class="chart-title">五维能力雷达图</div>
-                        <div class="chart-canvas-wrapper">
-                            <canvas id="comprehensiveRadar"></canvas>
+                    <div class="col-md-2">
+                        <div class="card text-center">
+                            <div class="card-body p-2">
+                                <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">培训能力</h6>
+                                <h3 class="mb-0 text-primary" id="scoreTraining">--</h3>
+                            </div>
                         </div>
                     </div>
+                    <div class="col-md-2">
+                        <div class="card text-center">
+                            <div class="card-body p-2">
+                                <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">安全意识</h6>
+                                <h3 class="mb-0 text-success" id="scoreSafety">--</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card text-center">
+                            <div class="card-body p-2">
+                                <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">工作绩效</h6>
+                                <h3 class="mb-0 text-warning" id="scorePerformance">--</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card text-center">
+                            <div class="card-body p-2">
+                                <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">学习能力</h6>
+                                <h3 class="mb-0 text-info" id="scoreLearning">--</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card text-center">
+                            <div class="card-body p-2">
+                                <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">稳定性</h6>
+                                <h3 class="mb-0 text-secondary" id="scoreStability">--</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                    <!-- 五个模块的统计数据 -->
-                    <div class="row g-3">
-                        <div class="col-md-4 col-lg">
-                            <div class="card h-100">
-                                <div class="card-header bg-light">
-                                    <strong>人员信息</strong>
-                                </div>
-                                <div class="card-body" id="personnelStats">
-                                    <p class="mb-1"><span class="text-muted">工龄:</span> <span id="personnelWorkingYears">--</span> 年</p>
-                                    <p class="mb-1"><span class="text-muted">司龄:</span> <span id="personnelTenureYears">--</span> 年</p>
-                                    <p class="mb-1"><span class="text-muted">驾驶年限:</span> <span id="personnelDrivingYears">--</span> 年</p>
-                                    <p class="mb-0"><span class="text-muted">学历:</span> <span id="personnelEducation">--</span></p>
-                                </div>
+                <!-- 五维能力雷达图 -->
+                <div class="chart-container" style="flex: 1;">
+                    <div class="chart-title">五维能力雷达图</div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="comprehensiveRadar"></canvas>
+                    </div>
+                </div>
+
+                <!-- 五个模块的统计数据 -->
+                <div class="row g-3">
+                    <div class="col-md-4 col-lg">
+                        <div class="card h-100">
+                            <div class="card-header bg-light">
+                                <strong>人员信息</strong>
+                            </div>
+                            <div class="card-body" id="personnelStats">
+                                <p class="mb-1"><span class="text-muted">工龄:</span> <span
+                                        id="personnelWorkingYears">--</span> 年</p>
+                                <p class="mb-1"><span class="text-muted">司龄:</span> <span
+                                        id="personnelTenureYears">--</span> 年</p>
+                                <p class="mb-1"><span class="text-muted">驾驶年限:</span> <span
+                                        id="personnelDrivingYears">--</span> 年</p>
+                                <p class="mb-0"><span class="text-muted">学历:</span> <span
+                                        id="personnelEducation">--</span></p>
                             </div>
                         </div>
-                        <div class="col-md-4 col-lg">
-                            <div class="card h-100">
-                                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                                    <strong>安全记录</strong>
-                                    <span id="safetyAlertBadge" class="badge bg-success">✅ 安全</span>
-                                </div>
-                                <div class="card-body" id="safetyStats">
-                                    <p class="mb-1"><span class="text-muted">违规次数:</span> <span class="text-danger" id="safetyViolations">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">累计扣分:</span> <span class="text-danger" id="safetyDeduction">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">月均频次:</span> <span id="safetyAvgFreq">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">行为分(A):</span> <span id="safetyScoreA">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">严重分(B):</span> <span id="safetyScoreB">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">发现问题:</span> <span id="safetyInspector">--</span></p>
-                                    <p class="mb-0"><span class="text-muted">整改次数:</span> <span id="safetyRectifier">--</span></p>
-                                </div>
+                    </div>
+                    <div class="col-md-4 col-lg">
+                        <div class="card h-100">
+                            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                <strong>安全记录</strong>
+                                <span id="safetyAlertBadge" class="badge bg-success">✅ 安全</span>
+                            </div>
+                            <div class="card-body" id="safetyStats">
+                                <p class="mb-1"><span class="text-muted">违规次数:</span> <span class="text-danger"
+                                        id="safetyViolations">--</span></p>
+                                <p class="mb-1"><span class="text-muted">累计扣分:</span> <span class="text-danger"
+                                        id="safetyDeduction">--</span></p>
+                                <p class="mb-1"><span class="text-muted">月均频次:</span> <span id="safetyAvgFreq">--</span>
+                                </p>
+                                <p class="mb-1"><span class="text-muted">行为分(A):</span> <span
+                                        id="safetyScoreA">--</span></p>
+                                <p class="mb-1"><span class="text-muted">严重分(B):</span> <span
+                                        id="safetyScoreB">--</span></p>
+                                <p class="mb-1"><span class="text-muted">发现问题:</span> <span
+                                        id="safetyInspector">--</span></p>
+                                <p class="mb-0"><span class="text-muted">整改次数:</span> <span
+                                        id="safetyRectifier">--</span></p>
                             </div>
                         </div>
-                        <div class="col-md-4 col-lg">
-                            <div class="card h-100">
-                                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                                    <strong>培训能力</strong>
-                                    <span id="trainingAlertBadge" class="badge bg-success">✅ 能力达标</span>
-                                </div>
-                                <div class="card-body" id="trainingStats">
-                                    <p class="mb-1"><span class="text-muted">雷达分值:</span> <span class="text-primary" id="trainingRadarScore">--</span> 分</p>
-                                    <p class="mb-1"><span class="text-muted">原始基础分:</span> <span id="trainingOriginalScore">--</span> 分</p>
-                                    <p class="mb-1"><span class="text-muted">惩罚系数:</span> <span id="trainingCoefficient">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">操作总数:</span> <span id="totalTrainings">--</span> 次</p>
-                                    <p class="mb-0"><span class="text-muted">失格次数:</span> <span id="trainingFailCount">--</span> 次</p>
-                                </div>
+                    </div>
+                    <div class="col-md-4 col-lg">
+                        <div class="card h-100">
+                            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                <strong>培训能力</strong>
+                                <span id="trainingAlertBadge" class="badge bg-success">✅ 能力达标</span>
+                            </div>
+                            <div class="card-body" id="trainingStats">
+                                <p class="mb-1"><span class="text-muted">雷达分值:</span> <span class="text-primary"
+                                        id="trainingRadarScore">--</span> 分</p>
+                                <p class="mb-1"><span class="text-muted">原始基础分:</span> <span
+                                        id="trainingOriginalScore">--</span> 分</p>
+                                <p class="mb-1"><span class="text-muted">惩罚系数:</span> <span
+                                        id="trainingCoefficient">--</span></p>
+                                <p class="mb-1"><span class="text-muted">操作总数:</span> <span
+                                        id="totalTrainings">--</span> 次</p>
+                                <p class="mb-0"><span class="text-muted">失格次数:</span> <span
+                                        id="trainingFailCount">--</span> 次</p>
                             </div>
                         </div>
-                        <div class="col-md-4 col-lg">
-                            <div class="card h-100">
-                                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                                    <strong>绩效数据</strong>
-                                    <span id="performanceAlertBadge" class="badge bg-success">✅ 达标</span>
-                                </div>
-                                <div class="card-body" id="performanceStats">
-                                    <p class="mb-1"><span class="text-muted">绩效分值:</span> <span class="text-warning" id="recentPerformance">--</span> 分</p>
-                                    <p class="mb-1"><span class="text-muted">等级标签:</span> <span id="performanceLabel">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">统计模式:</span> <span id="performanceMode">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">统计范围:</span> <span id="performanceRange">--</span></p>
-                                    <p class="mb-0"><span class="text-muted">记录数:</span> <span id="performanceCount">--</span> 条</p>
-                                </div>
+                    </div>
+                    <div class="col-md-4 col-lg">
+                        <div class="card h-100">
+                            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                <strong>绩效数据</strong>
+                                <span id="performanceAlertBadge" class="badge bg-success">✅ 达标</span>
+                            </div>
+                            <div class="card-body" id="performanceStats">
+                                <p class="mb-1"><span class="text-muted">绩效分值:</span> <span class="text-warning"
+                                        id="recentPerformance">--</span> 分</p>
+                                <p class="mb-1"><span class="text-muted">等级标签:</span> <span
+                                        id="performanceLabel">--</span></p>
+                                <p class="mb-1"><span class="text-muted">统计模式:</span> <span
+                                        id="performanceMode">--</span></p>
+                                <p class="mb-1"><span class="text-muted">统计范围:</span> <span
+                                        id="performanceRange">--</span></p>
+                                <p class="mb-0"><span class="text-muted">记录数:</span> <span
+                                        id="performanceCount">--</span> 条</p>
                             </div>
                         </div>
-                        <div class="col-md-4 col-lg">
-                            <div class="card h-100">
-                                <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                                    <strong>学习能力</strong>
-                                    <span id="learningAlertBadge" class="badge bg-success">✅ 稳定</span>
-                                </div>
-                                <div class="card-body" id="learningStats">
-                                    <p class="mb-1"><span class="text-muted">学习分值:</span> <span class="text-info" id="learningScoreValue">--</span> 分</p>
-                                    <p class="mb-1"><span class="text-muted">能力等级:</span> <span id="learningTier">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">变化趋势:</span> <span id="learningDelta">--</span></p>
-                                    <p class="mb-1"><span class="text-muted">成长斜率:</span> <span id="learningSlope">--</span></p>
-                                    <p class="mb-0"><span class="text-muted">统计月数:</span> <span id="learningMonths">--</span> 月</p>
-                                </div>
+                    </div>
+                    <div class="col-md-4 col-lg">
+                        <div class="card h-100">
+                            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                <strong>学习能力</strong>
+                                <span id="learningAlertBadge" class="badge bg-success">✅ 稳定</span>
+                            </div>
+                            <div class="card-body" id="learningStats">
+                                <p class="mb-1"><span class="text-muted">学习分值:</span> <span class="text-info"
+                                        id="learningScoreValue">--</span> 分</p>
+                                <p class="mb-1"><span class="text-muted">能力等级:</span> <span id="learningTier">--</span>
+                                </p>
+                                <p class="mb-1"><span class="text-muted">变化趋势:</span> <span id="learningDelta">--</span>
+                                </p>
+                                <p class="mb-1"><span class="text-muted">成长斜率:</span> <span id="learningSlope">--</span>
+                                </p>
+                                <p class="mb-0"><span class="text-muted">统计月数:</span> <span
+                                        id="learningMonths">--</span> 月</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
     </div>
 </div>
 
@@ -408,7 +581,8 @@
 {% block extra_js %}
 <!-- 引入 Chart.js 和 Annotation 插件 -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<script
+    src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 
 <!-- 引入日期筛选器库 -->
 <script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
@@ -862,7 +1036,7 @@
                     },
                     tooltip: {
                         // 自定义tooltip背景颜色
-                        backgroundColor: function(context) {
+                        backgroundColor: function (context) {
                             if (context.tooltip.dataPoints && context.tooltip.dataPoints[0]) {
                                 const dataIndex = context.tooltip.dataPoints[0].dataIndex;
 
@@ -911,7 +1085,7 @@
                         borderWidth: 1,
                         borderColor: 'rgba(255, 255, 255, 0.3)',
                         callbacks: {
-                            label: function(context) {
+                            label: function (context) {
                                 // 培训能力维度（索引0）
                                 if (context.dataIndex === 0) {
                                     return [
@@ -947,7 +1121,7 @@
 
 
     // 页面加载完成后初始化
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         console.log('页面加载完成，开始初始化...');
 
         // 初始化日期筛选器（月份模式，会自动检测input type="month"）
@@ -964,5 +1138,34 @@
         loadDepartments();
         loadStudents();
     });
+
+    // 移动端侧边栏控制函数
+    function toggleSidebar() {
+        const panel = document.getElementById('studentListPanel');
+        const overlay = document.getElementById('sidebarOverlay');
+
+        if (panel && overlay) {
+            panel.classList.toggle('show');
+            overlay.classList.toggle('show');
+
+            // 防止背景滚动
+            if (panel.classList.contains('show')) {
+                document.body.style.overflow = 'hidden';
+            } else {
+                document.body.style.overflow = '';
+            }
+        }
+    }
+
+    // 选择人员后自动关闭侧边栏(移动端)
+    const originalSelectStudent = selectStudent;
+    selectStudent = async function (empNo) {
+        await originalSelectStudent(empNo);
+
+        // 如果是移动端,选择后自动关闭侧边栏
+        if (window.innerWidth <= 768) {
+            toggleSidebar();
+        }
+    };
 </script>
 {% endblock %}

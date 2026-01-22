@@ -141,6 +141,8 @@ def _init_mysql_tables(cur):
             team_name VARCHAR(255),
             training_date VARCHAR(20) NOT NULL,
             project_id INT,
+            project_name_snapshot VARCHAR(255),
+            category_name_snapshot VARCHAR(255),
             problem_type VARCHAR(255),
             specific_problem TEXT,
             corrective_measures TEXT,
@@ -239,7 +241,7 @@ def _init_mysql_tables(cur):
             priority INT DEFAULT 0,
             timeout INT DEFAULT 30,
             max_tokens INT DEFAULT 200,
-            temperature DECIMAL(3,2) DEFAULT 0.70,
+            temperature FLOAT DEFAULT 0.70,
             extra_headers TEXT,
             description TEXT,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -287,10 +289,27 @@ def _init_mysql_tables(cur):
             description TEXT,
             category_id INT,
             is_active INT NOT NULL DEFAULT 1,
+            is_archived INT NOT NULL DEFAULT 0,
+            archived_at DATETIME,
+            archived_by INT,
             created_by INT,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (category_id) REFERENCES training_project_categories(id) ON DELETE SET NULL,
-            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+            FOREIGN KEY (archived_by) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+
+        # AI prompt configurations table (5-dimension analysis)
+        """
+        CREATE TABLE IF NOT EXISTS ai_analysis_config (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            config_key VARCHAR(50) NOT NULL UNIQUE,
+            title VARCHAR(255) NOT NULL,
+            default_instruction TEXT,
+            current_instruction TEXT,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
 
@@ -469,6 +488,8 @@ def _create_indexes(cur):
         ("idx_import_logs_department_id", "import_logs", "department_id"),
         ("idx_config_logs_changed_at", "algorithm_config_logs", "changed_at"),
         ("idx_training_projects_category_id", "training_projects", "category_id"),
+        ("idx_training_projects_archived", "training_projects", "is_archived"),
+        ("idx_training_records_project_snapshot", "training_records", "project_name_snapshot"),
     ]
 
     for index_name, table_name, columns in indexes:
@@ -516,6 +537,73 @@ def bootstrap_data():
 
     # Bootstrap default stopwords
     bootstrap_stopwords()
+
+    # Bootstrap default AI analysis configs
+    bootstrap_ai_analysis_config()
+
+
+def bootstrap_ai_analysis_config():
+    """Initialize default AI analysis configurations"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    # Check if configs already exist
+    cur.execute("SELECT COUNT(1) AS cnt FROM ai_analysis_config")
+    result = cur.fetchone()
+    count = result['cnt'] if result else 0
+
+    if count > 0:
+        return  # Already initialized
+
+    # Default configs (copied from AIPromptConfigService to avoid circular import)
+    default_configs = [
+        {
+            "key": "risk_profile",
+            "title": "1. 关键风险画像",
+            "instruction": """1. 高频违章点：指出出现频率最高的前3个问题类型。
+2. 严重违章点：提取所有考核分值 > 3分（或双倍扣分）的严重问题。
+3. 时空规律：分析这些问题是否集中在特定时间（如早晚班）或特定作业环节（如出入库、正线折返）。"""
+        },
+        {
+            "key": "training_gap",
+            "title": "2. 培训关联分析",
+            "instruction": """1. 结合"培训失格"和"培训具体问题"记录，分析他的**实操弱项**是否直接导致了上述违章？
+2. (例如：培训中多次"车门故障"不合格，现场是否也发生了车门操作违章？)"""
+        },
+        {
+            "key": "root_cause",
+            "title": "3. 根因深度定性",
+            "instruction": """请判断该员工的主要风险来源是以下哪一种，并给出理由：
+A. **技能型短板** (Skill Deficit): 业务生疏，不知道怎么做。
+B. **习惯性违章** (Habitual Violation): 知道标准，但为了省事简化作业。
+C. **状态型异常** (State Anomaly): 近期家庭变故、疲劳或情绪波动导致。"""
+        },
+        {
+            "key": "prediction",
+            "title": "4. 预测性预警",
+            "instruction": """基于现有趋势，如果不仅行干预，预测该员工在未来 30 天内最可能发生的**具体安全事故**是什么？（如：冒进信号、夹人夹物等）。"""
+        },
+        {
+            "key": "measures",
+            "title": "5. 精准帮扶方案",
+            "instruction": """针对上述原因，给出具体的帮扶措施（不要给万金油建议）。
+- **技能型**：建议重修哪一门具体课程？
+- **习惯型**：建议采取何种检查手段（如：加密视频抽查频次、跟车添乘）？"""
+        }
+    ]
+
+    try:
+        cur.executemany(
+            """
+            INSERT INTO ai_analysis_config (config_key, title, default_instruction, current_instruction)
+            VALUES (%s, %s, %s, %s)
+            """,
+            [(c['key'], c['title'], c['instruction'], c['instruction']) for c in default_configs]
+        )
+        conn.commit()
+        print(f"Initialized {len(default_configs)} AI analysis configs")
+    except Exception as e:
+        print(f"Error initializing AI analysis configs: {e}")
 
 
 def bootstrap_stopwords():

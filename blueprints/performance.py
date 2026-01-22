@@ -61,7 +61,8 @@ def extract_text_from_pdf(pdf_path):
         import pdfplumber
         with pdfplumber.open(pdf_path) as pdf:
             for page in pdf.pages:
-                text += page.extract_text(x_tolerance=1, y_tolerance=1) or ""
+                # 移除tolerance参数以提升速度
+                text += page.extract_text() or ""
                 text += "\n"
         if text.strip():
             return text
@@ -544,41 +545,65 @@ def upload():
             conn = get_db()
             cur = conn.cursor()
 
-            # 使用部门过滤机制获取员工花名册
-            where_clause, join_clause, dept_params = build_department_filter()
-            cur.execute(
-                f"""
-                SELECT emp_no
-                FROM employees
-                {join_clause}
-                WHERE {where_clause}
-                """,
-                dept_params
-            )
-            roster = {record['emp_no'] for record in cur.fetchall()}
-            if not roster:
-                flash("人员档案为空，请先新增人员。", "warning")
-                return redirect(url_for("personnel.index"))
+            # 智能过滤策略：根据数据量选择最优方法
+            # 小数据集(<100条)：Python set查找更快
+            # 大数据集(>=100条)：数据库IN子句更快
+            
+            if len(rows) < 100:
+                # 方案A：Python过滤（适合小数据集）
+                where_clause, join_clause, dept_params = build_department_filter()
+                cur.execute(
+                    f"""
+                    SELECT emp_no
+                    FROM employees
+                    {join_clause}
+                    WHERE {where_clause}
+                    """,
+                    dept_params
+                )
+                roster = {record['emp_no'] for record in cur.fetchall()}
+                
+                if not roster:
+                    flash("人员档案为空，请先新增人员。", "warning")
+                    return redirect(url_for("personnel.index"))
 
-            filtered = [r for r in rows if r["emp_no"] in roster]
+                filtered = [r for r in rows if r["emp_no"] in roster]
+            else:
+                # 方案B：数据库IN子句过滤（适合大数据集）
+                where_clause, join_clause, dept_params = build_department_filter()
+                
+                # 提取所有工号
+                emp_nos = [r["emp_no"] for r in rows]
+                
+                # 使用IN子句批量查询
+                placeholders = ','.join(['%s'] * len(emp_nos))
+                cur.execute(
+                    f"""
+                    SELECT emp_no
+                    FROM employees
+                    {join_clause}
+                    WHERE {where_clause} AND emp_no IN ({placeholders})
+                    """,
+                    dept_params + emp_nos
+                )
+                valid_emp_nos = {record['emp_no'] for record in cur.fetchall()}
+                
+                if not valid_emp_nos:
+                    flash("识别的记录均不在花名册中，未导入任何数据。", "warning")
+                    return redirect(url_for("performance.upload"))
+                
+                filtered = [r for r in rows if r["emp_no"] in valid_emp_nos]
+            
             skipped = len(rows) - len(filtered)
 
             if not filtered:
                 flash("识别的记录均不在花名册中，未导入任何数据。", "warning")
                 return redirect(url_for("performance.upload"))
 
-            imported = 0
-            for row in filtered:
-                cur.execute(
-                    """
-                    INSERT INTO performance_records(emp_no, name, year, month, score, grade, src_file, created_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        name=VALUES(name),
-                        score=VALUES(score),
-                        grade=VALUES(grade),
-                        src_file=VALUES(src_file)
-                    """,
+            # 批量插入数据（性能优化：使用executemany代替逐行插入）
+            if filtered:
+                # 准备批量插入的数据
+                batch_data = [
                     (
                         row["emp_no"],
                         row["name"],
@@ -588,9 +613,27 @@ def upload():
                         row["grade"],
                         filename,
                         uid,
-                    ),
+                    )
+                    for row in filtered
+                ]
+                
+                # 批量插入
+                cur.executemany(
+                    """
+                    INSERT INTO performance_records(emp_no, name, year, month, score, grade, src_file, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        name=VALUES(name),
+                        score=VALUES(score),
+                        grade=VALUES(grade),
+                        src_file=VALUES(src_file)
+                    """,
+                    batch_data
                 )
-                imported += 1
+                imported = len(filtered)
+            else:
+                imported = 0
+            
             conn.commit()
 
             # 记录导入操作日志

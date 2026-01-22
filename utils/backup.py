@@ -55,6 +55,116 @@ class BackupConfig:
                 f.write('# Keep the directory\n')
                 f.write('!.gitignore\n')
 
+                f.write('!.gitignore\n')
+
+
+# ========== Task Management ==========
+
+import threading
+import uuid
+import time
+from enum import Enum
+
+class TaskStatus(Enum):
+    PENDING = 'pending'
+    RUNNING = 'running'
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+
+class BackupTask:
+    """Background task for backup/restore operations"""
+    
+    def __init__(self, task_type, description=''):
+        self.id = str(uuid.uuid4())
+        self.type = task_type
+        self.description = description
+        self.status = TaskStatus.PENDING.value
+        self.progress = 0
+        self.message = "Queued..."
+        self.result = None
+        self.error = None
+        self.created_at = datetime.now()
+        self.completed_at = None
+        self._thread = None
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'type': self.type,
+            'description': self.description,
+            'status': self.status,
+            'progress': self.progress,
+            'message': self.message,
+            'result': self.result,
+            'error': self.error,
+            'created_at': self.created_at.isoformat(),
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None
+        }
+
+class BackupTaskManager:
+    """Manages background backup/restore tasks"""
+    
+    _tasks = {}
+    _lock = threading.Lock()
+    
+    @classmethod
+    def create_task(cls, task_type, task_description, target_func, *args, **kwargs):
+        """Create and start a new background task"""
+        task = BackupTask(task_type, task_description)
+        
+        with cls._lock:
+            cls._tasks[task.id] = task
+        
+        # Define wrapper to update task status
+        def task_wrapper():
+            task.status = TaskStatus.RUNNING.value
+            task.message = "Starting..."
+            try:
+                # Pass task object to function if it accepts 'task_tracker'
+                # otherwise just run it
+                result = target_func(*args, task_tracker=task, **kwargs)
+                
+                task.status = TaskStatus.COMPLETED.value
+                task.progress = 100
+                task.message = "Completed successfully"
+                task.result = result
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                task.status = TaskStatus.FAILED.value
+                task.error = str(e)
+                task.message = f"Error: {str(e)}"
+            finally:
+                task.completed_at = datetime.now()
+                
+        # Start thread
+        thread = threading.Thread(target=task_wrapper)
+        thread.daemon = True
+        thread.start()
+        task._thread = thread
+        
+        return task
+        
+    @classmethod
+    def get_task(cls, task_id):
+        """Get task by ID"""
+        return cls._tasks.get(task_id)
+        
+    @classmethod
+    def cleanup_old_tasks(cls, max_age_seconds=3600):
+        """Clean up old completed tasks"""
+        with cls._lock:
+            now = datetime.now()
+            to_remove = []
+            for tid, task in cls._tasks.items():
+                if task.completed_at:
+                    age = (now - task.completed_at).total_seconds()
+                    if age > max_age_seconds:
+                        to_remove.append(tid)
+            
+            for tid in to_remove:
+                del cls._tasks[tid]
+
 
 # ========== Backup Manager ==========
 
@@ -65,18 +175,23 @@ class BackupManager:
         self.logger = logging.getLogger('app')
         BackupConfig.ensure_backup_dir()
 
-    def create_backup(self, backup_type='full', description=''):
+    def create_backup(self, backup_type='full', description='', task_tracker=None):
         """
         Create a database backup
-
+        
         Args:
             backup_type: 'full' or 'incremental'
             description: Optional backup description
-
+            task_tracker: Optional BackupTask object for progress reporting
+        
         Returns:
             dict: Backup information (path, size, timestamp)
         """
         try:
+            if task_tracker:
+                task_tracker.progress = 5
+                task_tracker.message = "Initializing backup..."
+                
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_name = f"backup_{backup_type}_{timestamp}.zip"
             backup_path = os.path.join(BackupConfig.BACKUP_DIR, backup_name)
@@ -92,6 +207,10 @@ class BackupManager:
             # Create ZIP archive
             with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as backup_zip:
                 # Backup database
+                if task_tracker:
+                    task_tracker.progress = 10
+                    task_tracker.message = "Backing up database..."
+                    
                 db_backup = self._backup_database(timestamp)
                 if db_backup:
                     backup_zip.write(db_backup, os.path.basename(db_backup))
@@ -104,6 +223,10 @@ class BackupManager:
                     os.remove(db_backup)
 
                 # Backup configuration files
+                if task_tracker:
+                    task_tracker.progress = 50
+                    task_tracker.message = "Backing up configuration..."
+                    
                 if os.path.exists(BackupConfig.CONFIG_DIR):
                     for config_file in Path(BackupConfig.CONFIG_DIR).rglob('*.py'):
                         rel_path = os.path.relpath(config_file, os.path.dirname(BackupConfig.CONFIG_DIR))
@@ -115,6 +238,10 @@ class BackupManager:
                         })
 
                 # Backup uploads directory (if exists and not too large)
+                if task_tracker:
+                    task_tracker.progress = 70
+                    task_tracker.message = "Backing up uploads..."
+                    
                 if os.path.exists(BackupConfig.UPLOAD_DIR):
                     upload_size = sum(f.stat().st_size for f in Path(BackupConfig.UPLOAD_DIR).rglob('*') if f.is_file())
                     # Only backup uploads if total size < 100MB
@@ -130,6 +257,10 @@ class BackupManager:
                                 })
 
                 # Add metadata file
+                if task_tracker:
+                    task_tracker.progress = 90
+                    task_tracker.message = "Finalizing backup..."
+                    
                 metadata_json = json.dumps(metadata, ensure_ascii=False, indent=2)
                 backup_zip.writestr('backup_metadata.json', metadata_json)
 
@@ -168,23 +299,28 @@ class BackupManager:
         try:
             backup_sql_path = os.path.join(BackupConfig.BACKUP_DIR, f"db_backup_{timestamp}.sql")
 
+            # Prepare environment for mysqldump (pass password safely)
+            env = os.environ.copy()
+            env['MYSQL_PWD'] = DatabaseConfig.MYSQL_PASSWORD
+
             # Build mysqldump command
             cmd = [
                 'mysqldump',
                 f'--host={DatabaseConfig.MYSQL_HOST}',
-                f'--port={DatabaseConfig.MYSQL_PORT}',
+                f'--port={str(DatabaseConfig.MYSQL_PORT)}',
                 f'--user={DatabaseConfig.MYSQL_USER}',
-                f'--password={DatabaseConfig.MYSQL_PASSWORD}',
+                # Password passed via env
                 '--single-transaction',
                 '--routines',
                 '--triggers',
                 '--events',
+                '--default-character-set=utf8mb4',
                 DatabaseConfig.MYSQL_DATABASE
             ]
 
             # Execute mysqldump
             with open(backup_sql_path, 'w', encoding='utf-8') as f:
-                result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True)
+                result = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, env=env)
 
             if result.returncode != 0:
                 self.logger.error(f"mysqldump failed: {result.stderr}")
@@ -265,20 +401,25 @@ class BackupManager:
             self.logger.error(f"Failed to get backup info for {backup_path}: {e}")
             return None
 
-    def restore_backup(self, backup_name, restore_database=True, restore_config=True, restore_uploads=True):
+    def restore_backup(self, backup_name, restore_database=True, restore_config=True, restore_uploads=True, task_tracker=None):
         """
         Restore from backup
-
+        
         Args:
             backup_name: Name of backup file to restore
             restore_database: Whether to restore database
             restore_config: Whether to restore config files
             restore_uploads: Whether to restore upload files
-
+            task_tracker: Optional BackupTask object for progress reporting
+        
         Returns:
             dict: Restore result information
         """
         try:
+            if task_tracker:
+                task_tracker.progress = 5
+                task_tracker.message = "Initializing restore..."
+                
             backup_path = os.path.join(BackupConfig.BACKUP_DIR, backup_name)
 
             if not os.path.exists(backup_path):
@@ -291,12 +432,19 @@ class BackupManager:
             }
 
             # Create a safety backup before restore
+            if task_tracker:
+                task_tracker.message = "Creating safety backup..."
+                
             safety_backup = self.create_backup('full', 'Pre-restore safety backup')
             restore_info['safety_backup'] = safety_backup['name']
 
             with zipfile.ZipFile(backup_path, 'r') as backup_zip:
                 # Restore database
                 if restore_database:
+                    if task_tracker:
+                        task_tracker.progress = 20
+                        task_tracker.message = "Restoring database..."
+                        
                     sql_files = [f for f in backup_zip.namelist() if f.endswith('.sql')]
                     for sql_file in sql_files:
                         backup_zip.extract(sql_file, BackupConfig.BACKUP_DIR)
@@ -311,12 +459,16 @@ class BackupManager:
                                 'target': 'MySQL database'
                             })
                             self.logger.info(f"Database restored from: {sql_file}")
-
+                        
                         # Clean up extracted SQL file
                         os.remove(extracted_path)
 
                 # Restore config files
                 if restore_config:
+                    if task_tracker:
+                        task_tracker.progress = 50
+                        task_tracker.message = "Restoring configuration..."
+                        
                     config_files = [f for f in backup_zip.namelist() if f.startswith('config/')]
                     for config_file in config_files:
                         backup_zip.extract(config_file, BackupConfig.BACKUP_DIR)
@@ -337,6 +489,10 @@ class BackupManager:
 
                 # Restore uploads
                 if restore_uploads:
+                    if task_tracker:
+                        task_tracker.progress = 70
+                        task_tracker.message = "Restoring uploads..."
+                    
                     upload_files = [f for f in backup_zip.namelist() if f.startswith('uploads/')]
                     for upload_file in upload_files:
                         backup_zip.extract(upload_file, BackupConfig.BACKUP_DIR)
@@ -353,6 +509,10 @@ class BackupManager:
                             'target': target_path
                         })
 
+            if task_tracker:
+                task_tracker.progress = 95
+                task_tracker.message = "Finalizing restore..."
+                
             self.logger.info(f"Restore completed: {len(restore_info['restored_files'])} files restored")
 
             return restore_info
@@ -372,19 +532,24 @@ class BackupManager:
             bool: True if restore successful
         """
         try:
+            # Prepare environment for mysql (pass password safely)
+            env = os.environ.copy()
+            env['MYSQL_PWD'] = DatabaseConfig.MYSQL_PASSWORD
+
             # Build mysql command
             cmd = [
                 'mysql',
                 f'--host={DatabaseConfig.MYSQL_HOST}',
-                f'--port={DatabaseConfig.MYSQL_PORT}',
+                f'--port={str(DatabaseConfig.MYSQL_PORT)}',
                 f'--user={DatabaseConfig.MYSQL_USER}',
-                f'--password={DatabaseConfig.MYSQL_PASSWORD}',
+                # Password passed via env
+                '--default-character-set=utf8mb4',
                 DatabaseConfig.MYSQL_DATABASE
             ]
 
             # Execute mysql to restore
             with open(sql_file_path, 'r', encoding='utf-8') as f:
-                result = subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, text=True)
+                result = subprocess.run(cmd, stdin=f, stderr=subprocess.PIPE, text=True, env=env)
 
             if result.returncode != 0:
                 self.logger.error(f"mysql restore failed: {result.stderr}")

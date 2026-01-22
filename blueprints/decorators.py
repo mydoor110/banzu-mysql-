@@ -135,3 +135,55 @@ def role_required(required_role):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+
+
+def top_level_manager_required(f):
+    """
+    顶级部门管理员权限验证装饰器
+    
+    允许以下用户访问：
+    1. 系统管理员（admin）
+    2. 顶级部门管理员（manager角色且所属部门level=1）
+    """
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # 检查是否登录
+        if not session.get('logged_in'):
+            flash('请先登录', 'warning')
+            return redirect(url_for('auth.login', next=request.path))
+        
+        from models.database import get_db
+        
+        user_id = session.get('user_id')
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # 获取用户角色和部门信息
+        cur.execute("""
+            SELECT u.role, u.department_id, d.level
+            FROM users u
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE u.id = %s
+        """, (user_id,))
+        row = cur.fetchone()
+        
+        if not row:
+            flash('用户信息异常', 'danger')
+            return redirect(url_for('auth.login'))
+        
+        user_role = row['role']
+        dept_level = row['level']
+        
+        # 系统管理员直接通过
+        if user_role == 'admin':
+            return f(*args, **kwargs)
+        
+        # 部门管理员需要检查是否为顶级部门
+        if user_role == 'manager' and dept_level == 1:
+            return f(*args, **kwargs)
+        
+        # 其他情况拒绝访问
+        flash('需要系统管理员或顶级部门管理员权限', 'danger')
+        return redirect(url_for('performance.index'))
+    
+    return decorated_function

@@ -549,13 +549,23 @@ def calculate_training_score_with_penalty(
     total_score = 0
 
     for record in training_records:
-        score, is_qualified, is_disqualified, training_date = record
+        # 从字典中提取字段（MySQL DictCursor 返回字典）
+        score = record['score']
+        is_qualified = record['is_qualified']
+        is_disqualified = record['is_disqualified']
+        training_date = record['training_date']
+
+        # 转换 score 为数值类型（MySQL 可能返回字符串）
+        try:
+            score_value = int(score) if score else 0
+        except (ValueError, TypeError):
+            score_value = 0
 
         # 失格判定：is_disqualified=1 OR score=0 OR is_qualified=0
-        if is_disqualified == 1 or score == 0 or is_qualified == 0:
+        if is_disqualified == 1 or score_value == 0 or is_qualified == 0:
             fail_count += 1
 
-        total_score += (score if score else 0)
+        total_score += score_value
 
     # Step 2: 计算基础分（简单平均）
     avg_score = total_score / total_ops if total_ops > 0 else 0

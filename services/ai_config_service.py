@@ -458,7 +458,7 @@ class AIConfigService:
                 params.append(extra_headers)
 
             # 添加更新时间
-            update_fields.append("updated_at = DATETIME('now')")
+            update_fields.append("updated_at = NOW()")
 
             if update_fields:
                 params.append(provider_id)
@@ -588,7 +588,7 @@ class AIConfigService:
                         'maxOutputTokens': 50
                     }
                 }
-                endpoint = f"{provider['base_url']}/models/{provider['model']}:generateContent%skey={provider['api_key']}"
+                endpoint = f"{provider['base_url']}/models/{provider['model']}:generateContent?key={provider['api_key']}"
             else:
                 payload = {
                     'model': provider['model'],
@@ -698,7 +698,7 @@ class AIConfigService:
                 SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as success_count,
                 SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) as error_count
             FROM ai_usage_logs
-            WHERE created_at >= DATETIME('now', '-{days} days')
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         """)
         row = cur.fetchone()
 
@@ -712,7 +712,7 @@ class AIConfigService:
                 COUNT(*) as calls,
                 SUM(tokens_used) as tokens
             FROM ai_usage_logs
-            WHERE created_at >= DATETIME('now', '-{days} days')
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL {days} DAY)
             GROUP BY provider_name
             ORDER BY calls DESC
         """)

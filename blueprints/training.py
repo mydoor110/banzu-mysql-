@@ -19,7 +19,7 @@ from config.settings import (
 
 from config.settings import APP_TITLE, EXPORT_DIR
 from models.database import get_db
-from .decorators import login_required, role_required
+from .decorators import login_required, role_required, top_level_manager_required
 from .helpers import require_user_id, get_accessible_department_ids, validate_employee_access, build_department_filter, parse_date_filters, build_date_filter_sql, log_import_operation
 from utils.training_utils import normalize_project_name
 
@@ -56,8 +56,29 @@ def index():
         },
     ]
 
-    # 管理员可见项目管理
-    if session.get('role') == 'admin':
+    # 判断是否显示项目管理入口（系统管理员或顶级部门管理员）
+    show_project_management = False
+    user_role = session.get('role')
+    
+    if user_role == 'admin':
+        show_project_management = True
+    elif user_role == 'manager':
+        # 检查是否为顶级部门管理员
+        user_id = session.get('user_id')
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT d.level
+            FROM users u
+            JOIN departments d ON u.department_id = d.id
+            WHERE u.id = %s
+        """, (user_id,))
+        dept_info = cur.fetchone()
+        if dept_info and dept_info['level'] == 1:
+            show_project_management = True
+    
+    # 管理员和顶级部门管理员可见项目管理
+    if show_project_management:
         feature_cards.append({
             "title": "项目管理",
             "description": "管理培训项目和项目分类，规范项目命名。",
@@ -276,35 +297,56 @@ def upload_daily_report():
                 flash("没有找到可导入的数据", "warning")
             return redirect(url_for("training.upload_daily_report"))
 
-        # 查询数据库中已存在的项目
-        existing_projects = {}  # {项目名称: (project_id, category_id)}
+        # 查询数据库中已存在的项目（使用智能匹配）
+        existing_projects = {}  # {Excel项目名: (project_id, category_id, 数据库项目名, 分类名)}
         missing_projects = []  # 不存在的项目名称列表
 
-        for project_name in all_project_names:
-            # 首先尝试精确匹配
-            cur.execute("""
-                SELECT id, category_id, name FROM training_projects
-                WHERE name = %s
-            """, (project_name,))
-            row = cur.fetchone()
-            if row:
-                existing_projects[project_name] = (row['id'], row['category_id'])
-            else:
-                # 如果精确匹配失败，尝试清理后匹配
-                # 获取所有项目名称并清理后比较
-                cur.execute("SELECT id, category_id, name FROM training_projects")
-                all_db_projects = cur.fetchall()
-                
-                matched = False
+        # 一次性获取所有项目和分类信息
+        cur.execute("""
+            SELECT 
+                tp.id, 
+                tp.name as project_name,
+                tp.category_id,
+                tpc.name as category_name,
+                tp.is_archived
+            FROM training_projects tp
+            LEFT JOIN training_project_categories tpc ON tp.category_id = tpc.id
+            WHERE tp.is_archived = 0
+        """)
+        all_db_projects = cur.fetchall()
+
+        for excel_project_name in all_project_names:
+            matched = False
+            
+            # 策略1: 精确匹配
+            for db_proj in all_db_projects:
+                if db_proj['project_name'] == excel_project_name:
+                    existing_projects[excel_project_name] = (
+                        db_proj['id'], 
+                        db_proj['category_id'],
+                        db_proj['project_name'],
+                        db_proj['category_name']
+                    )
+                    matched = True
+                    break
+            
+            # 策略2: 清洗后模糊匹配
+            if not matched:
+                normalized_excel = normalize_project_name(excel_project_name)
                 for db_proj in all_db_projects:
-                    normalized_db_name = normalize_project_name(db_proj['name'])
-                    if normalized_db_name == project_name:
-                        existing_projects[project_name] = (db_proj['id'], db_proj['category_id'])
+                    normalized_db = normalize_project_name(db_proj['project_name'])
+                    if normalized_db == normalized_excel:
+                        existing_projects[excel_project_name] = (
+                            db_proj['id'],
+                            db_proj['category_id'],
+                            db_proj['project_name'],  # 使用数据库原始名称
+                            db_proj['category_name']
+                        )
                         matched = True
                         break
-                
-                if not matched:
-                    missing_projects.append(project_name)
+            
+            if not matched:
+                missing_projects.append(excel_project_name)
 
         # ====== 第三阶段：如果有缺失项目，使用临时文件存储（避免session过大）======
         if missing_projects:
@@ -404,7 +446,7 @@ def _import_training_records(all_records_data, existing_projects, uid, conn):
 
     Args:
         all_records_data: 所有待导入的记录数据列表
-        existing_projects: 已存在的项目映射 {项目名称: (project_id, category_id)}
+        existing_projects: 已存在的项目映射 {Excel项目名: (project_id, category_id, 数据库项目名, 分类名)}
         uid: 当前用户ID
         conn: 数据库连接
 
@@ -416,12 +458,18 @@ def _import_training_records(all_records_data, existing_projects, uid, conn):
     total_skipped = 0
 
     for record in all_records_data:
-        # 获取项目ID
+        # 获取项目ID和快照信息
         project_name = record['project_name']
         project_id = None
+        project_name_snapshot = None
+        category_name_snapshot = None
 
         if project_name and project_name in existing_projects:
-            project_id = existing_projects[project_name][0]
+            project_info = existing_projects[project_name]
+            project_id = project_info[0]
+            # 使用数据库中的原始项目名和分类名作为快照
+            project_name_snapshot = project_info[2] if len(project_info) > 2 else project_name
+            category_name_snapshot = project_info[3] if len(project_info) > 3 else None
 
         # 查找补做关联记录
         retake_of_record_id = None
@@ -462,21 +510,24 @@ def _import_training_records(all_records_data, existing_projects, uid, conn):
             total_skipped += 1
             continue
 
-        # 插入新记录
+        # 插入新记录（包含快照字段）
         cur.execute("""
             INSERT INTO training_records(
-                emp_no, name, team_name, training_date, project_id,
+                emp_no, name, team_name, training_date, 
+                project_id, project_name_snapshot, category_name_snapshot,
                 problem_type, specific_problem, corrective_measures,
                 time_spent, score, assessor, remarks,
                 is_qualified, is_disqualified, is_retake,
                 retake_of_record_id, created_by, source_file
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             record['emp_no'],
             record['name'],
             record['team_name'],
             record['training_date'],
             project_id,
+            project_name_snapshot,
+            category_name_snapshot,
             record['problem_type'],
             record['specific_problem'],
             record['corrective_measures'],
@@ -1201,9 +1252,9 @@ def debug_page():
 
 @training_bp.route('/project-categories')
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def project_categories():
-    """培训项目分类管理页面（仅管理员）"""
+    """培训项目分类管理页面（系统管理员和顶级部门管理员）"""
     conn = get_db()
     cur = conn.cursor()
 
@@ -1245,7 +1296,7 @@ def project_categories():
 
 @training_bp.route('/project-categories/add', methods=['POST'])
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def add_project_category():
     """添加项目分类"""
     name = request.form.get('name', '').strip()
@@ -1276,7 +1327,7 @@ def add_project_category():
 
 @training_bp.route('/project-categories/edit', methods=['POST'])
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def edit_project_category():
     """编辑项目分类"""
     category_id = request.form.get('category_id', type=int)
@@ -1308,7 +1359,7 @@ def edit_project_category():
 
 @training_bp.route('/project-categories/delete', methods=['POST'])
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def delete_project_category():
     """删除项目分类"""
     category_id = request.form.get('category_id', type=int)
@@ -1345,9 +1396,9 @@ def delete_project_category():
 
 @training_bp.route('/projects')
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def projects():
-    """培训项目管理页面（仅管理员）"""
+    """培训项目管理页面（系统管理员和顶级部门管理员）"""
     conn = get_db()
     cur = conn.cursor()
 
@@ -1374,7 +1425,7 @@ def projects():
         FROM training_projects p
         LEFT JOIN training_project_categories c ON p.category_id = c.id
         LEFT JOIN training_records tr ON p.id = tr.project_id
-        WHERE 1=1
+        WHERE p.is_archived = 0
     """
     params = []
 
@@ -1410,17 +1461,22 @@ def projects():
             'record_count': row['record_count']
         })
 
+    # 获取归档项目数量
+    cur.execute("SELECT COUNT(*) as cnt FROM training_projects WHERE is_archived = 1")
+    archived_count = cur.fetchone()['cnt']
+
     return render_template(
         'training_projects.html',
         title=f"项目管理 | {APP_TITLE}",
         projects=projects,
-        categories=categories
+        categories=categories,
+        archived_count=archived_count
     )
 
 
 @training_bp.route('/projects/add', methods=['POST'])
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def add_project():
     """添加培训项目"""
     name = request.form.get('name', '').strip()
@@ -1452,7 +1508,7 @@ def add_project():
 
 @training_bp.route('/projects/edit', methods=['POST'])
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def edit_project():
     """编辑培训项目"""
     project_id = request.form.get('project_id', type=int)
@@ -1485,7 +1541,7 @@ def edit_project():
 
 @training_bp.route('/projects/delete', methods=['POST'])
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def delete_project():
     """删除培训项目"""
     project_id = request.form.get('project_id', type=int)
@@ -1518,7 +1574,7 @@ def delete_project():
 
 @training_bp.route('/projects/batch-delete', methods=['POST'])
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def batch_delete_projects():
     """批量删除培训项目"""
     project_ids = request.form.getlist('project_ids')
@@ -1570,7 +1626,7 @@ def batch_delete_projects():
 
 @training_bp.route('/projects/batch-add', methods=['POST'])
 @login_required
-@role_required('admin')
+@top_level_manager_required
 def batch_add_projects():
     """批量添加培训项目"""
     batch_data = request.form.get('batch_data', '').strip()
@@ -1609,10 +1665,10 @@ def batch_add_projects():
         if len(parts) >= 2:
             # 两列数据：分类 + 项目名称
             category_name = parts[0] if parts[0] else None
-            project_name = normalize_project_name(parts[1])
+            project_name = parts[1]  # 不清洗，保持原样
         elif len(parts) == 1:
             # 只有一列：项目名称
-            project_name = normalize_project_name(parts[0])
+            project_name = parts[0]  # 不清洗，保持原样
         else:
             errors.append(f'第{line_no}行：格式错误')
             skipped_count += 1
@@ -1682,3 +1738,125 @@ def batch_add_projects():
         flash(f'跳过 {skipped_count} 条数据（{error_msg}）', 'warning')
 
     return redirect(url_for('training.projects'))
+
+# ==================== 项目归档管理 ====================
+
+@training_bp.route('/projects/<int:project_id>/archive', methods=['POST'])
+@login_required
+@top_level_manager_required
+def archive_project(project_id):
+    """归档项目"""
+    conn = get_db()
+    cur = conn.cursor()
+    uid = require_user_id()
+    
+    # 检查项目是否存在
+    cur.execute("SELECT * FROM training_projects WHERE id = %s", (project_id,))
+    project = cur.fetchone()
+    
+    if not project:
+        flash('项目不存在', 'danger')
+        return redirect(url_for('training.projects'))
+    
+    if project['is_archived']:
+        flash('项目已经归档', 'warning')
+        return redirect(url_for('training.projects'))
+    
+    # 归档项目
+    try:
+        cur.execute("""
+            UPDATE training_projects 
+            SET is_archived = 1, 
+                is_active = 0,
+                archived_at = NOW(),
+                archived_by = %s
+            WHERE id = %s
+        """, (uid, project_id))
+        conn.commit()
+        flash(f'项目"{project["name"]}"已归档', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'归档失败: {str(e)}', 'danger')
+    
+    return redirect(url_for('training.projects'))
+
+
+@training_bp.route('/projects/<int:project_id>/unarchive', methods=['POST'])
+@login_required
+@top_level_manager_required
+def unarchive_project(project_id):
+    """恢复归档项目"""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # 检查项目是否存在
+    cur.execute("SELECT * FROM training_projects WHERE id = %s", (project_id,))
+    project = cur.fetchone()
+    
+    if not project:
+        flash('项目不存在', 'danger')
+        return redirect(url_for('training.archived_projects'))
+    
+    if not project['is_archived']:
+        flash('项目未归档', 'warning')
+        return redirect(url_for('training.archived_projects'))
+    
+    # 恢复项目
+    try:
+        cur.execute("""
+            UPDATE training_projects 
+            SET is_archived = 0,
+                archived_at = NULL,
+                archived_by = NULL
+            WHERE id = %s
+        """, (project_id,))
+        conn.commit()
+        flash(f'项目"{project["name"]}"已恢复', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'恢复失败: {str(e)}', 'danger')
+    
+    return redirect(url_for('training.archived_projects'))
+
+
+@training_bp.route('/projects/archived')
+@login_required
+@top_level_manager_required
+def archived_projects():
+    """查看归档的项目"""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    cur.execute("""
+        SELECT 
+            p.*,
+            c.name as category_name,
+            u.username as archived_by_name,
+            (SELECT COUNT(*) FROM training_records WHERE project_id = p.id) as record_count
+        FROM training_projects p
+        LEFT JOIN training_project_categories c ON p.category_id = c.id
+        LEFT JOIN users u ON p.archived_by = u.id
+        WHERE p.is_archived = 1
+        ORDER BY p.archived_at DESC
+    """)
+    
+    projects = []
+    for row in cur.fetchall():
+        archived_at = row['archived_at']
+        if archived_at:
+            archived_at = str(archived_at)[:19]
+        projects.append({
+            'id': row['id'],
+            'name': row['name'],
+            'category_name': row['category_name'] or '未分类',
+            'description': row['description'],
+            'archived_at': archived_at or '',
+            'archived_by_name': row['archived_by_name'] or '未知',
+            'record_count': row['record_count']
+        })
+    
+    return render_template(
+        'training_archived_projects.html',
+        title=f'归档项目 | {APP_TITLE}',
+        projects=projects
+    )

@@ -711,7 +711,7 @@ C. **状态型异常** (State Anomaly): 近期家庭变故、疲劳或情绪波�
                     "maxOutputTokens": max_tokens
                 }
             }
-            endpoint = f"{base_url}/models/{model}:generateContent%skey={api_key}"
+            endpoint = f"{base_url}/models/{model}:generateContent?key={api_key}"
         else:
             payload = {
                 "model": model,
@@ -931,7 +931,7 @@ C. **状态型异常** (State Anomaly): 近期家庭变故、疲劳或情绪波�
                     "maxOutputTokens": max_tokens
                 }
             }
-            endpoint = f"{base_url}/models/{model}:generateContent%skey={api_key}"
+            endpoint = f"{base_url}/models/{model}:generateContent?key={api_key}"
         else:
             payload = {
                 "model": model,

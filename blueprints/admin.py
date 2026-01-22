@@ -10,7 +10,7 @@ import pymysql
 import json
 from datetime import datetime, timedelta
 from models.database import get_db
-from utils.backup import BackupManager, get_backup_statistics
+from utils.backup import BackupManager, get_backup_statistics, BackupTaskManager
 from .decorators import admin_required
 from openpyxl import Workbook
 import os
@@ -170,12 +170,20 @@ def create_backup():
     try:
         description = request.form.get('description', '').strip()
         backup_type = request.form.get('backup_type', 'full')
+        
         manager = BackupManager()
-        backup_info = manager.create_backup(backup_type=backup_type, description=description)
-        flash(f'备份创建成功: {backup_info["name"]}', 'success')
-        return jsonify({'success': True, 'backup': backup_info})
+        
+        # Start background task
+        task = BackupTaskManager.create_task(
+            'backup', 
+            description,
+            manager.create_backup,
+            backup_type=backup_type,
+            description=description
+        )
+        
+        return jsonify({'success': True, 'task_id': task.id})
     except Exception as e:
-        flash(f'备份创建失败: {e}', 'danger')
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @admin_bp.route('/backups/restore', methods=['POST'])
@@ -187,14 +195,25 @@ def restore_backup():
         restore_database = request.form.get('restore_database') == 'true'
         restore_config = request.form.get('restore_config') == 'true'
         restore_uploads = request.form.get('restore_uploads') == 'true'
+        
         if not backup_name:
             return jsonify({'success': False, 'error': '未指定备份文件'}), 400
+            
         manager = BackupManager()
-        restore_info = manager.restore_backup(backup_name, restore_database, restore_config, restore_uploads)
-        flash(f'备份恢复成功: {len(restore_info["restored_files"])} 个文件已恢复', 'success')
-        return jsonify({'success': True, 'restore_info': restore_info})
+        
+        # Start background task
+        task = BackupTaskManager.create_task(
+            'restore', 
+            f"Restoring {backup_name}",
+            manager.restore_backup,
+            backup_name=backup_name,
+            restore_database=restore_database,
+            restore_config=restore_config,
+            restore_uploads=restore_uploads
+        )
+        
+        return jsonify({'success': True, 'task_id': task.id})
     except Exception as e:
-        flash(f'备份恢复失败: {e}', 'danger')
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @admin_bp.route('/backups/delete', methods=['POST'])
@@ -230,6 +249,17 @@ def download_backup(backup_name):
     except Exception as e:
         flash(f'备份下载失败: {e}', 'danger')
         return redirect(url_for('admin.backups'))
+
+
+@admin_bp.route('/backups/task/<task_id>')
+@admin_required
+def get_backup_task(task_id):
+    """获取备份任务状态"""
+    task = BackupTaskManager.get_task(task_id)
+    if not task:
+        return jsonify({'success': False, 'error': 'Task not found'}), 404
+        
+    return jsonify({'success': True, 'task': task.to_dict()})
 
 
 # ========== 导入日志审查 ==========

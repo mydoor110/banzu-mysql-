@@ -41,9 +41,9 @@
                     </h6>
                     <p class="card-text mb-0 small">
                         {% if stats.newest_backup %}
-                            {{ stats.newest_backup.created_formatted }}
+                        {{ stats.newest_backup.created_formatted }}
                         {% else %}
-                            无备份
+                        无备份
                         {% endif %}
                     </p>
                 </div>
@@ -57,9 +57,9 @@
                     </h6>
                     <p class="card-text mb-0 small">
                         {% if stats.oldest_backup %}
-                            {{ stats.oldest_backup.created_formatted }}
+                        {{ stats.oldest_backup.created_formatted }}
                         {% else %}
-                            无备份
+                        无备份
                         {% endif %}
                     </p>
                 </div>
@@ -124,23 +124,17 @@
                                     <td>{{ backup.file_count }} 个文件</td>
                                     <td>
                                         <div class="btn-group btn-group-sm" role="group">
-                                            <button type="button"
-                                                    class="btn btn-outline-success"
-                                                    data-bs-toggle="modal"
-                                                    data-bs-target="#restoreBackupModal"
-                                                    data-backup-name="{{ backup.name }}"
-                                                    title="恢复">
+                                            <button type="button" class="btn btn-outline-success" data-bs-toggle="modal"
+                                                data-bs-target="#restoreBackupModal"
+                                                data-backup-name="{{ backup.name }}" title="恢复">
                                                 <i class="fas fa-redo"></i>
                                             </button>
                                             <a href="{{ url_for('admin.download_backup', backup_name=backup.name) }}"
-                                               class="btn btn-outline-primary"
-                                               title="下载">
+                                                class="btn btn-outline-primary" title="下载">
                                                 <i class="fas fa-download"></i>
                                             </a>
-                                            <button type="button"
-                                                    class="btn btn-outline-danger"
-                                                    onclick="deleteBackup('{{ backup.name }}')"
-                                                    title="删除">
+                                            <button type="button" class="btn btn-outline-danger"
+                                                onclick="deleteBackup('{{ backup.name }}')" title="删除">
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                         </div>
@@ -183,14 +177,16 @@
 </div>
 
 <!-- Create Backup Modal -->
-<div class="modal fade" id="createBackupModal" tabindex="-1" aria-labelledby="createBackupModalLabel" aria-hidden="true">
+<div class="modal fade" id="createBackupModal" tabindex="-1" aria-labelledby="createBackupModalLabel"
+    aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title" id="createBackupModalLabel">
                     <i class="fas fa-plus-circle me-2"></i>创建新备份
                 </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
             </div>
             <form id="createBackupForm" method="POST" action="{{ url_for('admin.create_backup') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -206,7 +202,7 @@
                     <div class="mb-3">
                         <label for="description" class="form-label">备份说明(可选)</label>
                         <input type="text" class="form-control" id="description" name="description"
-                               placeholder="例如: 上线前备份">
+                            placeholder="例如: 上线前备份">
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -221,7 +217,8 @@
 </div>
 
 <!-- Restore Backup Modal -->
-<div class="modal fade" id="restoreBackupModal" tabindex="-1" aria-labelledby="restoreBackupModalLabel" aria-hidden="true">
+<div class="modal fade" id="restoreBackupModal" tabindex="-1" aria-labelledby="restoreBackupModalLabel"
+    aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-warning">
@@ -241,22 +238,22 @@
 
                     <h6>选择要恢复的内容:</h6>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="true"
-                               id="restore_database" name="restore_database" checked>
+                        <input class="form-check-input" type="checkbox" value="true" id="restore_database"
+                            name="restore_database" checked>
                         <label class="form-check-label" for="restore_database">
                             <strong>数据库</strong> - 包含所有业务数据
                         </label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="true"
-                               id="restore_config" name="restore_config">
+                        <input class="form-check-input" type="checkbox" value="true" id="restore_config"
+                            name="restore_config">
                         <label class="form-check-label" for="restore_config">
                             <strong>配置文件</strong> - 系统配置和设置
                         </label>
                     </div>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="true"
-                               id="restore_uploads" name="restore_uploads">
+                        <input class="form-check-input" type="checkbox" value="true" id="restore_uploads"
+                            name="restore_uploads">
                         <label class="form-check-label" for="restore_uploads">
                             <strong>上传文件</strong> - 用户上传的文件
                         </label>
@@ -273,119 +270,213 @@
     </div>
 </div>
 
+<!-- Task Progress Modal -->
+<div class="modal fade" id="taskProgressModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" id="taskModalHeader">
+                <h5 class="modal-title" id="taskModalTitle">
+                    <i class="fas fa-tasks me-2"></i>任务处理中
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="progress mb-3">
+                    <div id="taskProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                        role="progressbar" style="width: 0%">0%</div>
+                </div>
+                <p id="taskMessage" class="text-center text-muted mb-0">初始化中...</p>
+
+                <div id="taskError" class="alert alert-danger mt-3 d-none"></div>
+                <div id="taskSuccess" class="alert alert-success mt-3 d-none"></div>
+            </div>
+            <div class="modal-footer d-none" id="taskModalFooter">
+                <button type="button" class="btn btn-primary" onclick="location.reload()">确定</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
-// Handle create backup form submission
-document.getElementById('createBackupForm').addEventListener('submit', function(e) {
-    e.preventDefault();
+    // Task Polling Logic
+    function startTaskPolling(taskId, title) {
+        const modal = new bootstrap.Modal(document.getElementById('taskProgressModal'));
+        const progressBar = document.getElementById('taskProgressBar');
+        const messageEl = document.getElementById('taskMessage');
+        const titleEl = document.getElementById('taskModalTitle');
+        const headerEl = document.getElementById('taskModalHeader');
+        const errorEl = document.getElementById('taskError');
+        const successEl = document.getElementById('taskSuccess');
+        const footerEl = document.getElementById('taskModalFooter');
 
-    const formData = new FormData(this);
-    const submitBtn = this.querySelector('button[type="submit"]');
-    const originalText = submitBtn.innerHTML;
+        // Reset UI
+        titleEl.innerHTML = `<i class="fas fa-tasks me-2"></i>${title}`;
+        progressBar.style.width = '0%';
+        progressBar.textContent = '0%';
+        progressBar.classList.add('progress-bar-animated', 'progress-bar-striped');
+        progressBar.classList.remove('bg-success', 'bg-danger');
+        messageEl.textContent = '初始化中...';
+        messageEl.className = 'text-center text-muted mb-0';
+        errorEl.classList.add('d-none');
+        successEl.classList.add('d-none');
+        footerEl.classList.add('d-none');
+        headerEl.className = 'modal-header';
 
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>创建中...';
+        modal.show();
 
-    fetch('{{ url_for("admin.create_backup") }}', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        const pollInterval = setInterval(() => {
+            fetch(`/admin/backups/task/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success) {
+                        clearInterval(pollInterval);
+                        showError('无法获取任务状态');
+                        return;
+                    }
+
+                    const task = data.task;
+                    const progress = task.progress || 0;
+
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.textContent = `${progress}%`;
+                    messageEl.textContent = task.message;
+
+                    if (task.status === 'completed') {
+                        clearInterval(pollInterval);
+                        showSuccess(task.message || '操作成功完成');
+                    } else if (task.status === 'failed') {
+                        clearInterval(pollInterval);
+                        showError(task.error || '操作失败');
+                    }
+                })
+                .catch(error => {
+                    clearInterval(pollInterval);
+                    showError('网络错误: ' + error);
+                });
+        }, 1000);
+
+        function showError(msg) {
+            progressBar.classList.remove('progress-bar-animated');
+            progressBar.classList.add('bg-danger');
+            messageEl.textContent = '发生错误';
+            messageEl.className = 'text-center text-danger fw-bold mb-0';
+            errorEl.textContent = msg;
+            errorEl.classList.remove('d-none');
+            headerEl.classList.add('bg-danger', 'text-white');
+            footerEl.classList.remove('d-none');
         }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('备份创建成功: ' + data.backup.name);
-            location.reload();
-        } else {
-            alert('备份创建失败: ' + data.error);
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalText;
+
+        function showSuccess(msg) {
+            progressBar.style.width = '100%';
+            progressBar.textContent = '100%';
+            progressBar.classList.remove('progress-bar-animated');
+            progressBar.classList.add('bg-success');
+            messageEl.textContent = '完成';
+            messageEl.className = 'text-center text-success fw-bold mb-0';
+            successEl.textContent = msg;
+            successEl.classList.remove('d-none');
+            headerEl.classList.add('bg-success', 'text-white');
+            footerEl.classList.remove('d-none');
         }
-    })
-    .catch(error => {
-        alert('备份创建失败: ' + error);
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
-    });
-});
-
-// Handle restore backup modal
-document.getElementById('restoreBackupModal').addEventListener('show.bs.modal', function(event) {
-    const button = event.relatedTarget;
-    const backupName = button.getAttribute('data-backup-name');
-    document.getElementById('restore_backup_name').value = backupName;
-});
-
-// Handle restore backup form submission
-document.getElementById('restoreBackupForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-
-    if (!confirm('确定要恢复此备份吗?当前数据将被覆盖!')) {
-        return;
     }
 
-    const formData = new FormData(this);
-    const submitBtn = this.querySelector('button[type="submit"]');
-    const originalText = submitBtn.innerHTML;
+    // Handle create backup form submission
+    document.getElementById('createBackupForm').addEventListener('submit', function (e) {
+        e.preventDefault();
 
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>恢复中...';
+        const formData = new FormData(this);
+        // Close the create modal
+        const createModal = bootstrap.Modal.getInstance(document.getElementById('createBackupModal'));
+        createModal.hide();
 
-    fetch('{{ url_for("admin.restore_backup") }}', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('备份恢复成功! 页面将刷新。');
-            location.reload();
-        } else {
-            alert('备份恢复失败: ' + data.error);
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalText;
-        }
-    })
-    .catch(error => {
-        alert('备份恢复失败: ' + error);
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = originalText;
+        fetch('{{ url_for("admin.create_backup") }}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    startTaskPolling(data.task_id, '创建备份中');
+                } else {
+                    alert('备份创建失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('备份创建失败: ' + error);
+            });
     });
-});
 
-// Handle delete backup
-function deleteBackup(backupName) {
-    if (!confirm('确定要删除备份 "' + backupName + '" 吗?此操作不可恢复!')) {
-        return;
+    // Handle restore backup modal
+    document.getElementById('restoreBackupModal').addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const backupName = button.getAttribute('data-backup-name');
+        document.getElementById('restore_backup_name').value = backupName;
+    });
+
+    // Handle restore backup form submission
+    document.getElementById('restoreBackupForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        if (!confirm('确定要恢复此备份吗?当前数据将被覆盖!')) {
+            return;
+        }
+
+        const formData = new FormData(this);
+        // Close restore modal
+        const restoreModal = bootstrap.Modal.getInstance(document.getElementById('restoreBackupModal'));
+        restoreModal.hide();
+
+        fetch('{{ url_for("admin.restore_backup") }}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    startTaskPolling(data.task_id, '恢复备份中');
+                } else {
+                    alert('备份恢复失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('备份恢复失败: ' + error);
+            });
+    });
+
+    // Handle delete backup
+    function deleteBackup(backupName) {
+        if (!confirm('确定要删除备份 "' + backupName + '" 吗?此操作不可恢复!')) {
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('backup_name', backupName);
+        formData.append('csrf_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
+
+        fetch('{{ url_for("admin.delete_backup") }}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('备份已删除');
+                    location.reload();
+                } else {
+                    alert('删除失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('删除失败: ' + error);
+            });
     }
-
-    const formData = new FormData();
-    formData.append('backup_name', backupName);
-    formData.append('csrf_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
-
-    fetch('{{ url_for("admin.delete_backup") }}', {
-        method: 'POST',
-        body: formData,
-        headers: {
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('备份已删除');
-            location.reload();
-        } else {
-            alert('删除失败: ' + data.error);
-        }
-    })
-    .catch(error => {
-        alert('删除失败: ' + error);
-    });
-}
 </script>
 {% endblock %}
