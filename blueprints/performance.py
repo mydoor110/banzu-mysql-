@@ -447,24 +447,55 @@ def index():
     )
 
 
+def peek_pdf_date(pdf_path):
+    """
+    Rapidly extract date from PDF header (Process only first page)
+    Returns: (year, month) or (None, None)
+    """
+    text = ""
+    try:
+        import pdfplumber
+        # pdfplumber is robust but slow. processing just 1 page is fast enough.
+        with pdfplumber.open(pdf_path) as pdf:
+            if pdf.pages:
+                text = pdf.pages[0].extract_text() or ""
+    except Exception:
+        try:
+            from PyPDF2 import PdfReader
+            reader = PdfReader(pdf_path)
+            if reader.pages:
+                text = reader.pages[0].extract_text() or ""
+        except Exception:
+            pass
+            
+    if not text:
+        return None, None
+        
+    m = HEADER_PERIOD_RE.search(text)
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    return None, None
+
+
 @performance_bp.route('/upload', methods=['GET', 'POST'])
 @login_required
 def upload():
-    """上传并解析月度绩效PDF"""
+    """上传并解析月度绩效PDF（异步处理 + 同步头部校验）"""
     now = datetime.now()
     year_options = list(range(now.year - 5, now.year + 2))
     selected_year = request.args.get("year", type=int) or now.year
-    selected_month = request.args.get("month", type=int) or now.month
+    
+    # fix: Ensure selected_year is in options
+    if selected_year not in year_options:
+         if 2000 <= selected_year <= 2100:
+             year_options.append(selected_year)
+             year_options.sort()
+         else:
+             selected_year = now.year
 
+    selected_month = request.args.get("month", type=int) or now.month
     if not (1 <= selected_month <= 12):
         selected_month = now.month
-
-    if not (2000 <= selected_year <= 2100):
-        selected_year = now.year
-
-    if selected_year not in year_options:
-        year_options.append(selected_year)
-        year_options.sort()
 
     if request.method == "POST":
         year_raw = (request.form.get("target_year") or "").strip()
@@ -476,54 +507,46 @@ def upload():
             flash("请选择有效的年份和月份。", "warning")
             return redirect(url_for("performance.upload"))
 
-        if selected_year not in year_options:
-            year_options.append(selected_year)
-            year_options.sort()
-
-        if not (2000 <= selected_year <= 2100) or not (1 <= selected_month <= 12):
-            flash("请选择有效的年份和月份。", "warning")
-            return redirect(url_for("performance.upload"))
-
         force_import = request.form.get("force_import") == "1"
         pending_filename = (request.form.get("pending_filename") or "").strip()
         pending_filename = os.path.basename(pending_filename) if pending_filename else ""
         filename = ""
-
+        
+        # 1. Handle File Upload or Restoration
         if pending_filename:
+            # User confirmed mismatch, file is already in uploads/
             filename = pending_filename
             save_path = os.path.join(UPLOAD_DIR, filename)
             if not os.path.isfile(save_path):
                 flash("原文件已不存在，请重新上传。", "danger")
                 return redirect(url_for("performance.upload"))
         else:
+            # New upload
             file_obj = request.files.get("file")
             if not file_obj or file_obj.filename == "":
                 flash("请选择PDF文件", "warning")
                 return redirect(url_for("performance.upload"))
+                
             ext = file_obj.filename.rsplit(".", 1)[-1].lower()
             if ext not in ALLOWED_EXTS:
                 flash("仅支持PDF文件", "warning")
                 return redirect(url_for("performance.upload"))
+
             filename = datetime.now().strftime("%Y%m%d_%H%M%S_") + secure_filename(file_obj.filename)
             save_path = os.path.join(UPLOAD_DIR, filename)
             file_obj.save(save_path)
-
-        try:
-            text = extract_text_from_pdf(save_path)
-            parsed_year, parsed_month, rows = parse_pdf_text(text)
-            if not rows:
-                flash("未识别到任何有效行，请确认PDF格式。", "danger")
-                if not pending_filename and os.path.exists(save_path):
-                    os.remove(save_path)
-                return redirect(url_for("performance.upload"))
-
+        
+        # 2. Synchronous Header Validation (if not forced)
+        if not force_import:
+            parsed_year, parsed_month = peek_pdf_date(save_path)
+            
             mismatch = (
                 parsed_year is not None
                 and parsed_month is not None
                 and (parsed_year != selected_year or parsed_month != selected_month)
             )
-
-            if mismatch and not force_import:
+            
+            if mismatch:
                 flash(
                     f"识别到的考核周期为 {parsed_year} 年 {parsed_month} 月，与选择的 {selected_year} 年 {selected_month} 月不一致。如确认以选择的周期导入，请再次提交确认。",
                     "warning",
@@ -537,145 +560,29 @@ def upload():
                     confirm_ctx={
                         "parsed_year": parsed_year,
                         "parsed_month": parsed_month,
-                        "filename": filename,
+                        "filename": filename, # Pass filename back to be sent as pending_filename
                     },
                 )
-
-            uid = require_user_id()
-            conn = get_db()
-            cur = conn.cursor()
-
-            # 智能过滤策略：根据数据量选择最优方法
-            # 小数据集(<100条)：Python set查找更快
-            # 大数据集(>=100条)：数据库IN子句更快
-            
-            if len(rows) < 100:
-                # 方案A：Python过滤（适合小数据集）
-                where_clause, join_clause, dept_params = build_department_filter()
-                cur.execute(
-                    f"""
-                    SELECT emp_no
-                    FROM employees
-                    {join_clause}
-                    WHERE {where_clause}
-                    """,
-                    dept_params
-                )
-                roster = {record['emp_no'] for record in cur.fetchall()}
-                
-                if not roster:
-                    flash("人员档案为空，请先新增人员。", "warning")
-                    return redirect(url_for("personnel.index"))
-
-                filtered = [r for r in rows if r["emp_no"] in roster]
-            else:
-                # 方案B：数据库IN子句过滤（适合大数据集）
-                where_clause, join_clause, dept_params = build_department_filter()
-                
-                # 提取所有工号
-                emp_nos = [r["emp_no"] for r in rows]
-                
-                # 使用IN子句批量查询
-                placeholders = ','.join(['%s'] * len(emp_nos))
-                cur.execute(
-                    f"""
-                    SELECT emp_no
-                    FROM employees
-                    {join_clause}
-                    WHERE {where_clause} AND emp_no IN ({placeholders})
-                    """,
-                    dept_params + emp_nos
-                )
-                valid_emp_nos = {record['emp_no'] for record in cur.fetchall()}
-                
-                if not valid_emp_nos:
-                    flash("识别的记录均不在花名册中，未导入任何数据。", "warning")
-                    return redirect(url_for("performance.upload"))
-                
-                filtered = [r for r in rows if r["emp_no"] in valid_emp_nos]
-            
-            skipped = len(rows) - len(filtered)
-
-            if not filtered:
-                flash("识别的记录均不在花名册中，未导入任何数据。", "warning")
-                return redirect(url_for("performance.upload"))
-
-            # 批量插入数据（性能优化：使用executemany代替逐行插入）
-            if filtered:
-                # 准备批量插入的数据
-                batch_data = [
-                    (
-                        row["emp_no"],
-                        row["name"],
-                        selected_year,
-                        selected_month,
-                        row["score"],
-                        row["grade"],
-                        filename,
-                        uid,
-                    )
-                    for row in filtered
-                ]
-                
-                # 批量插入
-                cur.executemany(
-                    """
-                    INSERT INTO performance_records(emp_no, name, year, month, score, grade, src_file, created_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        name=VALUES(name),
-                        score=VALUES(score),
-                        grade=VALUES(grade),
-                        src_file=VALUES(src_file)
-                    """,
-                    batch_data
-                )
-                imported = len(filtered)
-            else:
-                imported = 0
-            
-            conn.commit()
-
-            # 记录导入操作日志
-            log_import_operation(
-                module='performance',
-                operation='import',
-                file_name=filename,
-                total_rows=len(rows),
-                success_rows=imported,
-                failed_rows=0,
-                skipped_rows=skipped,
-                import_details={
-                    'year': selected_year,
-                    'month': selected_month,
-                    'imported': imported,
-                    'skipped_not_in_roster': skipped,
-                    'source_file': filename
-                }
-            )
-
-            msg = f"导入成功：{selected_year}年{selected_month}月 共 {imported} 条。"
-            if skipped:
-                msg += f"（已跳过 {skipped} 条不在花名册内的记录）"
-            flash(msg, "success")
-            return redirect(url_for("performance.records", year=selected_year, month=selected_month))
-        except Exception as exc:
-            error_msg = f"解析失败：{str(exc)}"
-            flash(error_msg, "danger")
-
-            # 记录失败的导入操作
-            log_import_operation(
-                module='performance',
-                operation='import',
-                file_name=filename if 'filename' in locals() else None,
-                total_rows=0,
-                success_rows=0,
-                failed_rows=0,
-                skipped_rows=0,
-                error_message=error_msg
-            )
-
-            return redirect(url_for("performance.upload"))
+        
+        # 3. Async Submission
+        from services.async_task_service import submit_task
+        from blueprints.helpers import get_user_info
+        
+        uid = require_user_id()
+        user_info = get_user_info(uid)
+        
+        submit_task(
+            file_path=save_path, 
+            file_name=filename, 
+            user_id=uid, 
+            user_info=user_info, 
+            target_year=selected_year, 
+            target_month=selected_month, 
+            force_import=force_import
+        )
+        
+        flash(f"已开始后台处理 {filename}，请稍后在记录中查看结果。", "success")
+        return redirect(url_for("performance.upload"))
 
     return render_template(
         "upload.html",

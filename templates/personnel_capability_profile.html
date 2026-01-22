@@ -31,9 +31,12 @@
     }
 
     .student-list {
-        flex: 1;
+        flex: 1 1 0;
+        /* 使用0作为基准,强制填充剩余空间 */
         overflow-y: auto;
         padding: 10px;
+        min-height: 0;
+        /* 允许flex正确计算 */
     }
 
     .student-item {
@@ -162,8 +165,7 @@
 
         .student-list-panel {
             width: 100%;
-            max-height: 50vh;
-            /* 增加高度以适应筛选器 */
+            /* 移除max-height限制,让面板自由扩展 */
         }
 
         .charts-panel {
@@ -249,12 +251,16 @@
         .student-list-panel {
             position: fixed;
             top: 0;
+            /* 从屏幕顶部开始 */
             left: 0;
             bottom: 0;
             width: 85%;
             max-width: 320px;
-            max-height: 100vh;
-            z-index: 1000;
+            /* 使用CSS变量存储真实视口高度,解决手机浏览器地址栏问题 */
+            height: calc(var(--vh, 1vh) * 100);
+            max-height: calc(var(--vh, 1vh) * 100);
+            z-index: 1050;
+            /* 提高z-index,高于汉堡菜单按钮 */
             transform: translateX(-100%);
             transition: transform 0.3s ease-in-out;
             box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
@@ -262,6 +268,45 @@
 
         .student-list-panel.show {
             transform: translateX(0);
+        }
+
+        /* 强制侧边栏使用flex布局 */
+        .student-list-panel {
+            display: flex !important;
+            flex-direction: column !important;
+        }
+
+        /* 顶部标题区域 - 固定高度 */
+        .student-list-panel .panel-header {
+            flex-shrink: 0;
+            padding: 12px 15px;
+        }
+
+        /* 筛选器区域 - 固定高度,不被压缩 */
+        .student-list-panel>div[style*="padding"] {
+            flex-shrink: 0;
+            max-height: 45vh;
+            /* 最多占据45%视口高度 */
+            overflow-y: auto;
+            /* 如果筛选器过长则滚动 */
+        }
+
+        /* 关键人员图例 - 固定高度 */
+        .student-list-panel .key-personnel-legend {
+            flex-shrink: 0;
+            padding: 6px 10px;
+            font-size: 0.75em;
+        }
+
+        /* 确保人员列表区域填充剩余空间 */
+        .student-list-panel .student-list {
+            flex: 1 1 0 !important;
+            /* 使用0作为基准,强制填充 */
+            min-height: 0 !important;
+            /* 允许flex正确计算 */
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch;
+            /* iOS平滑滚动 */
         }
 
         /* 优化筛选器区域内边距 */
@@ -290,10 +335,7 @@
 
     /* 响应式 - 小屏手机 */
     @media (max-width: 576px) {
-        .student-list-panel {
-            max-height: 65vh;
-            /* 小屏幕最大化列表空间 */
-        }
+        /* 移动端使用fixed定位,不需要额外的max-height限制 */
 
         .student-list-panel>div[style*="padding"] {
             padding: 8px !important;
@@ -342,19 +384,31 @@
 {% endblock %}
 
 {% block content %}
+<!-- 移动端汉堡菜单按钮 -->
+<button class="mobile-menu-toggle" id="mobileMenuToggle" onclick="toggleSidebar()">
+    <div class="hamburger-icon">
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
+</button>
+
+<!-- 侧边栏遮罩层 -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
 <div class="container-fluid mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h2>个人综合能力画像 <span id="pageDateRange" class="badge bg-primary"
                     style="font-size: 0.5em; vertical-align: middle;"></span></h2>
-            <p class="text-muted mb-0">整合人员、培训、安全、绩效数据的五维能力评估（按权限分级）</p>
+            <p class="text-muted mb-0">整合人员、培训、安全、绩效数据的五维能力评估(按权限分级)</p>
         </div>
         <a href="{{ url_for('personnel.dashboard') }}" class="btn btn-secondary">返回</a>
     </div>
 
     <div class="capability-container">
-        <!-- 左侧：学员列表 + 筛选器 -->
-        <div class="student-list-panel">
+        <!-- 左侧:学员列表 + 筛选器 -->
+        <div class="student-list-panel" id="studentListPanel">
             <div class="panel-header">
                 人员列表 (按综合分升序)
             </div>
@@ -1121,8 +1175,33 @@
 
 
     // 页面加载完成后初始化
+    // 动态计算真实视口高度(解决手机浏览器地址栏问题)
+    function setRealViewportHeight() {
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+    }
+
+    // 页面加载和窗口大小变化时更新
+    setRealViewportHeight();
+    window.addEventListener('resize', setRealViewportHeight);
+    window.addEventListener('orientationchange', setRealViewportHeight);
+
     document.addEventListener('DOMContentLoaded', function () {
         console.log('页面加载完成，开始初始化...');
+
+        // 调试:检查人员列表容器高度
+        setTimeout(() => {
+            const panel = document.getElementById('studentListPanel');
+            const list = document.getElementById('studentList');
+            if (panel && list) {
+                console.log('=== 布局调试信息 ===');
+                console.log('侧边栏面板高度:', panel.offsetHeight, 'px');
+                console.log('人员列表高度:', list.offsetHeight, 'px');
+                console.log('人员列表computed style:', window.getComputedStyle(list).flex);
+                console.log('侧边栏display:', window.getComputedStyle(panel).display);
+                console.log('侧边栏flex-direction:', window.getComputedStyle(panel).flexDirection);
+            }
+        }, 1000);
 
         // 初始化日期筛选器（月份模式，会自动检测input type="month"）
         const dateFilter = new DateFilterHelper({

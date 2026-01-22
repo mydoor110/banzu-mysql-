@@ -27,6 +27,7 @@ httpx>=0.25.0
 
 # MySQL database driver (optional, only needed when DB_TYPE=mysql)
 PyMySQL>=1.1.0
+cryptography>=41.0.0
 
 # Development dependencies (optional)
 # pytest>=7.4.2

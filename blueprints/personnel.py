@@ -2806,12 +2806,21 @@ def api_comprehensive_profile(emp_no):
     training_params = [emp_no]
 
     if start_date:
-        training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') >= %s"
-        training_params.append(start_date)
+        training_query += " AND training_date >= %s"
+        training_params.append(start_date + '-01')
 
     if end_date:
-        training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') <= %s"
-        training_params.append(end_date)
+        # 计算下个月1号作为上限（开区间 <）
+        try:
+            curr = datetime.strptime(end_date + '-01', '%Y-%m-%d')
+            # 简单处理：加上32天然后设为1号
+            next_month = (curr + timedelta(days=32)).replace(day=1)
+            training_query += " AND training_date < %s"
+            training_params.append(next_month.strftime('%Y-%m-%d'))
+        except:
+            # 回退方案
+            training_query += " AND training_date <= %s"
+            training_params.append(end_date + '-31')
 
     training_query += " ORDER BY training_date ASC"
     cur.execute(training_query, training_params)
@@ -2861,12 +2870,18 @@ def api_comprehensive_profile(emp_no):
     safety_params = [emp_name, emp_name]
 
     if start_date:
-        safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') >= %s"
-        safety_params.append(start_date)
+        safety_query += " AND inspection_date >= %s"
+        safety_params.append(start_date + '-01')
 
     if end_date:
-        safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') <= %s"
-        safety_params.append(end_date)
+        try:
+            curr = datetime.strptime(end_date + '-01', '%Y-%m-%d')
+            next_month = (curr + timedelta(days=32)).replace(day=1)
+            safety_query += " AND inspection_date < %s"
+            safety_params.append(next_month.strftime('%Y-%m-%d'))
+        except:
+            safety_query += " AND inspection_date <= %s"
+            safety_params.append(end_date + '-31')
 
     safety_query += " ORDER BY inspection_date ASC"
     cur.execute(safety_query, safety_params)
@@ -2936,12 +2951,15 @@ def api_comprehensive_profile(emp_no):
     perf_params = [emp_no]
 
     if start_date:
-        perf_query += f" AND ({get_year_month_concat()}) >= %s"
-        perf_params.append(start_date)
+        s_year, s_month = map(int, start_date.split('-'))
+        # 性能优化: 避免函数索引失效,使用元组比较 (year, month) >= (s_year, s_month)
+        perf_query += " AND (year > %s OR (year = %s AND month >= %s))"
+        perf_params.extend([s_year, s_year, s_month])
 
     if end_date:
-        perf_query += f" AND ({get_year_month_concat()}) <= %s"
-        perf_params.append(end_date)
+        e_year, e_month = map(int, end_date.split('-'))
+        perf_query += " AND (year < %s OR (year = %s AND month <= %s))"
+        perf_params.extend([e_year, e_year, e_month])
 
     perf_query += " ORDER BY year, month"
     cur.execute(perf_query, perf_params)
@@ -3002,11 +3020,12 @@ def api_comprehensive_profile(emp_no):
             prev_dt = current_dt.replace(day=1) - timedelta(days=1)
             prev_date = prev_dt.strftime('%Y-%m')
 
-            # 查询上月绩效
+            # 查询上月绩效 (优化：使用year/month索引)
+            p_year, p_month = map(int, prev_date.split('-'))
             cur.execute(f"""
                 SELECT score, grade FROM performance_records
-                WHERE emp_no = %s AND ({get_year_month_concat()}) = %s
-            """, [emp_no, prev_date])
+                WHERE emp_no = %s AND year = %s AND month = %s
+            """, [emp_no, p_year, p_month])
             prev_perf_row = cur.fetchone()
             if prev_perf_row:
                 prev_perf_score = calculate_performance_score_monthly(
@@ -3018,11 +3037,20 @@ def api_comprehensive_profile(emp_no):
                 prev_perf_score = 0
 
             # 查询上月安全 (FIXED)
+            # 查询上月安全 (优化: 范围查询利用索引)
+            prev_month_start = prev_date + '-01'
+            # 计算下月1号
+            try:
+                pm_dt = datetime.strptime(prev_month_start, '%Y-%m-%d')
+                pm_next = (pm_dt + timedelta(days=32)).replace(day=1).strftime('%Y-%m-%d')
+            except:
+                pm_next = prev_month_start # Fallback
+            
             cur.execute("""
                 SELECT assessment
                 FROM safety_inspection_records
-                WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
-            """, [emp_name, prev_date])
+                WHERE inspected_person = %s AND inspection_date >= %s AND inspection_date < %s
+            """, [emp_name, prev_month_start, pm_next])
 
             prev_violations = []
             for row in cur.fetchall():
@@ -3035,10 +3063,11 @@ def api_comprehensive_profile(emp_no):
             prev_safety_score = prev_safety_result['final_score']
 
             # 查询上月培训
+            # 查询上月培训 (优化: 范围查询利用索引)
             cur.execute("""
                 SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                WHERE emp_no = %s AND DATE_FORMAT(training_date, '%%Y-%%m') = %s
-            """, [emp_no, prev_date])
+                WHERE emp_no = %s AND training_date >= %s AND training_date < %s
+            """, [emp_no, prev_month_start, pm_next])
             prev_training_rows = cur.fetchall()
             # 月度模式，周期30天
             prev_training_result = calculate_training_score_with_penalty(prev_training_rows, duration_days=30, cert_years=cert_years, config=algo_config)
@@ -3082,11 +3111,12 @@ def api_comprehensive_profile(emp_no):
             score_list = []
             for month_str in month_list:
                 print(f"DEBUG: 处理月份 {month_str}")
-                # 绩效
+                # 绩效 (优化: 使用year/month索引)
+                m_year, m_month = map(int, month_str.split('-'))
                 cur.execute(f"""
                     SELECT score, grade FROM performance_records
-                    WHERE emp_no = %s AND ({get_year_month_concat()}) = %s
-                """, [emp_no, month_str])
+                    WHERE emp_no = %s AND year = %s AND month = %s
+                """, [emp_no, m_year, m_month])
                 month_perf_row = cur.fetchone()
                 if month_perf_row:
                     month_perf_score = calculate_performance_score_monthly(
@@ -3099,13 +3129,20 @@ def api_comprehensive_profile(emp_no):
                     month_perf_score = 0
                     print(f"  - 绩效: 无数据")
 
-                # 安全
+                # 安全 (优化: 范围查询)
+                m_start = month_str + '-01'
+                try:
+                    m_dt = datetime.strptime(m_start, '%Y-%m-%d')
+                    m_next = (m_dt + timedelta(days=32)).replace(day=1).strftime('%Y-%m-%d')
+                except:
+                    m_next = m_start 
+
                 cur.execute("""
                     SELECT assessment, inspection_date
                     FROM safety_inspection_records
-                    WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
+                    WHERE inspected_person = %s AND inspection_date >= %s AND inspection_date < %s
                     ORDER BY inspection_date
-                """, [emp_name, month_str])
+                """, [emp_name, m_start, m_next])
                 month_safety_rows = cur.fetchall()
                 if month_safety_rows:
                     # 提取扣分数值
@@ -3130,11 +3167,11 @@ def api_comprehensive_profile(emp_no):
                     month_safety_score = 0
                     print(f"  - 安全: 无数据")
 
-                # 培训
+                # 培训 (优化: 范围查询)
                 cur.execute("""
                     SELECT score, is_qualified, is_disqualified, training_date FROM training_records
-                    WHERE emp_no = %s AND DATE_FORMAT(training_date, '%%Y-%%m') = %s
-                """, [emp_no, month_str])
+                    WHERE emp_no = %s AND training_date >= %s AND training_date < %s
+                """, [emp_no, m_start, m_next])
                 month_training_rows = cur.fetchall()
                 if month_training_rows:
                     month_training_result = calculate_training_score_with_penalty(

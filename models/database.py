@@ -406,6 +406,25 @@ def _init_mysql_tables(cur):
             ip_address VARCHAR(50),
             FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        
+        # Async tasks table
+        """
+        CREATE TABLE IF NOT EXISTS async_tasks (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            task_type VARCHAR(50) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending', -- pending, processing, completed, failed
+            user_id INT,
+            file_name VARCHAR(255),
+            file_path VARCHAR(500),
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            completed_at DATETIME,
+            result_message TEXT,
+            error_message TEXT,
+            meta_data TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """
     ]
 
@@ -490,6 +509,10 @@ def _create_indexes(cur):
         ("idx_training_projects_category_id", "training_projects", "category_id"),
         ("idx_training_projects_archived", "training_projects", "is_archived"),
         ("idx_training_records_project_snapshot", "training_records", "project_name_snapshot"),
+        # 性能优化复合索引
+        ("idx_training_emp_date_composite", "training_records", "emp_no, training_date"),
+        ("idx_safety_person_date_composite", "safety_inspection_records", "inspected_person, inspection_date"),
+        ("idx_performance_emp_year_month", "performance_records", "emp_no, year, month"),
     ]
 
     for index_name, table_name, columns in indexes:
