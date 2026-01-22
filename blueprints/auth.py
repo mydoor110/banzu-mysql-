@@ -16,7 +16,7 @@ from .helpers import current_user_id
 auth_bp = Blueprint('auth', __name__)
 
 # 应用标题（从环境变量或配置中获取）
-APP_TITLE = "绩效汇总 · 简易版"
+APP_TITLE = "班组管理"
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])

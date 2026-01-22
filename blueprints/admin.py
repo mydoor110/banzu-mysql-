@@ -18,7 +18,7 @@ from config.settings import EXPORT_DIR
 
 # 创建 Blueprint
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
-APP_TITLE = "绩效汇总 · 简易版"
+APP_TITLE = "班组管理"
 
 # ========== 用户管理 ==========
 
