@@ -33,8 +33,12 @@ def get_db():
 def close_db():
     """Close database connection"""
     if hasattr(_local, 'connection') and _local.connection:
-        _local.connection.close()
-        _local.connection = None
+        try:
+            _local.connection.close()
+        except pymysql.Error:
+            pass  # Ignore if already closed
+        finally:
+            _local.connection = None
 
 
 def get_year_month_concat():
