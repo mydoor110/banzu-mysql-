@@ -405,6 +405,172 @@
                                 </div>
                             </div>
 
+                            <!-- 4.1 职业稳定度算法参数卡片（新版） -->
+                            <div class="card mb-4 border-secondary">
+                                <div class="card-header bg-secondary bg-opacity-10">
+                                    <h6 class="mb-0 text-secondary">
+                                        <i class="bi bi-shield-fill-check"></i> 🏆 职业稳定度算法参数（新版）
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="alert alert-light border p-3">
+                                        <p class="mb-2"><strong>算法说明：</strong>基于违规扣分 + 波动率修正</p>
+                                        <p class="mb-0 text-muted small">计算公式：稳定度 = 基础分 - 违规扣分 - 红线扣分（若波动异常则封顶60分）</p>
+                                    </div>
+
+                                    <!-- 基础扣分参数 -->
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold">
+                                            基础扣分参数
+                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" title="违规产生的扣分规则"></i>
+                                        </label>
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label small">基础分</label>
+                                                <input type="number" class="form-control" min="0" max="200" data-path="stability_new.base_stability" placeholder="100">
+                                                <small class="text-muted">默认100分</small>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small">单次普通违规扣分</label>
+                                                <input type="number" class="form-control" step="1" min="0" max="50" data-path="stability_new.violation_penalty" placeholder="10">
+                                                <small class="text-muted">扣分低于红线阈值的违规</small>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small">单次红线违规扣分</label>
+                                                <input type="number" class="form-control text-danger fw-bold" step="1" min="0" max="100" data-path="stability_new.redline_penalty" placeholder="40">
+                                                <small class="text-danger">扣分≥安全红线阈值的违规</small>
+                                            </div>
+                                        </div>
+                                        <small class="text-muted mt-2">
+                                            <i class="bi bi-lightbulb"></i> 推荐值：基础100分，普通违规扣10分，红线扣40分
+                                        </small>
+                                    </div>
+
+                                    <hr>
+
+                                    <!-- 波动率修正 -->
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">
+                                            波动率修正
+                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" title="安全波动异常时强制封顶"></i>
+                                        </label>
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label small">安全波动敏感系数</label>
+                                                <input type="number" class="form-control" step="0.1" min="0.5" max="3" data-path="stability_new.safety_cv_limit" placeholder="1.2">
+                                                <small class="text-muted">若安全CV > 综合CV × 此值，强制封顶60分</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 4.2 学习能力算法参数卡片（新版） -->
+                            <div class="card mb-4 border-info">
+                                <div class="card-header bg-info bg-opacity-10">
+                                    <h6 class="mb-0 text-info">
+                                        <i class="bi bi-graph-up-arrow"></i> 📈 学习能力算法参数（新版）
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="alert alert-light border p-3">
+                                        <p class="mb-2"><strong>算法说明：</strong>动态水位线 + 趋势分类 + 群体校准</p>
+                                        <p class="mb-0 text-muted small">基于违规数量变化趋势评估学习能力，不依赖综合分</p>
+                                    </div>
+
+                                    <!-- 动态水位线参数 -->
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold">
+                                            动态水位线
+                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" title="关注线和熔断线的计算参数"></i>
+                                        </label>
+                                        <div class="row g-3">
+                                            <div class="col-md-3">
+                                                <label class="form-label small">关注线倍率</label>
+                                                <input type="number" class="form-control" step="0.1" min="1" max="5" data-path="learning_new.trend_warning_ratio" placeholder="1.5">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small">关注线保底值</label>
+                                                <input type="number" class="form-control" min="1" max="10" data-path="learning_new.trend_warning_floor" placeholder="2">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small">熔断线倍率</label>
+                                                <input type="number" class="form-control" step="0.1" min="2" max="10" data-path="learning_new.trend_critical_ratio" placeholder="3.0">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small">熔断线保底值</label>
+                                                <input type="number" class="form-control" min="3" max="20" data-path="learning_new.trend_critical_floor" placeholder="5">
+                                            </div>
+                                        </div>
+                                        <small class="text-muted mt-2">
+                                            <i class="bi bi-lightbulb"></i> 关注线=max(班组均值×倍率, 保底值)，超过熔断线直接0分
+                                        </small>
+                                    </div>
+
+                                    <hr>
+
+                                    <!-- 趋势奖惩系数 -->
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">
+                                            趋势奖惩系数
+                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" title="根据违规趋势变化给予不同的奖惩"></i>
+                                        </label>
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label small">改善系数（数量下降）</label>
+                                                <input type="number" class="form-control" step="0.1" min="1" max="2" data-path="learning_new.factor_improvement" placeholder="1.2">
+                                                <small class="text-success">奖励系数，推荐1.2</small>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small">固化系数（高位持平）</label>
+                                                <input type="number" class="form-control" step="0.1" min="0" max="1" data-path="learning_new.factor_solidification" placeholder="0.4">
+                                                <small class="text-warning">惩罚系数，推荐0.4</small>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small">恶化系数（高位上升）</label>
+                                                <input type="number" class="form-control" step="0.1" min="0" max="1" data-path="learning_new.factor_deterioration" placeholder="0.0">
+                                                <small class="text-danger">惩罚系数，推荐0.0=直接0分</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 4.3 九宫格配置卡片 -->
+                            <div class="card mb-4 border-dark">
+                                <div class="card-header bg-dark bg-opacity-10">
+                                    <h6 class="mb-0 text-dark">
+                                        <i class="bi bi-grid-3x3"></i> 🎯 人才九宫格Y轴权重
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="alert alert-light border p-3">
+                                        <p class="mb-2"><strong>设计说明：</strong>九宫格Y轴 = 稳定度×权重 + 学习能力×权重</p>
+                                        <p class="mb-0 text-muted small">X轴使用三维综合分（绩效+安全+培训），复用综合评分权重配置</p>
+                                    </div>
+
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label small">稳定度权重</label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control" step="0.1" min="0" max="1" data-path="nine_grid.y_axis_weights.stability" placeholder="0.4">
+                                                <span class="input-group-text">×100%</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small">学习能力权重</label>
+                                            <div class="input-group">
+                                                <input type="number" class="form-control" step="0.1" min="0" max="1" data-path="nine_grid.y_axis_weights.learning" placeholder="0.6">
+                                                <span class="input-group-text">×100%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <small class="text-muted mt-2">
+                                        <i class="bi bi-lightbulb"></i> 推荐值：稳定度40% + 学习能力60%（两项之和应为1.0）
+                                    </small>
+                                </div>
+                            </div>
+
                             <!-- 5. 综合评分权重卡片 -->
                             <div class="card mb-4 border-info">
                                 <div class="card-header bg-info bg-opacity-10">

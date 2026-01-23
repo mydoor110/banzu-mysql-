@@ -1143,6 +1143,267 @@ def calculate_stability_score(
     }
 
 
+def calculate_stability_score_new(
+    violations_list: List[float],
+    historical_three_dim_scores: Optional[List[float]] = None,
+    config: dict = None
+) -> Dict:
+    """
+    职业稳定度评分算法（新版）- 基于违规扣分 + 波动率修正
+
+    设计原则：
+    1. 基础分100分，根据违规记录扣分
+    2. 红线违规扣更多分
+    3. 波动率修正：若安全波动异常高于整体波动，封顶60分
+
+    Args:
+        violations_list: 当月违规扣分值列表，如 [3, 5, 12]
+        historical_three_dim_scores: 历史三维综合分列表（用于CV计算），至少3个月
+        config: 算法配置
+
+    Returns:
+        {
+            'stability_score': 最终稳定度分数,
+            'base_deduction': 基础扣分,
+            'cv_capped': 是否被波动率封顶,
+            'status_color': 状态颜色,
+            'alert_tag': 警示标签
+        }
+    """
+    import numpy as np
+
+    # 读取配置
+    if config is None:
+        from services.algorithm_config_service import AlgorithmConfigService
+        config = AlgorithmConfigService.get_active_config()
+
+    # 新算法配置
+    stability_config = config.get('stability_new', {
+        'base_stability': 100.0,
+        'violation_penalty': 10.0,
+        'redline_penalty': 40.0,
+        'safety_cv_limit': 1.2
+    })
+
+    # 红线阈值复用安全配置
+    safety_config = config.get('safety', {})
+    critical_threshold = safety_config.get('severity_track', {}).get('critical_threshold', 12)
+
+    base_stability = stability_config.get('base_stability', 100.0)
+    violation_penalty = stability_config.get('violation_penalty', 10.0)
+    redline_penalty = stability_config.get('redline_penalty', 40.0)
+    safety_cv_limit = stability_config.get('safety_cv_limit', 1.2)
+
+    # Step 1: 计算基础扣分
+    base_deduction = 0.0
+    redline_count = 0
+    normal_count = 0
+
+    for score in violations_list:
+        if score >= critical_threshold:
+            base_deduction += redline_penalty
+            redline_count += 1
+        else:
+            base_deduction += violation_penalty
+            normal_count += 1
+
+    # 计算基础稳定度分数
+    stability_score = max(0, base_stability - base_deduction)
+
+    # Step 2: 波动率修正（仅当历史>=3个月时生效）
+    cv_capped = False
+    if historical_three_dim_scores and len(historical_three_dim_scores) >= 3:
+        scores_array = np.array(historical_three_dim_scores)
+        mean_score = np.mean(scores_array)
+        std_score = np.std(scores_array)
+
+        if mean_score > 0:
+            cv_three_dim = std_score / mean_score
+
+            # 计算安全维度CV（从violations列表每月累计推算，这里简化处理）
+            # 实际场景中，应该传入历史安全分数列表
+            # 这里用violations_list长度作为简化判断
+            if len(violations_list) > 0:
+                safety_cv = len(violations_list) * 0.3  # 违规越多，波动越大
+
+                if safety_cv > cv_three_dim * safety_cv_limit:
+                    stability_score = min(stability_score, 60)
+                    cv_capped = True
+
+    # Step 3: 确定状态和标签
+    if stability_score >= 80:
+        status_color = 'GREEN'
+        alert_tag = '✅ 稳定可靠'
+    elif stability_score >= 60:
+        status_color = 'YELLOW'
+        if cv_capped:
+            alert_tag = '⚠️ 波动异常'
+        else:
+            alert_tag = '⚠️ 需要关注'
+    else:
+        status_color = 'RED'
+        if redline_count > 0:
+            alert_tag = f'⛔ 存在{redline_count}次红线违规'
+        else:
+            alert_tag = '⛔ 稳定性差'
+
+    return {
+        'stability_score': round(stability_score, 1),
+        'base_deduction': round(base_deduction, 1),
+        'redline_count': redline_count,
+        'normal_count': normal_count,
+        'cv_capped': cv_capped,
+        'status_color': status_color,
+        'alert_tag': alert_tag
+    }
+
+
+def calculate_learning_ability_new(
+    current_violations: int,
+    previous_violations: Optional[int],
+    group_avg_violations: float,
+    config: dict = None
+) -> Dict:
+    """
+    学习能力评分算法（新版）- 动态水位线 + 趋势分类 + 群体校准
+
+    设计原则：
+    1. 纯数量趋势分析，只关注违规数量变化
+    2. 动态水位线：关注线 = max(班组均值 × ratio, floor)
+    3. 熔断机制：超过熔断线直接0分
+    4. 群体校准：优于/劣于班组平均时调整系数
+
+    Args:
+        current_violations: 本月违规次数
+        previous_violations: 上月违规次数（None表示无数据/新员工）
+        group_avg_violations: 班组平均违规次数
+        config: 算法配置
+
+    Returns:
+        {
+            'learning_score': 学习能力分数,
+            'trend_type': 趋势类型 (improvement/solidification/deterioration/safe),
+            'status_color': 状态颜色,
+            'alert_tag': 警示标签
+        }
+    """
+    # 读取配置
+    if config is None:
+        from services.algorithm_config_service import AlgorithmConfigService
+        config = AlgorithmConfigService.get_active_config()
+
+    learning_config = config.get('learning_new', {
+        'trend_warning_ratio': 1.5,
+        'trend_warning_floor': 2,
+        'trend_critical_ratio': 3.0,
+        'trend_critical_floor': 5,
+        'factor_improvement': 1.2,
+        'factor_solidification': 0.4,
+        'factor_deterioration': 0.0
+    })
+
+    warning_ratio = learning_config.get('trend_warning_ratio', 1.5)
+    warning_floor = learning_config.get('trend_warning_floor', 2)
+    critical_ratio = learning_config.get('trend_critical_ratio', 3.0)
+    critical_floor = learning_config.get('trend_critical_floor', 5)
+    factor_improvement = learning_config.get('factor_improvement', 1.2)
+    factor_solidification = learning_config.get('factor_solidification', 0.4)
+    factor_deterioration = learning_config.get('factor_deterioration', 0.0)
+
+    # Step 1: 计算动态水位线
+    warning_line = max(group_avg_violations * warning_ratio, warning_floor)
+    critical_line = max(group_avg_violations * critical_ratio, critical_floor)
+
+    # Step 2: 熔断判定
+    if current_violations >= critical_line:
+        return {
+            'learning_score': 0,
+            'trend_type': 'meltdown',
+            'warning_line': round(warning_line, 1),
+            'critical_line': round(critical_line, 1),
+            'status_color': 'RED',
+            'alert_tag': f'⛔ 熔断（违规{current_violations}次≥熔断线{critical_line:.0f}）'
+        }
+
+    # Step 3: 冷启动处理（无上月数据）
+    if previous_violations is None:
+        if current_violations == 0:
+            learning_score = 85
+            trend_type = 'cold_start_good'
+            status_color = 'GREEN'
+            alert_tag = '✅ 新入职/无历史，本月无违规'
+        else:
+            learning_score = 70
+            trend_type = 'cold_start_warning'
+            status_color = 'YELLOW'
+            alert_tag = f'⚠️ 新入职/无历史，本月{current_violations}次违规'
+
+        return {
+            'learning_score': round(learning_score, 1),
+            'trend_type': trend_type,
+            'warning_line': round(warning_line, 1),
+            'critical_line': round(critical_line, 1),
+            'status_color': status_color,
+            'alert_tag': alert_tag
+        }
+
+    # Step 4: 安全区判定（本月和上月都低于关注线）
+    if current_violations < warning_line and previous_violations < warning_line:
+        # 群体校准：是否优于班组平均
+        base_score = 90
+        if current_violations < group_avg_violations:
+            base_score = min(100, base_score + 5)  # 优于平均+5分
+        
+        return {
+            'learning_score': round(base_score, 1),
+            'trend_type': 'safe',
+            'warning_line': round(warning_line, 1),
+            'critical_line': round(critical_line, 1),
+            'status_color': 'GREEN',
+            'alert_tag': '✅ 安全区（违规次数持续低于关注线）'
+        }
+
+    # Step 5: 高位趋势分类
+    base_score = 60  # 高位基础分
+
+    if current_violations < previous_violations:
+        # 改善：数量下降
+        trend_type = 'improvement'
+        learning_score = base_score * factor_improvement
+        status_color = 'GREEN'
+        alert_tag = f'📈 改善（{previous_violations}→{current_violations}次）'
+
+    elif current_violations == previous_violations:
+        # 固化：高位持平
+        trend_type = 'solidification'
+        learning_score = base_score * factor_solidification
+        status_color = 'ORANGE'
+        alert_tag = f'⚠️ 固化（持续{current_violations}次违规）'
+
+    else:
+        # 恶化：高位上升
+        trend_type = 'deterioration'
+        learning_score = base_score * factor_deterioration
+        status_color = 'RED'
+        alert_tag = f'⛔ 恶化（{previous_violations}→{current_violations}次）'
+
+    # Step 6: 群体校准
+    if current_violations < group_avg_violations:
+        learning_score = min(100, learning_score * 1.2)  # 优于平均+20%
+    elif current_violations > group_avg_violations * 1.5:
+        learning_score = learning_score * 0.8  # 远差于平均-20%
+
+    return {
+        'learning_score': round(max(0, min(100, learning_score)), 1),
+        'trend_type': trend_type,
+        'warning_line': round(warning_line, 1),
+        'critical_line': round(critical_line, 1),
+        'status_color': status_color,
+        'alert_tag': alert_tag
+    }
+
+
+
 def _parse_date_string(value: Optional[str]) -> Optional[date]:
     """解析日期字符串为date对象"""
     if value is None or value == "":

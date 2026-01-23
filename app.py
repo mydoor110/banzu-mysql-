@@ -163,6 +163,27 @@ def _init_algorithm_config():
             "decline_threshold": -0.2,
             "decline_penalty": 0.8,
             "slope_amplifier": 10
+        },
+        "stability_new": {
+            "base_stability": 100.0,
+            "violation_penalty": 10.0,
+            "redline_penalty": 40.0,
+            "safety_cv_limit": 1.2
+        },
+        "learning_new": {
+            "trend_warning_ratio": 1.5,
+            "trend_warning_floor": 2,
+            "trend_critical_ratio": 3.0,
+            "trend_critical_floor": 5,
+            "factor_improvement": 1.2,
+            "factor_solidification": 0.4,
+            "factor_deterioration": 0.0
+        },
+        "nine_grid": {
+            "y_axis_weights": {
+                "stability": 0.4,
+                "learning": 0.6
+            }
         }
     }
 
@@ -190,6 +211,27 @@ def _init_algorithm_config():
         "decline_penalty": 0.7,
         "slope_amplifier": 10
     }
+    strict_config["stability_new"] = {
+        "base_stability": 100.0,
+        "violation_penalty": 15.0,
+        "redline_penalty": 50.0,
+        "safety_cv_limit": 1.0
+    }
+    strict_config["learning_new"] = {
+        "trend_warning_ratio": 1.3,
+        "trend_warning_floor": 2,
+        "trend_critical_ratio": 2.5,
+        "trend_critical_floor": 4,
+        "factor_improvement": 1.3,
+        "factor_solidification": 0.3,
+        "factor_deterioration": 0.0
+    }
+    strict_config["nine_grid"] = {
+        "y_axis_weights": {
+            "stability": 0.4,
+            "learning": 0.6
+        }
+    }
 
     # 宽松档配置
     lenient_config = json.loads(json.dumps(standard_config))
@@ -215,6 +257,27 @@ def _init_algorithm_config():
         "decline_threshold": -0.2,
         "decline_penalty": 0.9,
         "slope_amplifier": 10
+    }
+    lenient_config["stability_new"] = {
+        "base_stability": 100.0,
+        "violation_penalty": 8.0,
+        "redline_penalty": 30.0,
+        "safety_cv_limit": 1.5
+    }
+    lenient_config["learning_new"] = {
+        "trend_warning_ratio": 2.0,
+        "trend_warning_floor": 3,
+        "trend_critical_ratio": 4.0,
+        "trend_critical_floor": 6,
+        "factor_improvement": 1.1,
+        "factor_solidification": 0.5,
+        "factor_deterioration": 0.0
+    }
+    lenient_config["nine_grid"] = {
+        "y_axis_weights": {
+            "stability": 0.4,
+            "learning": 0.6
+        }
     }
 
     # 插入预设方案
