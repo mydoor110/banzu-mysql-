@@ -2439,6 +2439,13 @@ def api_key_personnel_config():
         })
 
 
+@personnel_bp.route('/nine-grid')
+@login_required
+def page_nine_grid():
+    """人才九宫格页面"""
+    return render_template('personnel_nine_grid.html')
+
+
 @personnel_bp.route('/api/students-list')
 @login_required
 def api_students_list():

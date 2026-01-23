@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h2>人才九宫格</h2>
+            <p class="text-muted">基于三维综合分（X轴）和稳定度+学习能力（Y轴）的人才分布视图</p>
+            <hr>
+        </div>
+    </div>
+
+    <!-- 筛选器 -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <form class="row g-3" id="filter-form">
+                        <div class="col-md-3">
+                            <label for="department" class="form-label">部门</label>
+                            <select class="form-select" id="department" name="department_id">
+                                <option value="">全部部门</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label for="start-date" class="form-label">开始月份</label>
+                            <input type="month" class="form-control" id="start-date" name="start_date">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="end-date" class="form-label">结束月份</label>
+                            <input type="month" class="form-control" id="end-date" name="end_date">
+                        </div>
+                        <div class="col-md-2 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-search"></i> 查询
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 九宫格区域 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-grid-3x3"></i> 人才分布九宫格</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="nine-grid-container">
+                        <!-- Y轴标签 -->
+                        <div class="y-axis-label">
+                            <span>稳定度 + 学习能力 ↑</span>
+                        </div>
+
+                        <!-- 九宫格主体 -->
+                        <div class="nine-grid">
+                            <!-- 第一行：高Y轴 -->
+                            <div class="grid-cell low-x high-y" id="cell-1-1" data-label="培养对象">
+                                <div class="cell-header">培养对象</div>
+                                <div class="cell-count">0人</div>
+                                <div class="cell-list"></div>
+                            </div>
+                            <div class="grid-cell mid-x high-y" id="cell-1-2" data-label="潜力新星">
+                                <div class="cell-header">潜力新星</div>
+                                <div class="cell-count">0人</div>
+                                <div class="cell-list"></div>
+                            </div>
+                            <div class="grid-cell high-x high-y star-cell" id="cell-1-3" data-label="明星员工">
+                                <div class="cell-header">⭐ 明星员工</div>
+                                <div class="cell-count">0人</div>
+                                <div class="cell-list"></div>
+                            </div>
+
+                            <!-- 第二行：中Y轴 -->
+                            <div class="grid-cell low-x mid-y" id="cell-2-1" data-label="改善对象">
+                                <div class="cell-header">改善对象</div>
+                                <div class="cell-count">0人</div>
+                                <div class="cell-list"></div>
+                            </div>
+                            <div class="grid-cell mid-x mid-y" id="cell-2-2" data-label="中坚力量">
+                                <div class="cell-header">中坚力量</div>
+                                <div class="cell-count">0人</div>
+                                <div class="cell-list"></div>
+                            </div>
+                            <div class="grid-cell high-x mid-y" id="cell-2-3" data-label="骨干员工">
+                                <div class="cell-header">骨干员工</div>
+                                <div class="cell-count">0人</div>
+                                <div class="cell-list"></div>
+                            </div>
+
+                            <!-- 第三行：低Y轴 -->
+                            <div class="grid-cell low-x low-y warning-cell" id="cell-3-1" data-label="问题员工">
+                                <div class="cell-header">⚠️ 问题员工</div>
+                                <div class="cell-count">0人</div>
+                                <div class="cell-list"></div>
+                            </div>
+                            <div class="grid-cell mid-x low-y" id="cell-3-2" data-label="需关注">
+                                <div class="cell-header">需关注</div>
+                                <div class="cell-count">0人</div>
+                                <div class="cell-list"></div>
+                            </div>
+                            <div class="grid-cell high-x low-y" id="cell-3-3" data-label="待观察稳定">
+                                <div class="cell-header">待观察稳定</div>
+                                <div class="cell-count">0人</div>
+                                <div class="cell-list"></div>
+                            </div>
+                        </div>
+
+                        <!-- X轴标签 -->
+                        <div class="x-axis-label">
+                            <span>← 低</span>
+                            <span>三维综合分（绩效+安全+培训）</span>
+                            <span>高 →</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 统计概览 -->
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h3 id="stat-excellent">0</h3>
+                    <p class="mb-0">优秀人才（明星+骨干）</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h3 id="stat-potential">0</h3>
+                    <p class="mb-0">潜力人才（新星+培养）</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body text-center">
+                    <h3 id="stat-attention">0</h3>
+                    <p class="mb-0">需关注（中坚+关注）</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-danger text-white">
+                <div class="card-body text-center">
+                    <h3 id="stat-risk">0</h3>
+                    <p class="mb-0">风险人员（问题+改善）</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .nine-grid-container {
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+        background: #f8f9fa;
+    }
+
+    .y-axis-label {
+        text-align: center;
+        font-weight: bold;
+        color: #6c757d;
+        padding: 10px 0;
+    }
+
+    .x-axis-label {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 60px;
+        font-weight: bold;
+        color: #6c757d;
+    }
+
+    .nine-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(3, 1fr);
+        gap: 10px;
+        min-height: 450px;
+    }
+
+    .grid-cell {
+        background: white;
+        border: 2px solid #dee2e6;
+        border-radius: 10px;
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+
+    .grid-cell:hover {
+        transform: scale(1.02);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .cell-header {
+        font-weight: bold;
+        font-size: 14px;
+        color: #495057;
+        margin-bottom: 5px;
+    }
+
+    .cell-count {
+        font-size: 24px;
+        font-weight: bold;
+        color: #212529;
+    }
+
+    .cell-list {
+        flex: 1;
+        overflow-y: auto;
+        max-height: 80px;
+        font-size: 12px;
+        color: #6c757d;
+        margin-top: 10px;
+    }
+
+    /* 颜色区分 */
+    .high-x.high-y {
+        background: linear-gradient(135deg, #d4edda, #c3e6cb);
+        border-color: #28a745;
+    }
+
+    .high-x.mid-y {
+        background: linear-gradient(135deg, #e7f1ff, #cce5ff);
+        border-color: #007bff;
+    }
+
+    .mid-x.high-y {
+        background: linear-gradient(135deg, #e7f1ff, #b8daff);
+        border-color: #17a2b8;
+    }
+
+    .mid-x.mid-y {
+        background: linear-gradient(135deg, #fff3cd, #ffeeba);
+        border-color: #ffc107;
+    }
+
+    .low-x.high-y {
+        background: linear-gradient(135deg, #e2e3e5, #d6d8db);
+        border-color: #6c757d;
+    }
+
+    .low-x.mid-y {
+        background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+        border-color: #dc3545;
+    }
+
+    .low-x.low-y {
+        background: linear-gradient(135deg, #f8d7da, #f1b0b7);
+        border-color: #dc3545;
+    }
+
+    .mid-x.low-y {
+        background: linear-gradient(135deg, #fff3cd, #ffe69c);
+        border-color: #fd7e14;
+    }
+
+    .high-x.low-y {
+        background: linear-gradient(135deg, #e7f1ff, #cce0ff);
+        border-color: #6c757d;
+    }
+
+    .star-cell .cell-header {
+        color: #155724;
+    }
+
+    .warning-cell .cell-header {
+        color: #721c24;
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // 加载部门列表
+        loadDepartments();
+
+        // 设置默认日期范围（当前月份）
+        const now = new Date();
+        const currentMonth = now.toISOString().slice(0, 7);
+        document.getElementById('start-date').value = currentMonth;
+        document.getElementById('end-date').value = currentMonth;
+
+        // 绑定表单提交
+        document.getElementById('filter-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            loadNineGridData();
+        });
+
+        // 初始加载
+        loadNineGridData();
+    });
+
+    function loadDepartments() {
+        fetch('/api/departments')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('department');
+                data.forEach(dept => {
+                    const option = document.createElement('option');
+                    option.value = dept.id;
+                    option.textContent = dept.name;
+                    select.appendChild(option);
+                });
+            })
+            .catch(err => console.error('加载部门失败:', err));
+    }
+
+    function loadNineGridData() {
+        const formData = new FormData(document.getElementById('filter-form'));
+        const params = new URLSearchParams(formData);
+
+        // TODO: 调用后端API获取九宫格数据
+        // fetch('/api/personnel/nine-grid?' + params.toString())
+        //     .then(response => response.json())
+        //     .then(data => renderNineGrid(data))
+        //     .catch(err => console.error('加载九宫格数据失败:', err));
+
+        // 暂时显示模拟数据
+        console.log('九宫格功能开发中，参数:', params.toString());
+    }
+
+    function renderNineGrid(data) {
+        // TODO: 实现渲染逻辑
+    }
+</script>
+{% endblock %}
