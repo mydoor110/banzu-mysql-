@@ -761,7 +761,8 @@ def calculate_learning_ability_monthly(score_curr: float, score_prev: float) -> 
         'slope': 0,  # 月度模式无斜率概念，设为0
         'status_color': status_color,
         'alert_tag': alert_tag,
-        'tier': tier
+        'tier': tier,
+        'months': 1  # 月度模式统计1个月
     }
 
 
@@ -874,7 +875,8 @@ def calculate_learning_ability_longterm(score_list: List[float], config: dict = 
         'average_score': round(average_score, 1),
         'status_color': status_color,
         'alert_tag': alert_tag,
-        'tier': tier
+        'tier': tier,
+        'months': len(score_list)
     }
 
 
@@ -3224,6 +3226,7 @@ def api_comprehensive_profile(emp_no):
         learning_tier = learning_result['tier']
         learning_delta = learning_result.get('delta', 0)
         learning_slope = learning_result.get('slope', 0)
+        learning_months = learning_result.get('months', 0)
     else:
         learning_score = 0
         learning_status_color = 'GRAY'
@@ -3231,6 +3234,7 @@ def api_comprehensive_profile(emp_no):
         learning_tier = '无数据'
         learning_delta = 0
         learning_slope = 0
+        learning_months = 0
 
     # 6. 稳定性评估（综合算法：资历60% + 表现稳定性40%）
     # 查询用户筛选日期范围内的历史分数用于波动度计算
@@ -3445,7 +3449,8 @@ def api_comprehensive_profile(emp_no):
             'delta': round(learning_delta, 1) if learning_delta else 0,
             'slope': round(learning_slope, 3) if learning_slope else 0,
             'current_comprehensive': round(current_comprehensive, 1),
-            'previous_comprehensive': round(previous_comprehensive, 1) if previous_comprehensive else 0
+            'previous_comprehensive': round(previous_comprehensive, 1) if previous_comprehensive else 0,
+            'months': learning_months
         }
     })
 
