@@ -81,6 +81,20 @@
                                     </h6>
                                 </div>
                                 <div class="card-body">
+                                    <!-- 算法说明区域 -->
+                                    <div class="alert alert-light border p-3 mb-4">
+                                        <h6 class="text-primary fw-bold"><i class="bi bi-calculator"></i> 算法逻辑说明</h6>
+                                        <div class="small text-muted">
+                                            <p class="mb-2"><strong>核心公式：</strong> <code>绩效分 = 等级系数 × 基准分(95)</code></p>
+                                            <p class="mb-2"><strong>熔断机制（污染规则）：</strong>
+                                                为了防止个别差绩效影响整体评价的公正性，当D级或C级出现次数达到阈值时，该维度分数将被强制封顶。</p>
+                                            <ul class="mb-0">
+                                                <li><strong>等级系数：</strong> 决定了不同绩效等级的得分比例（例如A级1.1倍，D级0倍）。</li>
+                                                <li><strong>熔断阈值：</strong>
+                                                    比如设置"D级1次熔断"，意味着只要有1次D级，无论其他月份表现如何，绩效分都不会超过设定的上限。</li>
+                                            </ul>
+                                        </div>
+                                    </div>
                                     <!-- 等级系数 -->
                                     <div class="mb-4">
                                         <label class="form-label fw-bold">
@@ -170,6 +184,29 @@
                                     </h6>
                                 </div>
                                 <div class="card-body">
+                                    <!-- 算法说明区域 -->
+                                    <div class="alert alert-light border p-3 mb-4">
+                                        <h6 class="text-warning fw-bold"><i class="bi bi-calculator"></i> 算法逻辑说明（双轨制）
+                                        </h6>
+                                        <div class="small text-muted">
+                                            <p class="mb-2"><strong>核心公式：</strong> <code>最终得分 = Min(维度A得分, 维度B得分)</code>
+                                                —— 取两者中的较低值，确保存木桶效应。</p>
+                                            <div class="row">
+                                                <div class="col-md-6 border-end">
+                                                    <strong>维度A：行为习惯（关注频率）</strong><br>
+                                                    <code>扣分 = 月均违规频次 × 阶梯倍数</code><br>
+                                                    <em>例如：月均3次违规（落在2-5区间），倍数为5，则扣分=3×5=15分。</em>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <strong>维度B：后果严重性（关注程度）</strong><br>
+                                                    <code>扣分 = Σ(单次违规分值 × 严重性系数)</code><br>
+                                                    <em>例如：一次5分严重违规，系数为5.0，则单次扣分=5×5.0=25分。</em>
+                                                </div>
+                                            </div>
+                                            <p class="mt-2 mb-0 text-danger"><strong>红线机制：</strong>
+                                                若单次违规分值超过"重大违规红线"，该维度直接判为0分。</p>
+                                        </div>
+                                    </div>
                                     <!-- 行为频率轨道 -->
                                     <div class="mb-4">
                                         <label class="form-label fw-bold">
@@ -299,6 +336,21 @@
                                     </h6>
                                 </div>
                                 <div class="card-body">
+                                    <!-- 算法说明区域 -->
+                                    <div class="alert alert-light border p-3 mb-4">
+                                        <h6 class="text-success fw-bold"><i class="bi bi-calculator"></i> 算法逻辑说明</h6>
+                                        <div class="small text-muted">
+                                            <p class="mb-2"><strong>核心公式：</strong> <code>最终分 = 基础分(平均成绩) × 惩罚系数</code>
+                                            </p>
+                                            <p class="mb-2"><strong>惩罚系数优先级（由高到低）：</strong></p>
+                                            <ol class="mb-0">
+                                                <li><strong>绝对失格：</strong> 失格次数 ≥ 阈值 → 直接使用"绝对失格系数"（最严厉）。</li>
+                                                <li><strong>小样本惩罚：</strong> 培训总次数不足（如新员工） → 使用"小样本系数"降低置信度。</li>
+                                                <li><strong>AFR年化失格率：</strong> 根据 <code>(失格数/天数)×365</code>
+                                                    计算年化频率，按区间匹配系数。</li>
+                                            </ol>
+                                        </div>
+                                    </div>
                                     <!-- 绝对失格阈值 -->
                                     <div class="mb-4">
                                         <label class="form-label fw-bold">
@@ -415,16 +467,30 @@
                                     </h6>
                                 </div>
                                 <div class="card-body">
-                                    <div class="alert alert-light border p-3">
-                                        <p class="mb-2"><strong>算法说明（V4.0）：</strong>原子化单月计算 + 长周期切片聚合 + 短板熔断</p>
-                                        <p class="mb-1 text-muted small"><strong>核心逻辑：</strong></p>
-                                        <ul class="mb-0 text-muted small">
-                                            <li>单月计算：基础分 - (普通违规×penalty + 红线违规×redline_penalty)</li>
-                                            <li>长周期聚合：加权平均 - CV波动打击</li>
-                                            <li><strong
-                                                    class="text-danger">短板熔断(Veto)：</strong>任意月份触碰红线(≥40分)或归零(≥100分扣分) →
-                                                整体归零</li>
-                                        </ul>
+                                    <!-- 算法说明区域 -->
+                                    <div class="alert alert-light border p-3 mb-4">
+                                        <h6 class="text-secondary fw-bold"><i class="bi bi-calculator"></i> 算法逻辑说明（V4.0）
+                                        </h6>
+                                        <div class="small text-muted">
+                                            <p class="mb-2"><strong>设计理念：</strong> <code>原子化单月计算 + 长周期切片聚合</code></p>
+                                            <div class="row mb-2">
+                                                <div class="col-md-6 border-end">
+                                                    <strong>1. 单月评分：</strong><br>
+                                                    <code>Score = 100 - (普通违规×N + 红线违规×M)</code><br>
+                                                    <em>基础分扣减模式，红线违规扣分更重。</em>
+                                                    <div class="mt-1 text-warning">
+                                                        <strong>波动率熔断：</strong>若安全CV > 综合CV×1.2，单月封顶60分。
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <strong>2. 长周期聚合：</strong><br>
+                                                    <code>Final = 加权平均分 × (1 - CV波动折扣)</code><br>
+                                                    <em>CV波动越剧烈（忽好忽坏），最终得分折扣越大。近期月份权重更高。</em>
+                                                </div>
+                                            </div>
+                                            <p class="mb-0 text-danger"><strong>短板熔断(Veto)：</strong>
+                                                任意一个月发生红线违规（扣分≥红线值）或 得分为0，则整个周期的稳定度直接归零。</p>
+                                        </div>
                                     </div>
 
                                     <!-- 基础扣分参数 -->
@@ -495,9 +561,37 @@
                                     </h6>
                                 </div>
                                 <div class="card-body">
-                                    <div class="alert alert-light border p-3">
-                                        <p class="mb-2"><strong>算法说明：</strong>动态水位线 + 趋势分类 + 群体校准</p>
-                                        <p class="mb-0 text-muted small">基于违规数量变化趋势评估学习能力，不依赖综合分</p>
+                                    <!-- 算法说明区域 -->
+                                    <div class="alert alert-light border p-3 mb-4">
+                                        <h6 class="text-info fw-bold"><i class="bi bi-calculator"></i> 算法逻辑说明（V4.0
+                                            动态水位线）</h6>
+                                        <div class="small text-muted">
+                                            <p class="mb-2"><strong>核心理念：</strong>
+                                                <code>关注趋势变化，而非绝对数值</code>。引入"动态水位线"概念，根据班组平均水平自动调整要求。
+                                            </p>
+
+                                            <div class="mb-2">
+                                                <strong>1. 动态水位线：</strong><br>
+                                                <code>关注线 = MAX(班组均值×倍率, 保底值, 历史安全基准线)</code><br>
+                                                <em>不仅参考班组平均（相对标准），还强制设定了"历史基准线"（绝对底线），防止班组集体退化导致标准过低。</em>
+                                            </div>
+
+                                            <div class="mb-2">
+                                                <strong>2. 趋势判定与奖惩：</strong><br>
+                                                <code>得分 = 基础分 × 趋势系数</code>
+                                                <ul class="mb-0">
+                                                    <li><span class="text-success">📉 有效改善（安全区）：</span>
+                                                        基础分~90，系数×1.0~1.2</li>
+                                                    <li><span class="text-warning">⚠️ 高位改善（危险区）：</span>
+                                                        基础分~60，系数×0.8（减轻惩罚）</li>
+                                                    <li><span class="text-danger">📈 恶化：</span> 基础分~60，系数×0.3（渐进惩罚）或
+                                                        0（归零）</li>
+                                                </ul>
+                                            </div>
+
+                                            <p class="mb-0 mt-2"><strong>熔断机制：</strong> 违规数超过"熔断线"（通常是均值的3倍），直接判定为0分。
+                                            </p>
+                                        </div>
                                     </div>
 
                                     <!-- 动态水位线参数 -->
@@ -532,6 +626,69 @@
                                         <small class="text-muted mt-2">
                                             <i class="bi bi-lightbulb"></i> 关注线=max(班组均值×倍率, 保底值)，超过熔断线直接0分
                                         </small>
+                                    </div>
+
+                                    <!-- 历史安全基准线 -->
+                                    <hr>
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold">
+                                            安全基准线
+                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
+                                                title="防止群体退化的绝对底线"></i>
+                                        </label>
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label small">历史安全基准线（次）</label>
+                                                <input type="number" class="form-control" min="1" max="10"
+                                                    data-path="learning_new.historical_baseline" placeholder="3">
+                                                <small class="text-muted">关注线的绝对下限，防止群体漂移</small>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 高位改善系数 -->
+                                    <hr>
+                                    <div class="mb-4">
+                                        <label class="form-label fw-bold">
+                                            高位改善系数
+                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
+                                                title="违规数高于关注线但在下降时使用"></i>
+                                        </label>
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label small">高位改善系数</label>
+                                                <input type="number" class="form-control" step="0.1" min="0" max="1"
+                                                    data-path="learning_new.factor_high_improvement" placeholder="0.8">
+                                                <small class="text-warning">减轻惩罚但不奖励，推荐0.8</small>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 恶化处理模式 -->
+                                    <hr>
+                                    <div class="mb-3">
+                                        <label class="form-label fw-bold">
+                                            恶化处理模式
+                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
+                                                title="选择如何处理违规数上升的情况"></i>
+                                        </label>
+                                        <div class="row g-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label small">处理模式</label>
+                                                <select class="form-select" data-path="learning_new.deterioration_mode">
+                                                    <option value="progressive">渐进式（推荐）</option>
+                                                    <option value="immediate">立即归零</option>
+                                                </select>
+                                                <small class="text-muted">渐进式：单次恶化降分但不归零</small>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small">轻度恶化系数</label>
+                                                <input type="number" class="form-control" step="0.1" min="0" max="1"
+                                                    data-path="learning_new.factor_deterioration_mild"
+                                                    placeholder="0.3">
+                                                <small class="text-muted">用于单次恶化，推荐0.3</small>
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <hr>
@@ -1305,6 +1462,11 @@
                 decline_threshold: -0.2,
                 decline_penalty: 0.8,
                 slope_amplifier: 10
+            },
+            learning_new: {},
+            stability_new: {},
+            nine_grid: {
+                y_axis_weights: {}
             }
         };
 
@@ -1579,11 +1741,12 @@
                                             <br>
                                             <strong>📈 学习能力（V4.0 - 动态水位线）：</strong><br>
                                             &nbsp;&nbsp;<span class="text-primary"><strong>基于违规数量趋势，不依赖综合分</strong></span><br>
-                                            &nbsp;&nbsp;关注线 = max(班组均值×${cfg.learning_new?.trend_warning_ratio || 1.5}, ${cfg.learning_new?.trend_warning_floor || 2}次)<br>
+                                            &nbsp;&nbsp;关注线 = max(班组均值×${cfg.learning_new?.trend_warning_ratio || 1.5}, ${cfg.learning_new?.trend_warning_floor || 2}次, ${cfg.learning_new?.historical_baseline || 3}次)<br>
                                             &nbsp;&nbsp;熔断线 = max(班组均值×${cfg.learning_new?.trend_critical_ratio || 3.0}, ${cfg.learning_new?.trend_critical_floor || 5}次)<br>
-                                            &nbsp;&nbsp;• 违规下降 → 奖励系数${cfg.learning_new?.factor_improvement || 1.2}<br>
+                                            &nbsp;&nbsp;• 违规下降（安全区）→ 奖励系数${cfg.learning_new?.factor_improvement || 1.2}<br>
+                                            &nbsp;&nbsp;• 违规下降（仍高位）→ 改善系数${cfg.learning_new?.factor_high_improvement || 0.8}<br>
                                             &nbsp;&nbsp;• 高位持平 → 惩罚系数${cfg.learning_new?.factor_solidification || 0.4}<br>
-                                            &nbsp;&nbsp;• <span class="text-danger"><strong>高位上升</strong>（超熔断线） → 直接0分</span>
+                                            &nbsp;&nbsp;• <span class="text-danger"><strong>高位上升</strong> → ${cfg.learning_new?.deterioration_mode === 'immediate' ? '直接0分' : '渐进惩罚(×' + (cfg.learning_new?.factor_deterioration_mild || 0.3) + ')'}</span>
                                         </div>
                                     </div>
                                 </div>

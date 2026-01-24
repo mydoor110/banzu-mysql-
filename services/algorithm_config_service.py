@@ -354,6 +354,17 @@ class AlgorithmConfigService:
             if not isinstance(threshold, (int, float)) or threshold < 0 or threshold > 100:
                 return False, f"关键人员综合分阈值超出范围 [0, 100]: {threshold}"
 
+            # 7. 学习能力配置校验
+            if "learning_new" in config_data:
+                ln = config_data["learning_new"]
+                if "deterioration_mode" in ln:
+                    if ln["deterioration_mode"] not in ["progressive", "immediate"]:
+                        return False, f"无效的恶化处理模式: {ln['deterioration_mode']}"
+                if "factor_deterioration_mild" in ln:
+                    f = ln["factor_deterioration_mild"]
+                    if not isinstance(f, (int, float)) or f < 0 or f > 1:
+                        return False, f"轻度恶化系数超出范围 [0, 1]: {f}"
+
             return True, "校验通过"
 
         except Exception as e:

@@ -1316,7 +1316,11 @@ def calculate_learning_ability_new(
         'trend_critical_floor': 5,
         'factor_improvement': 1.2,
         'factor_solidification': 0.4,
-        'factor_deterioration': 0.0
+        'factor_deterioration': 0.0,
+        'historical_baseline': 3,
+        'factor_high_improvement': 0.8,
+        'deterioration_mode': 'progressive',
+        'factor_deterioration_mild': 0.3
     })
 
     warning_ratio = learning_config.get('trend_warning_ratio', 1.5)
@@ -1326,10 +1330,16 @@ def calculate_learning_ability_new(
     factor_improvement = learning_config.get('factor_improvement', 1.2)
     factor_solidification = learning_config.get('factor_solidification', 0.4)
     factor_deterioration = learning_config.get('factor_deterioration', 0.0)
+    
+    # 新增参数
+    historical_baseline = learning_config.get('historical_baseline', 3)
+    factor_high_improvement = learning_config.get('factor_high_improvement', 0.8)
+    deterioration_mode = learning_config.get('deterioration_mode', 'progressive')
+    factor_deterioration_mild = learning_config.get('factor_deterioration_mild', 0.3)
 
-    # Step 1: 计算动态水位线
-    warning_line = max(group_avg_violations * warning_ratio, warning_floor)
-    critical_line = max(group_avg_violations * critical_ratio, critical_floor)
+    # Step 1: 计算动态水位线 (修正：引入历史基准线防止群体退化)
+    warning_line = max(group_avg_violations * warning_ratio, warning_floor, historical_baseline)
+    critical_line = max(group_avg_violations * critical_ratio, critical_floor, historical_baseline * 2)
 
     # Step 2: 熔断判定
     if current_violations >= critical_line:
@@ -1385,10 +1395,18 @@ def calculate_learning_ability_new(
 
     if current_violations < previous_violations:
         # 改善：数量下降
-        trend_type = 'improvement'
-        learning_score = base_score * factor_improvement
-        status_color = 'GREEN'
-        alert_tag = f'📈 改善（{previous_violations}→{current_violations}次）'
+        if current_violations < warning_line:
+            # 真正的改善：已经进入安全区
+            trend_type = 'improvement'
+            learning_score = base_score * factor_improvement
+            status_color = 'GREEN'
+            alert_tag = f'📈 改善（{previous_violations}→{current_violations}次，已进入安全区）'
+        else:
+            # 高位改善：仍在关注线以上，只减轻惩罚
+            trend_type = 'high_improvement'
+            learning_score = base_score * factor_high_improvement
+            status_color = 'YELLOW'
+            alert_tag = f'⚠️ 高位改善（{previous_violations}→{current_violations}次，仍高于关注线{warning_line:.1f}）'
 
     elif current_violations == previous_violations:
         # 固化：高位持平
@@ -1399,10 +1417,18 @@ def calculate_learning_ability_new(
 
     else:
         # 恶化：高位上升
-        trend_type = 'deterioration'
-        learning_score = base_score * factor_deterioration
-        status_color = 'RED'
-        alert_tag = f'⛔ 恶化（{previous_violations}→{current_violations}次）'
+        if deterioration_mode == 'immediate':
+            # 立即归零模式
+            trend_type = 'deterioration'
+            learning_score = base_score * factor_deterioration
+            status_color = 'RED'
+            alert_tag = f'⛔ 恶化（{previous_violations}→{current_violations}次）'
+        else:
+            # 渐进式模式（默认）- 单次恶化给予轻度惩罚而非直接归零
+            trend_type = 'deterioration_mild'
+            learning_score = base_score * factor_deterioration_mild
+            status_color = 'RED'
+            alert_tag = f'🔴 恶化（{previous_violations}→{current_violations}次，进入重点关注）'
 
     # Step 6: 群体校准
     if current_violations < group_avg_violations:
@@ -3378,7 +3404,11 @@ def api_students_list():
                     monthly_scores.append(res['learning_score'])
                     if 'trend_type' in res:
                         t = res['trend_type']
-                        if t in trend_status_counts:
+                        if t == 'high_improvement':
+                            trend_status_counts['improvement'] += 1
+                        elif t in ['deterioration_mild', 'meltdown']:
+                            trend_status_counts['deterioration'] += 1
+                        elif t in trend_status_counts:
                             trend_status_counts[t] += 1
                             
                     last_violations = curr_viol # 更新为下一次比较的基础
@@ -4036,7 +4066,11 @@ def api_comprehensive_profile(emp_no):
                 monthly_scores.append(res['learning_score'])
                 if 'trend_type' in res:
                     t = res['trend_type']
-                    if t in trend_status_counts:
+                    if t == 'high_improvement':
+                        trend_status_counts['improvement'] += 1
+                    elif t in ['deterioration_mild', 'meltdown']:
+                        trend_status_counts['deterioration'] += 1
+                    elif t in trend_status_counts:
                         trend_status_counts[t] += 1
                 last_violations = curr_viol
             
@@ -4142,7 +4176,13 @@ def api_comprehensive_profile(emp_no):
     learning_score = learning_result['learning_score']
     learning_status_color = learning_result['status_color']
     learning_alert_tag = learning_result['alert_tag']
-    learning_tier = learning_result.get('trend_type', '未知')
+    raw_trend_type = learning_result.get('trend_type', '未知')
+    if raw_trend_type == 'high_improvement':
+        learning_tier = 'improvement'
+    elif raw_trend_type in ['deterioration_mild', 'meltdown']:
+        learning_tier = 'deterioration'
+    else:
+        learning_tier = raw_trend_type
     learning_delta = 0  # 新算法不使用delta
     learning_slope = 0  # 新算法不使用slope
     learning_months = 1  # 新算法基于月度
