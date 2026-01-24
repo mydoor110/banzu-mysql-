@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 from typing import Dict, List, Optional
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, session, current_app
 from openpyxl import Workbook, load_workbook
 
 from config.settings import APP_TITLE
@@ -2686,7 +2686,7 @@ def api_nine_grid_data():
                 'details': scores
             })
         except Exception as e:
-            print(f"Error calculating score for {row.get('name')}: {e}")
+            current_app.logger.error(f"Error calculating score for {row.get('name')}: {e}")
             continue
 
     conn.close()
@@ -3422,7 +3422,7 @@ def api_students_list():
                     previous_violations = pre_period_count
 
             except Exception as e:
-                print(f"ERROR: 长周期学习能力计算异常: {e}")
+                current_app.logger.error(f": 长周期学习能力计算异常: {e}")
                 is_long_term = False # 回退到单月模式
 
 
@@ -3615,7 +3615,7 @@ def api_students_list():
                         curr_dt_hist = (curr_dt_hist.replace(day=1) + timedelta(days=32)).replace(day=1)
             
             except Exception as e:
-                print(f"DEBUG [api_students_list-员工{emp_no}]: 历史数据查询失败: {e}")
+                current_app.logger.debug(f" [api_students_list-员工{emp_no}]: 历史数据查询失败: {e}")
             
             # 调用新算法（V2版本，支持波动率熔断）
             stability_result = calculate_stability_score_new(
@@ -3633,10 +3633,10 @@ def api_students_list():
         # as the new algorithm doesn't primarily rely on `entry_date` for its core calculation.
         # However, if `stability_score` is still not set or is invalid, a final fallback can be applied.
         if stability_score is None:
-            print(f"DEBUG [api_students_list-员工{emp_no}]: 稳定性算法返回None，使用默认值50")
+            current_app.logger.debug(f" [api_students_list-员工{emp_no}]: 稳定性算法返回None，使用默认值50")
             stability_score = 50
         elif not isinstance(stability_score, (int, float)):
-            print(f"DEBUG [api_students_list-员工{emp_no}]: 稳定性算法返回非数值，使用默认值50")
+            current_app.logger.debug(f" [api_students_list-员工{emp_no}]: 稳定性算法返回非数值，使用默认值50")
             stability_score = 50
 
         # 综合评分（加权平均 - 使用配置权重）
@@ -3728,16 +3728,16 @@ def api_comprehensive_profile(emp_no):
     end_date = request.args.get('end_date')      # 格式：YYYY-MM
 
     # DEBUG: 打印接收到的日期参数
-    print(f"DEBUG [comprehensive-profile]: 原始参数 - start_date='{start_date}', end_date='{end_date}'")
-    print(f"DEBUG [comprehensive-profile]: 参数类型 - start_date type={type(start_date)}, end_date type={type(end_date)}")
-    print(f"DEBUG [comprehensive-profile]: 参数布尔值 - bool(start_date)={bool(start_date)}, bool(end_date)={bool(end_date)}")
+    current_app.logger.debug(f" [comprehensive-profile]: 原始参数 - start_date='{start_date}', end_date='{end_date}'")
+    current_app.logger.debug(f" [comprehensive-profile]: 参数类型 - start_date type={type(start_date)}, end_date type={type(end_date)}")
+    current_app.logger.debug(f" [comprehensive-profile]: 参数布尔值 - bool(start_date)={bool(start_date)}, bool(end_date)={bool(end_date)}")
 
     # 如果没有指定日期，默认使用当月
     if not start_date and not end_date:
         current_month = datetime.now().strftime('%Y-%m')
         start_date = current_month
         end_date = current_month
-        print(f"DEBUG [comprehensive-profile]: 无日期参数，使用默认当月: {current_month}")
+        current_app.logger.debug(f" [comprehensive-profile]: 无日期参数，使用默认当月: {current_month}")
 
     # 2. 培训能力分析（使用高级评分算法 - 包含毒性惩罚和动态年化）
     training_query = """
@@ -3888,7 +3888,7 @@ def api_comprehensive_profile(emp_no):
     # 4. 绩效能力分析（使用双算法系统）
     # 判断是月度还是周期（使用前面已经设置的 start_date 和 end_date）
     is_monthly = (start_date == end_date) if start_date and end_date else True
-    print(f"DEBUG [comprehensive-profile]: is_monthly={is_monthly}, start_date={start_date}, end_date={end_date}")
+    current_app.logger.debug(f" [comprehensive-profile]: is_monthly={is_monthly}, start_date={start_date}, end_date={end_date}")
 
     # 构建绩效查询
     perf_query = """
@@ -4078,7 +4078,7 @@ def api_comprehensive_profile(emp_no):
                 previous_violations = pre_period_count
 
         except Exception as e:
-            print(f"ERROR: 长周期学习能力计算异常: {e}")
+            current_app.logger.error(f": 长周期学习能力计算异常: {e}")
             is_long_term = False
 
     if not learning_result:
@@ -4255,7 +4255,7 @@ def api_comprehensive_profile(emp_no):
             }
 
         except Exception as e:
-            print(f"DEBUG [api_comprehensive_profile-员工{emp_no}]: 长周期稳定度计算失败: {e}")
+            current_app.logger.debug(f" [api_comprehensive_profile-员工{emp_no}]: 长周期稳定度计算失败: {e}")
             is_long_term_stab = False
 
     if not is_long_term_stab:
@@ -4311,7 +4311,7 @@ def api_comprehensive_profile(emp_no):
                     curr_dt_hist = (curr_dt_hist.replace(day=1) + timedelta(days=32)).replace(day=1)
         
         except Exception as e:
-            print(f"DEBUG [api_comprehensive_profile-员工{emp_no}]: 历史数据查询失败: {e}")
+            current_app.logger.debug(f" [api_comprehensive_profile-员工{emp_no}]: 历史数据查询失败: {e}")
             # 查询失败时使用空列表，算法会自动降级
         
         stability_result = calculate_stability_score_new(

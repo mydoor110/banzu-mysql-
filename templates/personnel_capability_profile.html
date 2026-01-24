@@ -828,8 +828,56 @@
         await loadComprehensiveProfile(empNo);
     }
 
+    // 全局变量用于处理竞态条件
+    let currentLoadingEmpNo = null;
+
+    // 清空能力画像UI（重置为加载/空状态）
+    function resetProfileUI() {
+        // 重置分数卡片
+        const cards = ['scoreComprehensive', 'scoreTraining', 'scoreSafety', 'scorePerformance', 'scoreLearning', 'scoreStability'];
+        cards.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '--';
+        });
+
+        // 重置状态标签
+        const badges = ['stabilityAlertBadge', 'safetyAlertBadge', 'trainingAlertBadge', 'performanceAlertBadge', 'learningAlertBadge'];
+        badges.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.textContent = '加载中...';
+                el.className = 'badge bg-secondary';
+            }
+        });
+
+        // 重置详情数据
+        const dataFields = [
+            'stabilityScoreValue', 'stabilityBaseDeduction', 'stabilityRedlineCount', 'stabilityCvCapped', 'stabilitySafetyCv',
+            'safetyViolations', 'safetyDeduction', 'safetyAvgFreq', 'safetyScoreA', 'safetyScoreB', 'safetyInspector', 'safetyRectifier',
+            'trainingRadarScore', 'trainingOriginalScore', 'trainingCoefficient', 'totalTrainings', 'trainingFailCount',
+            'recentPerformance', 'performanceLabel', 'performanceMode', 'performanceRange', 'performanceCount',
+            'learningScoreValue', 'learningTier', 'learningDelta', 'learningSlope', 'learningMonths'
+        ];
+        dataFields.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = '--';
+        });
+        
+        // 清除图表
+        if (comprehensiveRadarChart) {
+            comprehensiveRadarChart.destroy();
+            comprehensiveRadarChart = null;
+        }
+    }
+
     // 加载个人综合能力画像（人员+培训+安全+绩效）
     async function loadComprehensiveProfile(empNo) {
+        // 标记当前请求，防止竞态条件
+        currentLoadingEmpNo = empNo;
+        
+        // 先重置UI，避免残留上一个人的数据
+        resetProfileUI();
+
         try {
             // 构建查询参数（包含日期筛选）
             const params = new URLSearchParams();
@@ -841,6 +889,12 @@
 
             const url = `/personnel/api/comprehensive-profile/${empNo}${params.toString() ? '?' + params.toString() : ''}`;
             const response = await fetch(url);
+            
+            // 检查是否在等待当前请求（竞态条件处理）
+            if (currentLoadingEmpNo !== empNo) {
+                console.log(`忽略过期的请求结果: ${empNo} (当前: ${currentLoadingEmpNo})`);
+                return;
+            }
 
             if (!response.ok) {
                 throw new Error('API请求失败');
@@ -849,119 +903,110 @@
             const data = await response.json();
             console.log('综合能力数据:', data);
 
+            // 安全数值格式化辅助函数
+            const formatNum = (val, digits = 1) => {
+                return (val !== undefined && val !== null && !isNaN(val)) ? val.toFixed(digits) : '--';
+            };
+
             // 更新分数卡片
-            document.getElementById('scoreComprehensive').textContent = data.scores.comprehensive;
-            document.getElementById('scoreTraining').textContent = data.scores.training;
-            document.getElementById('scoreSafety').textContent = data.scores.safety;
-            document.getElementById('scorePerformance').textContent = data.scores.performance;
-            document.getElementById('scoreLearning').textContent = data.scores.learning;
-            document.getElementById('scoreStability').textContent = data.scores.stability;
+            document.getElementById('scoreComprehensive').textContent = formatNum(data.scores?.comprehensive);
+            document.getElementById('scoreTraining').textContent = formatNum(data.scores?.training);
+            document.getElementById('scoreSafety').textContent = formatNum(data.scores?.safety);
+            document.getElementById('scorePerformance').textContent = formatNum(data.scores?.performance);
+            document.getElementById('scoreLearning').textContent = formatNum(data.scores?.learning);
+            document.getElementById('scoreStability').textContent = formatNum(data.scores?.stability);
 
             // 更新稳定度信息
             const stabilityDetails = data.stability_details || {};
-            document.getElementById('stabilityScoreValue').textContent = data.scores.stability.toFixed(1);
-            document.getElementById('stabilityBaseDeduction').textContent =
-                stabilityDetails.base_deduction !== undefined ? stabilityDetails.base_deduction.toFixed(1) : '--';
-            document.getElementById('stabilityRedlineCount').textContent =
-                stabilityDetails.redline_count !== undefined ? stabilityDetails.redline_count : '--';
-            document.getElementById('stabilityCvCapped').textContent =
-                stabilityDetails.cv_capped ? '是' : '否';
-            document.getElementById('stabilitySafetyCv').textContent =
-                stabilityDetails.safety_cv !== undefined ? stabilityDetails.safety_cv.toFixed(3) : '--';
+            document.getElementById('stabilityScoreValue').textContent = formatNum(data.scores?.stability);
+            document.getElementById('stabilityBaseDeduction').textContent = formatNum(stabilityDetails.base_deduction);
+            document.getElementById('stabilityRedlineCount').textContent = stabilityDetails.redline_count ?? '--';
+            document.getElementById('stabilityCvCapped').textContent = stabilityDetails.cv_capped ? '是' : '否';
+            document.getElementById('stabilitySafetyCv').textContent = formatNum(stabilityDetails.safety_cv, 3);
 
             // 更新稳定度警示标签
             const stabilityBadge = document.getElementById('stabilityAlertBadge');
-            stabilityBadge.textContent = stabilityDetails.alert_tag || '✅ 稳定';
-            stabilityBadge.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'bg-secondary', 'bg-primary', 'bg-info');
-
-            const sColor = stabilityDetails.status_color;
-            if (sColor === 'GREEN') {
-                stabilityBadge.classList.add('bg-success');
-            } else if (sColor === 'YELLOW' || sColor === 'ORANGE') {
-                stabilityBadge.classList.add('bg-warning');
-                stabilityBadge.classList.add('text-dark'); // 橙黄色背景配深色文字更易读
-            } else if (sColor === 'RED') {
-                stabilityBadge.classList.add('bg-danger');
-            } else if (sColor === 'BLUE') {
-                stabilityBadge.classList.add('bg-primary');
-            } else {
-                stabilityBadge.classList.add('bg-secondary');
+            if (stabilityBadge) {
+                stabilityBadge.textContent = stabilityDetails.alert_tag || '✅ 稳定';
+                stabilityBadge.className = 'badge'; // 重置类名
+                
+                const sColor = stabilityDetails.status_color;
+                if (sColor === 'GREEN') stabilityBadge.classList.add('bg-success');
+                else if (sColor === 'YELLOW' || sColor === 'ORANGE') stabilityBadge.classList.add('bg-warning', 'text-dark');
+                else if (sColor === 'RED') stabilityBadge.classList.add('bg-danger');
+                else if (sColor === 'BLUE') stabilityBadge.classList.add('bg-primary');
+                else stabilityBadge.classList.add('bg-secondary');
             }
 
             // 更新安全统计
-            document.getElementById('safetyViolations').textContent = data.safety_details.violations;
-            document.getElementById('safetyDeduction').textContent = data.safety_details.total_deduction.toFixed(1);
-            document.getElementById('safetyAvgFreq').textContent = data.safety_details.avg_freq;
-            document.getElementById('safetyScoreA').textContent = data.safety_details.score_a;
-            document.getElementById('safetyScoreB').textContent = data.safety_details.score_b;
-            document.getElementById('safetyInspector').textContent = data.safety_details.as_inspector;
-            document.getElementById('safetyRectifier').textContent = data.safety_details.as_rectifier;
+            const safetyDetails = data.safety_details || {};
+            document.getElementById('safetyViolations').textContent = safetyDetails.violations ?? '--';
+            document.getElementById('safetyDeduction').textContent = formatNum(safetyDetails.total_deduction);
+            document.getElementById('safetyAvgFreq').textContent = safetyDetails.avg_freq ?? '--';
+            document.getElementById('safetyScoreA').textContent = safetyDetails.score_a ?? '--';
+            document.getElementById('safetyScoreB').textContent = safetyDetails.score_b ?? '--';
+            document.getElementById('safetyInspector').textContent = safetyDetails.as_inspector ?? '--';
+            document.getElementById('safetyRectifier').textContent = safetyDetails.as_rectifier ?? '--';
 
             // 更新安全警示标签
             const alertBadge = document.getElementById('safetyAlertBadge');
-            alertBadge.textContent = data.safety_details.alert_tag;
-
-            // 根据状态颜色设置徽章样式
-            alertBadge.classList.remove('bg-success', 'bg-warning', 'bg-danger');
-            if (data.safety_details.status_color === 'GREEN') {
-                alertBadge.classList.add('bg-success');
-            } else if (data.safety_details.status_color === 'ORANGE') {
-                alertBadge.classList.add('bg-warning');
-            } else if (data.safety_details.status_color === 'RED') {
-                alertBadge.classList.add('bg-danger');
+            if (alertBadge) {
+                alertBadge.textContent = safetyDetails.alert_tag || '暂无数据';
+                alertBadge.className = 'badge';
+                
+                if (safetyDetails.status_color === 'GREEN') alertBadge.classList.add('bg-success');
+                else if (safetyDetails.status_color === 'ORANGE') alertBadge.classList.add('bg-warning');
+                else if (safetyDetails.status_color === 'RED') alertBadge.classList.add('bg-danger');
+                else alertBadge.classList.add('bg-secondary');
             }
 
             // 更新培训统计
-            document.getElementById('trainingRadarScore').textContent = data.training_details.radar_score.toFixed(1);
-            document.getElementById('trainingOriginalScore').textContent = data.training_details.original_score.toFixed(1);
-            document.getElementById('trainingCoefficient').textContent = data.training_details.penalty_coefficient.toFixed(2);
-            document.getElementById('totalTrainings').textContent = data.training_details.total_ops;
-            document.getElementById('trainingFailCount').textContent = data.training_details.fail_count;
+            const trainingDetails = data.training_details || {};
+            document.getElementById('trainingRadarScore').textContent = formatNum(trainingDetails.radar_score);
+            document.getElementById('trainingOriginalScore').textContent = formatNum(trainingDetails.original_score);
+            document.getElementById('trainingCoefficient').textContent = formatNum(trainingDetails.penalty_coefficient, 2);
+            document.getElementById('totalTrainings').textContent = trainingDetails.total_ops ?? 0;
+            document.getElementById('trainingFailCount').textContent = trainingDetails.fail_count ?? 0;
 
             // 更新培训能力警示标签
             const trainingAlertBadge = document.getElementById('trainingAlertBadge');
-            trainingAlertBadge.textContent = data.training_details.alert_tag;
-
-            // 根据状态颜色设置徽章样式
-            trainingAlertBadge.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'bg-secondary', 'bg-info');
-            if (data.training_details.status_color === 'GREEN') {
-                trainingAlertBadge.classList.add('bg-success');
-            } else if (data.training_details.status_color === 'YELLOW') {
-                trainingAlertBadge.classList.add('bg-warning');
-            } else if (data.training_details.status_color === 'ORANGE') {
-                trainingAlertBadge.classList.add('bg-warning', 'text-dark');
-            } else if (data.training_details.status_color === 'RED') {
-                trainingAlertBadge.classList.add('bg-danger');
-            } else if (data.training_details.status_color === 'PURPLE') {
-                trainingAlertBadge.classList.add('bg-secondary');
+            if (trainingAlertBadge) {
+                trainingAlertBadge.textContent = trainingDetails.alert_tag || '暂无数据';
+                trainingAlertBadge.className = 'badge';
+                
+                const tColor = trainingDetails.status_color;
+                if (tColor === 'GREEN') trainingAlertBadge.classList.add('bg-success');
+                else if (tColor === 'YELLOW') trainingAlertBadge.classList.add('bg-warning');
+                else if (tColor === 'ORANGE') trainingAlertBadge.classList.add('bg-warning', 'text-dark');
+                else if (tColor === 'RED') trainingAlertBadge.classList.add('bg-danger');
+                else if (tColor === 'PURPLE') trainingAlertBadge.classList.add('bg-secondary');
+                else trainingAlertBadge.classList.add('bg-secondary');
             }
 
             // 更新绩效统计
-            document.getElementById('recentPerformance').textContent = data.performance_details.recent_avg.toFixed(1);
-            document.getElementById('performanceLabel').textContent = data.performance_details.display_label || '--';
-            document.getElementById('performanceMode').textContent =
-                data.performance_details.mode === 'MONTHLY' ? '月度快照' : '周期加权';
-            document.getElementById('performanceRange').textContent = data.performance_details.range;
-            document.getElementById('performanceCount').textContent = data.performance_details.count;
+            const perfDetails = data.performance_details || {};
+            document.getElementById('recentPerformance').textContent = formatNum(perfDetails.recent_avg);
+            document.getElementById('performanceLabel').textContent = perfDetails.display_label || '--';
+            document.getElementById('performanceMode').textContent = perfDetails.mode === 'MONTHLY' ? '月度快照' : '周期加权';
+            document.getElementById('performanceRange').textContent = perfDetails.range || '--';
+            document.getElementById('performanceCount').textContent = perfDetails.count ?? 0;
 
             // 更新绩效警示标签
             const perfAlertBadge = document.getElementById('performanceAlertBadge');
-            perfAlertBadge.textContent = data.performance_details.alert_tag;
-
-            // 根据状态颜色设置徽章样式
-            perfAlertBadge.classList.remove('bg-success', 'bg-warning', 'bg-danger');
-            if (data.performance_details.status_color === 'GREEN') {
-                perfAlertBadge.classList.add('bg-success');
-            } else if (data.performance_details.status_color === 'ORANGE') {
-                perfAlertBadge.classList.add('bg-warning');
-            } else if (data.performance_details.status_color === 'RED') {
-                perfAlertBadge.classList.add('bg-danger');
+            if (perfAlertBadge) {
+                perfAlertBadge.textContent = perfDetails.alert_tag || '暂无数据';
+                perfAlertBadge.className = 'badge';
+                
+                if (perfDetails.status_color === 'GREEN') perfAlertBadge.classList.add('bg-success');
+                else if (perfDetails.status_color === 'ORANGE') perfAlertBadge.classList.add('bg-warning');
+                else if (perfDetails.status_color === 'RED') perfAlertBadge.classList.add('bg-danger');
+                else perfAlertBadge.classList.add('bg-secondary');
             }
 
             // 更新学习能力卡片
             const learningDetails = data.learning_details;
             if (learningDetails) {
-                document.getElementById('learningScoreValue').textContent = data.scores.learning.toFixed(1);
+                document.getElementById('learningScoreValue').textContent = formatNum(data.scores?.learning);
 
                 const tierMap = {
                     'improvement': '持续改善',
@@ -979,43 +1024,43 @@
                 if (delta !== undefined && delta !== null) {
                     const deltaText = delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
                     const deltaColor = delta > 0 ? 'text-success' : (delta < 0 ? 'text-danger' : 'text-muted');
-                    document.getElementById('learningDelta').innerHTML = `<span class="${deltaColor}">${deltaText}</span>`;
+                    const deltaEl = document.getElementById('learningDelta');
+                    if (deltaEl) deltaEl.innerHTML = `<span class="${deltaColor}">${deltaText}</span>`;
                 } else {
-                    document.getElementById('learningDelta').textContent = '--';
+                    const deltaEl = document.getElementById('learningDelta');
+                    if (deltaEl) deltaEl.textContent = '--';
                 }
 
                 // 成长斜率
-                const slope = learningDetails.slope;
-                if (slope !== undefined && slope !== null) {
-                    document.getElementById('learningSlope').textContent = slope.toFixed(2);
-                } else {
-                    document.getElementById('learningSlope').textContent = '--';
-                }
-
-                // 统计月数
-                document.getElementById('learningMonths').textContent = learningDetails.months || '--';
+                document.getElementById('learningSlope').textContent = formatNum(learningDetails.slope, 2);
+                document.getElementById('learningMonths').textContent = learningDetails.months ?? '--';
 
                 // 更新警示标签
                 const learningBadge = document.getElementById('learningAlertBadge');
-                learningBadge.textContent = learningDetails.alert_tag || '✅ 稳定';
-                learningBadge.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'bg-secondary', 'bg-info');
-
-                const statusColor = learningDetails.status_color;
-                if (statusColor === 'GREEN') {
-                    learningBadge.classList.add('bg-success');
-                } else if (statusColor === 'ORANGE' || statusColor === 'YELLOW') {
-                    learningBadge.classList.add('bg-warning');
-                } else if (statusColor === 'RED') {
-                    learningBadge.classList.add('bg-danger');
-                } else {
-                    learningBadge.classList.add('bg-info');
+                if (learningBadge) {
+                    learningBadge.textContent = learningDetails.alert_tag || '✅ 稳定';
+                    learningBadge.className = 'badge';
+                    
+                    const lColor = learningDetails.status_color;
+                    if (lColor === 'GREEN') learningBadge.classList.add('bg-success');
+                    else if (lColor === 'ORANGE' || lColor === 'YELLOW') learningBadge.classList.add('bg-warning');
+                    else if (lColor === 'RED') learningBadge.classList.add('bg-danger');
+                    else learningBadge.classList.add('bg-info');
                 }
             }
 
             // 渲染五维雷达图
-            renderComprehensiveRadar(data.scores, data.training_details.status_color, data.safety_details.status_color, data.performance_details.status_color);
+            if (data.scores && data.training_details) {
+                renderComprehensiveRadar(
+                    data.scores, 
+                    data.training_details.status_color, 
+                    data.safety_details.status_color, 
+                    data.performance_details.status_color
+                );
+            }
         } catch (error) {
             console.error('加载综合画像失败:', error);
+            // 这里可以添加一个错误提示到UI
         }
     }
 
