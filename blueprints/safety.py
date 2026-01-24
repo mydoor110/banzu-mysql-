@@ -1046,29 +1046,66 @@ def batch_delete_records():
 import re
 
 def extract_score_from_assessment(assessment):
-    """从考核情况中提取分值"""
+    """
+    从考核情况中提取分值
+    逻辑：从右向左扫描所有数字。
+    1. 优先寻找带“分”的数字。
+    2. 如果数字带“元/钱”或看起来像金额（如迟到罚款），则跳过该数字，继续向左找。
+    3. 如果找到无明确单位的数字，且不像金额，则返回。
+    4. 如果所有数字都被判定为金额，则返回0。
+    """
     if not assessment:
         return 0
 
-    # 过滤正面评价
-    positive_keywords = ['继续发扬', '正常', '良好', '优秀', '表扬']
+    import re
+
+    # 1. 过滤正面评价
+    positive_keywords = ['继续发扬', '正常', '良好', '优秀', '表扬', '未发现']
     for keyword in positive_keywords:
         if keyword in assessment:
             return 0
 
-    # 过滤直接扣钱的情况（扣100元等）- 这些不应该被统计为违规扣分
-    money_keywords = ['元', '钱', '¥', '￥', 'RMB', 'rmb']
-    for keyword in money_keywords:
-        if keyword in assessment:
-            return 0
+    # 2. 提取所有数字及其位置
+    matches = list(re.finditer(r'(\d+(\.\d+)?)', assessment))
+    
+    if not matches:
+        return 1 # 默认扣1分
+        
+    # 从右向左遍历（倒序）
+    for match in reversed(matches):
+        val_str = match.group(1)
+        value = float(val_str)
+        end_pos = match.end()
+        start_pos = match.start()
+        
+        # 查看数字后面的文字 (suffix)
+        suffix = assessment[end_pos:end_pos+5]
+        # 查看数字前面的文字 (prefix)
+        prefix = assessment[max(0, start_pos-5):start_pos]
+        
+        # A. 检查是否明确是金额 -> 跳过
+        if any(u in suffix for u in ['元', '钱', '块', '¥', '￥']):
+            continue
+            
+        # B. 检查是否明确是分数 -> 返回
+        if '分' in suffix:
+            return value
+            
+        # C. 无明确单位 - 上下文判断
+        
+        # C1. 迟到/早退 且数值 > 10 -> 视为金额，跳过
+        if ('迟到' in assessment or '早退' in assessment) and value > 10:
+            continue
+            
+        # C2. 前缀包含“罚款”、“扣款”、“金额” -> 视为金额，跳过
+        if any(k in prefix for k in ['罚款', '扣款', '金额']):
+            continue
+            
+        # D. 默认视为分数（例如 "扣5", "考核: 3"）
+        return value
 
-    # 提取数字（支持小数）
-    numbers = re.findall(r'\d+\.?\d*', assessment)
-    if numbers:
-        return float(numbers[-1])  # 取最后一个数字
-
-    # 如果没有数字但不是正面评价，默认赋值1
-    return 1
+    # 如果所有数字都被跳过（都是钱），则不扣分
+    return 0
 
 
 @safety_bp.route('/api/analytics/severity-distribution')
@@ -1445,6 +1482,53 @@ def api_analytics_severity_drilldown():
                 "inspectionItem": row['inspection_item'] or "",
                 "score": int(record_score) if record_score == int(record_score) else round(record_score, 1)
             })
+
+@safety_bp.route('/debug_check/<emp_no>')
+def debug_check_user(emp_no):
+    """Temporary debug route to check why user is fused"""
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # 1. Get Employee Name
+    cur.execute("SELECT name FROM employees WHERE emp_no = %s", (emp_no,))
+    res = cur.fetchone()
+    if not res:
+        return f"User {emp_no} not found"
+    
+    name = res['name']
+    
+    # 2. Fetch all records for 2025
+    cur.execute("""
+        SELECT inspection_date, assessment 
+        FROM safety_inspection_records 
+        WHERE inspected_person = %s 
+        AND inspection_date BETWEEN '2025-01-01' AND '2025-11-30'
+        ORDER BY inspection_date
+    """, (name,))
+    
+    rows = cur.fetchall()
+    
+    results = []
+    redline_hit = False
+    
+    output = [f"Debug Report for {name} ({emp_no})"]
+    output.append("------------------------------------------------")
+    
+    for r in rows:
+        text = r['assessment']
+        score = extract_score_from_assessment(text)
+        is_redline = score >= 40
+        if is_redline:
+            redline_hit = True
+            
+        line = f"Date: {r['inspection_date']} | Score: {score} | Redline: {'YES' if is_redline else 'NO'} | Text: {text}"
+        output.append(line)
+        results.append(line)
+        
+    output.append("------------------------------------------------")
+    output.append(f"Veto Triggered: {redline_hit}")
+    
+    return "<br>".join(output)
 
     # 下钻逻辑判断
     problem_count = len(problem_records)

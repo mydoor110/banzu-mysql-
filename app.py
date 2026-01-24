@@ -168,7 +168,8 @@ def _init_algorithm_config():
             "base_stability": 100.0,
             "violation_penalty": 10.0,
             "redline_penalty": 40.0,
-            "safety_cv_limit": 1.2
+            "period_cv_sensitivity": 0.5,
+            "time_decay_rate": 0.2
         },
         "learning_new": {
             "trend_warning_ratio": 1.5,
@@ -177,7 +178,8 @@ def _init_algorithm_config():
             "trend_critical_floor": 5,
             "factor_improvement": 1.2,
             "factor_solidification": 0.4,
-            "factor_deterioration": 0.0
+            "factor_deterioration": 0.0,
+            "time_decay_rate": 0.2
         },
         "nine_grid": {
             "y_axis_weights": {
@@ -215,7 +217,8 @@ def _init_algorithm_config():
         "base_stability": 100.0,
         "violation_penalty": 15.0,
         "redline_penalty": 50.0,
-        "safety_cv_limit": 1.0
+        "period_cv_sensitivity": 0.7,
+        "time_decay_rate": 0.25
     }
     strict_config["learning_new"] = {
         "trend_warning_ratio": 1.3,
@@ -224,7 +227,8 @@ def _init_algorithm_config():
         "trend_critical_floor": 4,
         "factor_improvement": 1.3,
         "factor_solidification": 0.3,
-        "factor_deterioration": 0.0
+        "factor_deterioration": 0.0,
+        "time_decay_rate": 0.25
     }
     strict_config["nine_grid"] = {
         "y_axis_weights": {
@@ -262,7 +266,8 @@ def _init_algorithm_config():
         "base_stability": 100.0,
         "violation_penalty": 8.0,
         "redline_penalty": 30.0,
-        "safety_cv_limit": 1.5
+        "period_cv_sensitivity": 0.3,
+        "time_decay_rate": 0.15
     }
     lenient_config["learning_new"] = {
         "trend_warning_ratio": 2.0,
@@ -271,7 +276,8 @@ def _init_algorithm_config():
         "trend_critical_floor": 6,
         "factor_improvement": 1.1,
         "factor_solidification": 0.5,
-        "factor_deterioration": 0.0
+        "factor_deterioration": 0.0,
+        "time_decay_rate": 0.15
     }
     lenient_config["nine_grid"] = {
         "y_axis_weights": {

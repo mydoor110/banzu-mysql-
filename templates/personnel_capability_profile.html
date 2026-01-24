@@ -525,18 +525,21 @@
                 <div class="row g-3">
                     <div class="col-md-4 col-lg">
                         <div class="card h-100">
-                            <div class="card-header bg-light">
-                                <strong>人员信息</strong>
+                            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                <strong>稳定度</strong>
+                                <span id="stabilityAlertBadge" class="badge bg-success">✅ 稳定</span>
                             </div>
-                            <div class="card-body" id="personnelStats">
-                                <p class="mb-1"><span class="text-muted">工龄:</span> <span
-                                        id="personnelWorkingYears">--</span> 年</p>
-                                <p class="mb-1"><span class="text-muted">司龄:</span> <span
-                                        id="personnelTenureYears">--</span> 年</p>
-                                <p class="mb-1"><span class="text-muted">驾驶年限:</span> <span
-                                        id="personnelDrivingYears">--</span> 年</p>
-                                <p class="mb-0"><span class="text-muted">学历:</span> <span
-                                        id="personnelEducation">--</span></p>
+                            <div class="card-body" id="stabilityStats">
+                                <p class="mb-1"><span class="text-muted">稳定度分值:</span> <span class="text-secondary"
+                                        id="stabilityScoreValue">--</span> 分</p>
+                                <p class="mb-1"><span class="text-muted">基础扣分:</span> <span
+                                        id="stabilityBaseDeduction">--</span> 分</p>
+                                <p class="mb-1"><span class="text-muted">红线违规:</span> <span class="text-danger"
+                                        id="stabilityRedlineCount">--</span> 次</p>
+                                <p class="mb-1"><span class="text-muted">波动熔断:</span> <span
+                                        id="stabilityCvCapped">--</span></p>
+                                <p class="mb-0"><span class="text-muted">安全CV:</span> <span
+                                        id="stabilitySafetyCv">--</span></p>
                             </div>
                         </div>
                     </div>
@@ -613,7 +616,7 @@
                             <div class="card-body" id="learningStats">
                                 <p class="mb-1"><span class="text-muted">学习分值:</span> <span class="text-info"
                                         id="learningScoreValue">--</span> 分</p>
-                                <p class="mb-1"><span class="text-muted">能力等级:</span> <span id="learningTier">--</span>
+                                <p class="mb-1"><span class="text-muted">趋势状态:</span> <span id="learningTier">--</span>
                                 </p>
                                 <p class="mb-1"><span class="text-muted">变化趋势:</span> <span id="learningDelta">--</span>
                                 </p>
@@ -854,14 +857,36 @@
             document.getElementById('scoreLearning').textContent = data.scores.learning;
             document.getElementById('scoreStability').textContent = data.scores.stability;
 
-            // 更新人员信息
-            document.getElementById('personnelWorkingYears').textContent =
-                data.personnel_details.working_years ? data.personnel_details.working_years.toFixed(1) : '--';
-            document.getElementById('personnelTenureYears').textContent =
-                data.personnel_details.tenure_years ? data.personnel_details.tenure_years.toFixed(1) : '--';
-            document.getElementById('personnelDrivingYears').textContent =
-                data.personnel_details.solo_driving_years ? data.personnel_details.solo_driving_years.toFixed(1) : '--';
-            document.getElementById('personnelEducation').textContent = data.personnel_details.education || '--';
+            // 更新稳定度信息
+            const stabilityDetails = data.stability_details || {};
+            document.getElementById('stabilityScoreValue').textContent = data.scores.stability.toFixed(1);
+            document.getElementById('stabilityBaseDeduction').textContent =
+                stabilityDetails.base_deduction !== undefined ? stabilityDetails.base_deduction.toFixed(1) : '--';
+            document.getElementById('stabilityRedlineCount').textContent =
+                stabilityDetails.redline_count !== undefined ? stabilityDetails.redline_count : '--';
+            document.getElementById('stabilityCvCapped').textContent =
+                stabilityDetails.cv_capped ? '是' : '否';
+            document.getElementById('stabilitySafetyCv').textContent =
+                stabilityDetails.safety_cv !== undefined ? stabilityDetails.safety_cv.toFixed(3) : '--';
+
+            // 更新稳定度警示标签
+            const stabilityBadge = document.getElementById('stabilityAlertBadge');
+            stabilityBadge.textContent = stabilityDetails.alert_tag || '✅ 稳定';
+            stabilityBadge.classList.remove('bg-success', 'bg-warning', 'bg-danger', 'bg-secondary', 'bg-primary', 'bg-info');
+
+            const sColor = stabilityDetails.status_color;
+            if (sColor === 'GREEN') {
+                stabilityBadge.classList.add('bg-success');
+            } else if (sColor === 'YELLOW' || sColor === 'ORANGE') {
+                stabilityBadge.classList.add('bg-warning');
+                stabilityBadge.classList.add('text-dark'); // 橙黄色背景配深色文字更易读
+            } else if (sColor === 'RED') {
+                stabilityBadge.classList.add('bg-danger');
+            } else if (sColor === 'BLUE') {
+                stabilityBadge.classList.add('bg-primary');
+            } else {
+                stabilityBadge.classList.add('bg-secondary');
+            }
 
             // 更新安全统计
             document.getElementById('safetyViolations').textContent = data.safety_details.violations;
@@ -937,7 +962,17 @@
             const learningDetails = data.learning_details;
             if (learningDetails) {
                 document.getElementById('learningScoreValue').textContent = data.scores.learning.toFixed(1);
-                document.getElementById('learningTier').textContent = learningDetails.tier || '--';
+
+                const tierMap = {
+                    'improvement': '持续改善',
+                    'deterioration': '出现恶化',
+                    'safe': '保持稳定',
+                    'solidification': '习惯固化',
+                    'fluctuation': '状态波动',
+                    'unknown': '未知'
+                };
+                const rawTier = learningDetails.tier;
+                document.getElementById('learningTier').textContent = tierMap[rawTier] || rawTier || '--';
 
                 // 变化趋势
                 const delta = learningDetails.delta;
