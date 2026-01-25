@@ -368,42 +368,54 @@ def api_preview_effect():
         # 4. 学习能力维度对比（基于历史综合分数趋势）
         # ==================================================
 
-        # 示例历史综合分数（6个月，显示稳步上升趋势）
-        # 模拟该员工过去6个月的综合评分，展示从82.5到90.0的成长轨迹
-        historical_scores = [82.5, 84.0, 85.5, 87.0, 88.5, 90.0]
+        # 示例历史违规数量（6个月，显示违规逐月减少的改善趋势）
+        # 模拟数据：3次 -> 2次 -> 2次 -> 1次 -> 0次 -> 0次
+        historical_violations = [3.0, 2.0, 2.0, 1.0, 0.0, 0.0]
+        group_avg_sim = 1.0  # 模拟班组平均违规数
 
-        # 使用当前配置计算学习能力
+        # 使用当前配置计算
         learning_current = calculate_learning_ability_longterm(
-            score_list=historical_scores,
-            config=current_config
+            score_list=historical_violations,
+            config=current_config,
+            group_avg=group_avg_sim
         )
 
-        # 使用新配置计算学习能力
+        # 使用新配置计算
         learning_new = calculate_learning_ability_longterm(
-            score_list=historical_scores,
-            config=new_config
+            score_list=historical_violations,
+            config=new_config,
+            group_avg=group_avg_sim
         )
 
         # 计算斜率（用于展示）
         import numpy as np
-        x = np.arange(len(historical_scores))
-        k, b = np.polyfit(x, historical_scores, 1)
+        x = np.arange(len(historical_violations))
+        # 拟合违规数量趋势
+        try:
+            line = np.polyfit(x, np.array(historical_violations), 1)
+            slope = line[0]
+        except:
+            slope = 0
 
         result['current']['learning'] = {
-            'historical_count': len(historical_scores),
+            'historical_count': len(historical_violations),
             'avg_score': learning_current.get('average_score', 0),
-            'trend_slope': round(k, 2),
-            'tier': learning_current.get('tier', '未知'),
+            'base_score': learning_current.get('base_score', 0),
             'final_score': learning_current.get('learning_score', 0),
-            'trend_description': f"过去{len(historical_scores)}个月平均分{learning_current.get('average_score', 0):.1f}，斜率{k:.2f}"
+            'inertia_penalty': f"{learning_current.get('inertia_penalty_rate', 0)*100:.0f}%",
+            'risk_level': learning_current.get('risk_level', 'UNKNOWN'),
+            'tier': learning_current.get('tier', '未知'),
+            'trend_description': f"基础分{learning_current.get('base_score',0)} × (1-惯性{learning_current.get('inertia_penalty_rate',0)*100:.0f}%)"
         }
         result['new']['learning'] = {
-            'historical_count': len(historical_scores),
+            'historical_count': len(historical_violations),
             'avg_score': learning_new.get('average_score', 0),
-            'trend_slope': round(k, 2),
-            'tier': learning_new.get('tier', '未知'),
+            'base_score': learning_new.get('base_score', 0),
             'final_score': learning_new.get('learning_score', 0),
-            'trend_description': f"过去{len(historical_scores)}个月平均分{learning_new.get('average_score', 0):.1f}，斜率{k:.2f}"
+            'inertia_penalty': f"{learning_new.get('inertia_penalty_rate', 0)*100:.0f}%",
+            'risk_level': learning_new.get('risk_level', 'UNKNOWN'),
+            'tier': learning_new.get('tier', '未知'),
+            'trend_description': f"基础分{learning_new.get('base_score',0)} × (1-惯性{learning_new.get('inertia_penalty_rate',0)*100:.0f}%)"
         }
 
         return jsonify({

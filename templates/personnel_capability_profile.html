@@ -498,7 +498,7 @@
                     <div class="col-md-2">
                         <div class="card text-center">
                             <div class="card-body p-2">
-                                <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">学习能力</h6>
+                                <h6 class="card-title text-muted mb-1" style="font-size: 0.9em;">安全趋势</h6>
                                 <h3 class="mb-0 text-info" id="scoreLearning">--</h3>
                             </div>
                         </div>
@@ -610,17 +610,22 @@
                     <div class="col-md-4 col-lg">
                         <div class="card h-100">
                             <div class="card-header bg-light d-flex justify-content-between align-items-center">
-                                <strong>学习能力</strong>
+                                <strong>安全趋势</strong>
                                 <span id="learningAlertBadge" class="badge bg-success">✅ 稳定</span>
                             </div>
                             <div class="card-body" id="learningStats">
-                                <p class="mb-1"><span class="text-muted">学习分值:</span> <span class="text-info"
+                                <p class="mb-1"><span class="text-muted">趋势分值:</span> <span class="text-info"
                                         id="learningScoreValue">--</span> 分</p>
-                                <p class="mb-1"><span class="text-muted">趋势状态:</span> <span id="learningTier">--</span>
+                                <p class="mb-1"><span class="text-muted">风险等级:</span> <span id="learningTier">--</span>
                                 </p>
-                                <p class="mb-1"><span class="text-muted">变化趋势:</span> <span id="learningDelta">--</span>
+                                <p class="mb-1"><span class="text-muted">惯性扣减:</span> <span class="text-danger fw-bold"
+                                        id="learningInertiaRate">--</span>
                                 </p>
-                                <p class="mb-1"><span class="text-muted">成长斜率:</span> <span id="learningSlope">--</span>
+                                <p class="mb-1"><span class="text-muted">连续高危:</span> <span
+                                        id="learningConsecutive">--</span>
+                                </p>
+                                <p class="mb-1"><span class="text-muted">基础得分:</span> <span
+                                        id="learningBaseScore">--</span> 分
                                 </p>
                                 <p class="mb-0"><span class="text-muted">统计月数:</span> <span
                                         id="learningMonths">--</span> 月</p>
@@ -856,13 +861,13 @@
             'safetyViolations', 'safetyDeduction', 'safetyAvgFreq', 'safetyScoreA', 'safetyScoreB', 'safetyInspector', 'safetyRectifier',
             'trainingRadarScore', 'trainingOriginalScore', 'trainingCoefficient', 'totalTrainings', 'trainingFailCount',
             'recentPerformance', 'performanceLabel', 'performanceMode', 'performanceRange', 'performanceCount',
-            'learningScoreValue', 'learningTier', 'learningDelta', 'learningSlope', 'learningMonths'
+            'learningScoreValue', 'learningTier', 'learningInertiaRate', 'learningConsecutive', 'learningBaseScore', 'learningMonths'
         ];
         dataFields.forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = '--';
         });
-        
+
         // 清除图表
         if (comprehensiveRadarChart) {
             comprehensiveRadarChart.destroy();
@@ -874,7 +879,7 @@
     async function loadComprehensiveProfile(empNo) {
         // 标记当前请求，防止竞态条件
         currentLoadingEmpNo = empNo;
-        
+
         // 先重置UI，避免残留上一个人的数据
         resetProfileUI();
 
@@ -889,7 +894,7 @@
 
             const url = `/personnel/api/comprehensive-profile/${empNo}${params.toString() ? '?' + params.toString() : ''}`;
             const response = await fetch(url);
-            
+
             // 检查是否在等待当前请求（竞态条件处理）
             if (currentLoadingEmpNo !== empNo) {
                 console.log(`忽略过期的请求结果: ${empNo} (当前: ${currentLoadingEmpNo})`);
@@ -929,7 +934,7 @@
             if (stabilityBadge) {
                 stabilityBadge.textContent = stabilityDetails.alert_tag || '✅ 稳定';
                 stabilityBadge.className = 'badge'; // 重置类名
-                
+
                 const sColor = stabilityDetails.status_color;
                 if (sColor === 'GREEN') stabilityBadge.classList.add('bg-success');
                 else if (sColor === 'YELLOW' || sColor === 'ORANGE') stabilityBadge.classList.add('bg-warning', 'text-dark');
@@ -953,7 +958,7 @@
             if (alertBadge) {
                 alertBadge.textContent = safetyDetails.alert_tag || '暂无数据';
                 alertBadge.className = 'badge';
-                
+
                 if (safetyDetails.status_color === 'GREEN') alertBadge.classList.add('bg-success');
                 else if (safetyDetails.status_color === 'ORANGE') alertBadge.classList.add('bg-warning');
                 else if (safetyDetails.status_color === 'RED') alertBadge.classList.add('bg-danger');
@@ -973,7 +978,7 @@
             if (trainingAlertBadge) {
                 trainingAlertBadge.textContent = trainingDetails.alert_tag || '暂无数据';
                 trainingAlertBadge.className = 'badge';
-                
+
                 const tColor = trainingDetails.status_color;
                 if (tColor === 'GREEN') trainingAlertBadge.classList.add('bg-success');
                 else if (tColor === 'YELLOW') trainingAlertBadge.classList.add('bg-warning');
@@ -996,43 +1001,62 @@
             if (perfAlertBadge) {
                 perfAlertBadge.textContent = perfDetails.alert_tag || '暂无数据';
                 perfAlertBadge.className = 'badge';
-                
+
                 if (perfDetails.status_color === 'GREEN') perfAlertBadge.classList.add('bg-success');
                 else if (perfDetails.status_color === 'ORANGE') perfAlertBadge.classList.add('bg-warning');
                 else if (perfDetails.status_color === 'RED') perfAlertBadge.classList.add('bg-danger');
                 else perfAlertBadge.classList.add('bg-secondary');
             }
 
-            // 更新学习能力卡片
+            // 更新安全趋势卡片 (V5.0 风险惯性版)
             const learningDetails = data.learning_details;
             if (learningDetails) {
                 document.getElementById('learningScoreValue').textContent = formatNum(data.scores?.learning);
 
-                const tierMap = {
-                    'improvement': '持续改善',
-                    'deterioration': '出现恶化',
-                    'safe': '保持稳定',
-                    'solidification': '习惯固化',
-                    'fluctuation': '状态波动',
-                    'unknown': '未知'
+                // 风险等级映射 (Dashboard Mapping)
+                const riskMap = {
+                    'SAFE': '✅ 安全',
+                    'WATCH_LIST': '⚠️ 重点关注',
+                    'HIGH_RISK': '🔴 高危',
+                    'PRE_ACCIDENT': '⛔ 事故前兆',
+                    'UNKNOWN': '❓ 未知'
                 };
-                const rawTier = learningDetails.tier;
-                document.getElementById('learningTier').textContent = tierMap[rawTier] || rawTier || '--';
+                const riskLevel = learningDetails.risk_level || 'UNKNOWN';
+                const displayTier = riskMap[riskLevel] || riskLevel;
+                document.getElementById('learningTier').textContent = displayTier;
 
-                // 变化趋势
-                const delta = learningDetails.delta;
-                if (delta !== undefined && delta !== null) {
-                    const deltaText = delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1);
-                    const deltaColor = delta > 0 ? 'text-success' : (delta < 0 ? 'text-danger' : 'text-muted');
-                    const deltaEl = document.getElementById('learningDelta');
-                    if (deltaEl) deltaEl.innerHTML = `<span class="${deltaColor}">${deltaText}</span>`;
-                } else {
-                    const deltaEl = document.getElementById('learningDelta');
-                    if (deltaEl) deltaEl.textContent = '--';
+                // 惯性扣减率 (核心新字段)
+                const inertiaRate = learningDetails.inertia_penalty_rate || 0;
+                const inertiaEl = document.getElementById('learningInertiaRate');
+                if (inertiaEl) {
+                    if (inertiaRate > 0) {
+                        const pct = (inertiaRate * 100).toFixed(0);
+                        inertiaEl.innerHTML = `<span class="text-danger fw-bold">-${pct}%</span>`;
+                    } else {
+                        inertiaEl.innerHTML = `<span class="text-success">无</span>`;
+                    }
                 }
 
-                // 成长斜率
-                document.getElementById('learningSlope').textContent = formatNum(learningDetails.slope, 2);
+                // 连续高危月数
+                const consec = learningDetails.max_consecutive_danger || 0;
+                const consecEl = document.getElementById('learningConsecutive');
+                if (consecEl) {
+                    if (consec >= 2) {
+                        consecEl.innerHTML = `<span class="text-danger fw-bold">${consec} 个月</span>`;
+                    } else if (consec === 1) {
+                        consecEl.innerHTML = `<span class="text-warning">${consec} 个月</span>`;
+                    } else {
+                        consecEl.innerHTML = `<span class="text-success">无</span>`;
+                    }
+                }
+
+                // 基础得分（惯性扣减前）
+                const baseScore = learningDetails.base_score || 0;
+                const baseScoreEl = document.getElementById('learningBaseScore');
+                if (baseScoreEl) {
+                    baseScoreEl.textContent = formatNum(baseScore);
+                }
+
                 document.getElementById('learningMonths').textContent = learningDetails.months ?? '--';
 
                 // 更新警示标签
@@ -1040,11 +1064,12 @@
                 if (learningBadge) {
                     learningBadge.textContent = learningDetails.alert_tag || '✅ 稳定';
                     learningBadge.className = 'badge';
-                    
-                    const lColor = learningDetails.status_color;
-                    if (lColor === 'GREEN') learningBadge.classList.add('bg-success');
-                    else if (lColor === 'ORANGE' || lColor === 'YELLOW') learningBadge.classList.add('bg-warning');
-                    else if (lColor === 'RED') learningBadge.classList.add('bg-danger');
+
+                    const riskL = learningDetails.risk_level;
+                    if (riskL === 'SAFE') learningBadge.classList.add('bg-success');
+                    else if (riskL === 'WATCH_LIST') learningBadge.classList.add('bg-warning', 'text-dark');
+                    else if (riskL === 'HIGH_RISK') learningBadge.classList.add('bg-danger');
+                    else if (riskL === 'PRE_ACCIDENT') learningBadge.classList.add('bg-dark');
                     else learningBadge.classList.add('bg-info');
                 }
             }
@@ -1052,9 +1077,9 @@
             // 渲染五维雷达图
             if (data.scores && data.training_details) {
                 renderComprehensiveRadar(
-                    data.scores, 
-                    data.training_details.status_color, 
-                    data.safety_details.status_color, 
+                    data.scores,
+                    data.training_details.status_color,
+                    data.safety_details.status_color,
                     data.performance_details.status_color
                 );
             }
@@ -1108,7 +1133,7 @@
         // 雷达图保持默认蓝色，但培训能力、安全意识和工作绩效圆点颜色单独设置
         const defaultBlue = 'rgba(54, 162, 235, 1)';
         const radarData = {
-            labels: ['培训能力', '安全意识', '工作绩效', '学习能力', '稳定性'],
+            labels: ['培训能力', '安全意识', '工作绩效', '安全趋势', '稳定性'],
             datasets: [{
                 label: '个人能力评分',
                 data: [
@@ -1126,7 +1151,7 @@
                     trainingPointColor,       // 0: 培训能力（根据状态变色）
                     safetyPointColor,         // 1: 安全意识（根据状态变色）
                     performancePointColor,    // 2: 工作绩效（根据状态变色）
-                    defaultBlue,              // 3: 学习能力
+                    defaultBlue,              // 3: 安全趋势
                     defaultBlue               // 4: 稳定性
                 ],
                 pointBorderColor: [

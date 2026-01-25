@@ -127,21 +127,46 @@ def _init_algorithm_config():
                 ],
                 "critical_threshold": 12
             },
-            "thresholds": {"fail_score": 60, "warning_score": 90}
+            "dual_track_weights": {
+                "behavior": 0.4,
+                "severity": 0.6
+            },
+            "thresholds": {
+                "red_score": 60,
+                "red_freq": 6,
+                "orange_score": 80,
+                "orange_freq": 3,
+                "fail_score": 60,
+                "warning_score": 90
+            }
         },
         "training": {
             "penalty_rules": {
+                "absolute_disqualification": 50,
+                "small_sample_penalty": 0.85,
+                "afr_threshold": 0.2,
                 "absolute_threshold": {"fail_count": 3, "coefficient": 0.5},
                 "small_sample": {"sample_size": 10, "coefficient": 0.7},
                 "afr_thresholds": [
                     {"min": 2.5, "coefficient": 0.5, "label": "高频失格"},
                     {"min": 1.5, "max": 2.5, "coefficient": 0.7, "label": "频率偏高"},
                     {"min": 0.5, "max": 1.5, "coefficient": 0.9, "label": "偶发失格"}
+                ],
+                "afr_thresholds_new_employee": [
+                    {"threshold": 15, "coefficient": 0.7, "label": "高频失格"},
+                    {"threshold": 8, "coefficient": 0.8, "label": "频率偏高"},
+                    {"threshold": 4, "coefficient": 0.9, "label": "偶发失格"}
+                ],
+                "afr_thresholds_experienced": [
+                    {"threshold": 10, "coefficient": 0.6, "label": "高频失格"},
+                    {"threshold": 5, "coefficient": 0.75, "label": "频率偏高"},
+                    {"threshold": 2, "coefficient": 0.9, "label": "偶发失格"}
                 ]
             },
             "duration_thresholds": {
                 "short_term_days": 60,
                 "mid_term_days": 180,
+                "long_term_years": 1,
                 "default_scores": {"short": 65, "mid": 50, "long": 0}
             }
         },
@@ -168,17 +193,31 @@ def _init_algorithm_config():
             "base_stability": 100.0,
             "violation_penalty": 10.0,
             "redline_penalty": 40.0,
+            "safety_cv_limit": 1.2,
+            "volatility_cap": 60.0,
             "period_cv_sensitivity": 0.5,
             "time_decay_rate": 0.2
         },
         "learning_new": {
+            "trend_ceiling_floor": 5,
             "trend_warning_ratio": 1.5,
             "trend_warning_floor": 2,
             "trend_critical_ratio": 3.0,
             "trend_critical_floor": 5,
+            "historical_baseline": 3,
+            "factor_reward": 1.2,
+            "factor_stable": 1.0,
+            "factor_safe_fluctuation": 0.9,
+            "factor_mitigation": 0.8,
+            "factor_warning": 0.6,
             "factor_improvement": 1.2,
+            "factor_high_improvement": 0.8,
             "factor_solidification": 0.4,
-            "factor_deterioration": 0.0,
+            "factor_deterioration": 0.3,
+            "factor_deterioration_mild": 0.3,
+            "inertia_start_months": 2,
+            "inertia_step": 0.15,
+            "inertia_max_penalty": 0.6,
             "time_decay_rate": 0.2
         },
         "nine_grid": {
@@ -217,17 +256,31 @@ def _init_algorithm_config():
         "base_stability": 100.0,
         "violation_penalty": 15.0,
         "redline_penalty": 50.0,
+        "safety_cv_limit": 1.0,
+        "volatility_cap": 60.0,
         "period_cv_sensitivity": 0.7,
         "time_decay_rate": 0.25
     }
     strict_config["learning_new"] = {
+        "trend_ceiling_floor": 4,
         "trend_warning_ratio": 1.3,
         "trend_warning_floor": 2,
         "trend_critical_ratio": 2.5,
         "trend_critical_floor": 4,
+        "historical_baseline": 3,
+        "factor_reward": 1.2,
+        "factor_stable": 1.0,
+        "factor_safe_fluctuation": 0.9,
+        "factor_mitigation": 0.8,
+        "factor_warning": 0.6,
         "factor_improvement": 1.3,
+        "factor_high_improvement": 0.8,
         "factor_solidification": 0.3,
-        "factor_deterioration": 0.0,
+        "factor_deterioration": 0.2,
+        "factor_deterioration_mild": 0.3,
+        "inertia_start_months": 2,
+        "inertia_step": 0.2,
+        "inertia_max_penalty": 0.8,
         "time_decay_rate": 0.25
     }
     strict_config["nine_grid"] = {
@@ -266,17 +319,31 @@ def _init_algorithm_config():
         "base_stability": 100.0,
         "violation_penalty": 8.0,
         "redline_penalty": 30.0,
+        "safety_cv_limit": 1.5,
+        "volatility_cap": 60.0,
         "period_cv_sensitivity": 0.3,
         "time_decay_rate": 0.15
     }
     lenient_config["learning_new"] = {
+        "trend_ceiling_floor": 6,
         "trend_warning_ratio": 2.0,
         "trend_warning_floor": 3,
         "trend_critical_ratio": 4.0,
         "trend_critical_floor": 6,
+        "historical_baseline": 3,
+        "factor_reward": 1.2,
+        "factor_stable": 1.0,
+        "factor_safe_fluctuation": 0.9,
+        "factor_mitigation": 0.8,
+        "factor_warning": 0.6,
         "factor_improvement": 1.1,
+        "factor_high_improvement": 0.8,
         "factor_solidification": 0.5,
-        "factor_deterioration": 0.0,
+        "factor_deterioration": 0.4,
+        "factor_deterioration_mild": 0.3,
+        "inertia_start_months": 3,
+        "inertia_step": 0.1,
+        "inertia_max_penalty": 0.5,
         "time_decay_rate": 0.15
     }
     lenient_config["nine_grid"] = {

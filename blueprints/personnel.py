@@ -613,27 +613,44 @@ def calculate_training_score_with_penalty(
             afr_thresholds = penalty_rules.get('afr_thresholds_experienced', penalty_rules.get('afr_thresholds', []))
             employee_type = "老员工"
 
-        # 从高到低检查AFR阈值
+        # 从高到低检查AFR阈值（支持新版可配置阈值）
+        # 优先使用配置中的 threshold 键，如果不存在则回退到硬编码逻辑
         matched = False
-        for rule in afr_thresholds:
-            if 'max' in rule:
-                # 有max的规则（中间范围）
-                if rule['min'] <= AFR < rule['max']:
-                    coeff = rule['coefficient']
-                    tag_level = 'WARNING' if coeff <= 0.7 else 'NOTICE'
-                    alert_msg = f'⛔ {rule["label"]} (年化 {AFR:.1f} 次)'
-                    description = f'年化失格频率{AFR:.1f}次/年，{employee_type}阈值{rule["min"]}-{rule["max"]}，需要重点关注。'
-                    matched = True
-                    break
-            else:
-                # 只有min的规则（最高阈值）
-                if AFR >= rule['min']:
-                    coeff = rule['coefficient']
+        
+        # 尝试按照 threshold 降序排序（如果有）
+        sorted_rules = []
+        try:
+             # 过滤出有效的规则并排序
+             valid_rules = [r for r in afr_thresholds if 'threshold' in r or 'min' in r]
+             # 统一获取阈值用于排序
+             def get_thresh(r):
+                 return float(r.get('threshold', r.get('min', 0)))
+             sorted_rules = sorted(valid_rules, key=get_thresh, reverse=True)
+        except:
+             sorted_rules = afr_thresholds
+
+        for rule in sorted_rules:
+            # 获取规则阈值
+            limit = float(rule.get('threshold', rule.get('min', 0)))
+            
+            if AFR >= limit:
+                coeff = rule['coefficient']
+                
+                # 确定警示级别
+                if coeff <= 0.5:
                     tag_level = 'CRITICAL'
-                    alert_msg = f'❌ {rule["label"]} (年化 {AFR:.1f} 次)'
-                    description = f'当前周期{duration_days}天内失格{fail_count}次，年化等效{AFR:.1f}次/年，超过{employee_type}红线阈值{rule["min"]}次/年。'
-                    matched = True
-                    break
+                    label = rule.get('label', '高频失格')
+                elif coeff <= 0.8:
+                    tag_level = 'WARNING'
+                    label = rule.get('label', '频率偏高')
+                else:
+                    tag_level = 'NOTICE'
+                    label = rule.get('label', '偶发失格')
+                    
+                alert_msg = f'⚠️ {label} (年化 {AFR:.1f} 次)'
+                description = f'当前周期{duration_days}天内失格{fail_count}次，年化等效{AFR:.1f}次/年，触发{label}阈值({limit})。'
+                matched = True
+                break
 
         if not matched:
             # AFR < 最低阈值
@@ -767,117 +784,220 @@ def calculate_learning_ability_monthly(score_curr: float, score_prev: float) -> 
     }
 
 
-def calculate_learning_ability_longterm(score_list: List[float], config: dict = None, current_three_dim_score: float = None) -> Dict:
+def calculate_learning_ability_longterm(
+    score_list: List[float],
+    config: dict = None,
+    current_three_dim_score: float = None,
+    group_avg: float = 1.0,
+    initial_prev_viol: Optional[int] = None
+) -> Dict:
     """
-    学习能力评分 - 基于线性回归趋势分析
+    [V5.0 核心算法二] 长周期·风险惯性聚合 (L_period)
 
-    通过最小二乘法线性回归判断成长趋势，计算学习能力分数
+    这是本模型的灵魂。按以下步骤实现：
+
+    步骤 1：基础加权 (Base Score)
+    - 对周期内单月得分进行时间加权平均，得到 base_score
+    - 公式：base_score = Σ(score[i] × (1.0 + i × time_decay)) / Σweights
+
+    步骤 2：计算"风险惯性" (Risk Inertia)
+    - 扫描周期内的 zone 状态序列，寻找 "连续处于 DANGER/CRITICAL 的最大月数" (K_max)
+    - 若 K_max < inertia_start_months: 惯性为 0
+    - 若 K_max >= inertia_start_months:
+        惯性惩罚 = min((K_max - Start + 1) × Step, max_penalty)
+
+    步骤 3：最终计算
+    - final_score = base_score × (1.0 - inertia_penalty_rate)
+    - 若曾触发熔断(CRITICAL)，分数上限压制到40分
+
+    业务含义：
+    一个连续 4 个月处于危险边缘的"老油条"，即使每个月得分有 60 分（及格），
+    经过惯性惩罚（-45%）后，最终得分只有 33 分（高危）。
+    这精准识别了"事故前兆群体"。
+
+    风险概率映射 (Dashboard Mapping)：
+    - [事故前兆] PRE_ACCIDENT: 惯性惩罚 > 40% 或 曾触发熔断
+    - [高危] HIGH_RISK: 分数 < 60
+    - [重点关注] WATCH_LIST: 处于危险区 但 惯性低
+    - [安全] SAFE: 其他
 
     Args:
-        score_list: 过去N个月的三维综合分列表，例如 [85, 86, 88, ..., 92]
-                   最少需要2个月数据
-        config: 算法配置（可选，默认从数据库读取）
-        current_three_dim_score: 当前周期的三维综合分（可选，保留用于向后兼容）
+        score_list: 周期内的违规数量列表（按时间顺序）
+        config: 算法配置
+        current_three_dim_score: 当前三维综合分（可选）
+        group_avg: 班组平均违规数
+        initial_prev_viol: 周期前一个月的违规数（用于计算第一个月的趋势）
 
     Returns:
         {
-            'learning_score': 学习能力分数 (0-100),
-            'slope': 趋势斜率 k (正数表示上升，负数表示下降),
-            'average_score': 历史平均分,
-            'status_color': 状态颜色,
-            'alert_tag': 警示标签,
-            'tier': 评级（上升/稳定/下降）
+            'learning_score': float,          # 最终评分 (0-100)
+            'risk_level': str,                # 风险等级: SAFE|WATCH_LIST|HIGH_RISK|PRE_ACCIDENT
+            'inertia_penalty_rate': float,    # 惯性扣减率 (0.0 ~ 0.6)
+            'max_consecutive_danger': int,    # 最大连续危险月数
+            'base_score': float,              # 基础加权分（惯性前）
+            'has_meltdown': bool,             # 是否曾触发熔断
+            'zone_sequence': list,            # 各月风险区域序列
+            'monthly_scores': list,           # 各月得分序列
+            'slope': float,                   # 线性趋势斜率
+            'average_score': float,           # 简单平均分
+            'status_color': str,              # UI颜色
+            'alert_tag': str,                 # 中文警示标签
+            'tier': str,                      # 分层标签
+            'months': int                     # 统计月数
         }
     """
     import numpy as np
 
-    # 读取配置
+    # =====================================================
+    # 1. 初始化
+    # =====================================================
     if config is None:
         from services.algorithm_config_service import AlgorithmConfigService
         config = AlgorithmConfigService.get_active_config()
 
-    learning_config = config.get('learning', {
-        'potential_threshold': 0.5,
-        'decline_threshold': -0.2,
-        'decline_penalty': 0.8,
-        'slope_amplifier': 10
-    })
+    algo_new = config.get('learning_new', {})
+    time_decay = algo_new.get('time_decay_rate', 0.2)
+    history_list = score_list
 
-    # Step 1: 数据验证
-    if not score_list or len(score_list) < 2:
+    if not history_list:
         return {
             'learning_score': 0,
+            'risk_level': 'UNKNOWN',
+            'inertia_penalty_rate': 0,
+            'max_consecutive_danger': 0,
+            'base_score': 0,
+            'has_meltdown': False,
+            'zone_sequence': [],
+            'monthly_scores': [],
             'slope': 0,
             'average_score': 0,
             'status_color': 'GRAY',
-            'alert_tag': '⚪ 数据不足',
-            'tier': '数据不足'
+            'alert_tag': '无数据',
+            'tier': '无数据',
+            'months': 0
         }
 
-    # Step 2: 计算线性回归斜率（最小二乘法）
-    n = len(score_list)
-    x = np.arange(n)
-    y = np.array(score_list)
+    # =====================================================
+    # 2. 逐月计算 & 构建状态序列
+    # =====================================================
+    monthly_scores = []
+    zone_sequence = []
+    prev_viol = initial_prev_viol
+    has_meltdown = False  # 记录是否有过熔断（用于一票否决）
 
-    # 计算斜率 k = (n*Σxy - Σx*Σy) / (n*Σx² - (Σx)²)
-    sum_x = np.sum(x)
-    sum_y = np.sum(y)
-    sum_xy = np.sum(x * y)
-    sum_x2 = np.sum(x * x)
+    for i, curr_viol in enumerate(history_list):
+        res = calculate_learning_ability_new(curr_viol, prev_viol, group_avg, config)
+        monthly_scores.append(res['learning_score'])
+        zone_sequence.append(res['zone'])
 
-    k = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x) if (n * sum_x2 - sum_x * sum_x) != 0 else 0
+        if res.get('trend_type') == 'meltdown' or res['zone'] == 'CRITICAL':
+            has_meltdown = True
 
-    # Step 3: 计算平均分
-    average_score = float(np.mean(y))
+        prev_viol = curr_viol
 
-    # Step 4: 读取配置参数（含 None 检查）
-    slope_amplifier = learning_config.get('slope_amplifier', 10)
-    if slope_amplifier is None:
-        slope_amplifier = 10
+    # =====================================================
+    # 步骤 1：计算基础加权分 (Base Score)
+    # 公式：base_score = Σ(score[i] × weight[i]) / Σweight[i]
+    # 权重：weight[i] = 1.0 + (i × time_decay)，近期月份权重更高
+    # =====================================================
+    total_w = 0
+    w_sum = 0
+    for i, score in enumerate(monthly_scores):
+        w = 1.0 + (i * time_decay)
+        w_sum += score * w
+        total_w += w
 
-    potential_threshold = learning_config.get('potential_threshold', 0.5)
-    if potential_threshold is None:
-        potential_threshold = 0.5
+    base_score = w_sum / total_w if total_w > 0 else 0
 
-    decline_threshold = learning_config.get('decline_threshold', -0.2)
-    if decline_threshold is None:
-        decline_threshold = -0.2
+    # =====================================================
+    # 步骤 2：计算风险惯性 (Risk Inertia)
+    # =====================================================
+    inertia_res = calculate_inertia_penalty(zone_sequence, config)
+    penalty_rate = inertia_res['penalty_rate']
+    max_consecutive = inertia_res['max_consecutive']
 
-    decline_penalty = learning_config.get('decline_penalty', 0.8)
-    if decline_penalty is None:
-        decline_penalty = 0.8
+    # =====================================================
+    # 步骤 3：最终计算
+    # final_score = base_score × (1.0 - penalty_rate)
+    # =====================================================
+    final_score = base_score * (1.0 - penalty_rate)
 
-    # Step 5: 计算最终得分（简化版：历史平均分 + 趋势加成）
-    base_score = average_score
-    trend_bonus = k * slope_amplifier
-    final_score = base_score + trend_bonus
+    # 特殊处理：如果有熔断记录，分数上限强行压制到40分
+    if has_meltdown:
+        final_score = min(final_score, 40)
 
-    # 限制范围
-    final_score = max(0, min(100, final_score))
+    final_score = round(max(0, final_score), 1)
 
-    # Step 6: 根据斜率判断趋势和状态
-    if k > potential_threshold:
-        tier = '📈 上升趋势'
-        status_color = 'GREEN'
-        alert_tag = f'表现上升（平均分{average_score:.1f}，斜率{k:.2f}）'
-    elif k >= decline_threshold:
-        tier = '➡️ 稳定表现'
-        status_color = 'BLUE'
-        alert_tag = f'表现稳定（平均分{average_score:.1f}，斜率{k:.2f}）'
-    else:
-        tier = '📉 下降趋势'
+    # =====================================================
+    # 风险概率映射 (Dashboard Mapping)
+    # =====================================================
+    risk_level = 'SAFE'
+    status_color = 'GREEN'
+    alert_tag = '✅ 状态良好'
+    tier_display = '安全'
+
+    # 规则1: [事故前兆] 惯性惩罚 > 40% 或 曾触发熔断
+    if penalty_rate >= 0.4 or has_meltdown:
+        risk_level = 'PRE_ACCIDENT'
+        status_color = 'RED'
+        tier_display = '⛔ 事故前兆'
+        if has_meltdown:
+            alert_tag = f'⛔ 极高危 (曾触发熔断)'
+        else:
+            alert_tag = f'⛔ 极高危 (惯性扣减{penalty_rate*100:.0f}%)'
+
+    # 规则2: [高危] 分数 < 60
+    elif final_score < 60:
+        risk_level = 'HIGH_RISK'
         status_color = 'ORANGE'
-        alert_tag = f'表现下滑（平均分{average_score:.1f}，斜率{k:.2f}）'
+        if penalty_rate > 0:
+            status_color = 'RED'
+        tier_display = '高危群体'
+        if penalty_rate > 0:
+            alert_tag = f'🔴 高风险 (惯性扣减{penalty_rate*100:.0f}%)'
+        else:
+            alert_tag = f'🔴 高风险 (得分{final_score})'
 
-    # Step 7: 返回结果
+    # 规则3: [重点关注] 处于危险区 但 惯性低
+    elif len(zone_sequence) >= 2 and 'DANGER' in zone_sequence[-2:]:
+        risk_level = 'WATCH_LIST'
+        status_color = 'YELLOW'
+        tier_display = '重点关注'
+        alert_tag = '⚠️ 重点关注'
+
+    # 规则4: [安全] 其他
+    # 已设置默认值
+
+    # =====================================================
+    # 计算斜率（仅供展示）
+    # =====================================================
+    slope = 0.0
+    if len(history_list) >= 2:
+        try:
+            x = np.arange(len(history_list))
+            y = np.array(history_list)
+            res_poly = np.polyfit(x, y, 1)
+            slope = float(res_poly[0])
+        except:
+            pass
+
     return {
-        'learning_score': round(final_score, 1),
-        'slope': round(k, 3),
-        'average_score': round(average_score, 1),
+        'learning_score': final_score,
+        'risk_level': risk_level,
+        'inertia_penalty_rate': round(penalty_rate, 3),
+        'max_consecutive_danger': max_consecutive,
+        'base_score': round(base_score, 1),
+        'has_meltdown': has_meltdown,
+        'zone_sequence': zone_sequence,
+        'monthly_scores': monthly_scores,
+
+        # 兼容旧字段
+        'slope': round(slope, 2),
+        'average_score': round(float(np.mean(history_list)), 1),
         'status_color': status_color,
         'alert_tag': alert_tag,
-        'tier': tier,
-        'months': len(score_list)
+        'tier': tier_display,
+        'months': len(history_list)
     }
 
 
@@ -1275,6 +1395,95 @@ def calculate_stability_score_new(
 
 
 
+def calculate_inertia_penalty(zone_sequence: List[str], config: dict) -> Dict:
+    """
+    [V5.0 核心] 计算风险惯性惩罚 (Risk Inertia) - 识别长尾高风险群体
+
+    核心理念：防止"短期洗白"。扫描周期内的 zone 状态序列，
+    寻找"连续处于 DANGER/CRITICAL 的最大月数" (K_max)。
+
+    判定逻辑：
+    - 若 K_max < inertia_start_months: 惯性为 0，不触发惩罚
+    - 若 K_max >= inertia_start_months:
+        惯性惩罚 = min((K_max - Start + 1) × Step, max_penalty)
+
+    示例（标准档 Start=2, Step=0.15, Max=0.6）：
+    - 连续2个月危险 → (2-2+1)×0.15 = 15% 惩罚
+    - 连续3个月危险 → (3-2+1)×0.15 = 30% 惩罚
+    - 连续4个月危险 → (4-2+1)×0.15 = 45% 惩罚
+    - 连续5个月危险 → min(60%, 60%) = 60% 惩罚（封顶）
+
+    Args:
+        zone_sequence: 状态序列，例如 ['SAFE', 'DANGER', 'DANGER', 'SAFE']
+        config: 算法配置
+
+    Returns:
+        {
+            'penalty_rate': float,        # 惯性扣减率 (0.0 ~ max_penalty)
+            'max_consecutive': int,       # 最大连续危险月数 (K_max)
+            'is_triggered': bool,         # 是否触发惯性惩罚
+            'start_threshold': int,       # 启动阈值
+            'step': float,                # 步长
+            'max_penalty': float          # 最大惩罚
+        }
+    """
+    cfg = config.get('learning_new', {})
+
+    # =====================================================
+    # C. 风险惯性配置 (The Risk Inertia)
+    # =====================================================
+    inertia_start = cfg.get('inertia_start_months', 2)   # 惯性启动阈值
+    inertia_step = cfg.get('inertia_step', 0.15)         # 惯性累积步长
+    inertia_max = cfg.get('inertia_max_penalty', 0.6)    # 最大惯性惩罚
+
+    if not zone_sequence:
+        return {
+            'penalty_rate': 0.0,
+            'max_consecutive': 0,
+            'is_triggered': False,
+            'start_threshold': inertia_start,
+            'step': inertia_step,
+            'max_penalty': inertia_max
+        }
+
+    # =====================================================
+    # 扫描连续危险月数
+    # =====================================================
+    max_conse = 0       # 最大连续危险月数
+    current_conse = 0   # 当前连续计数
+
+    for zone in zone_sequence:
+        if zone in ['DANGER', 'CRITICAL']:
+            current_conse += 1
+        else:
+            max_conse = max(max_conse, current_conse)
+            current_conse = 0
+
+    # 处理序列末尾的连续危险
+    max_conse = max(max_conse, current_conse)
+
+    # =====================================================
+    # 计算惯性惩罚
+    # =====================================================
+    penalty_rate = 0.0
+    is_triggered = False
+
+    if max_conse >= inertia_start:
+        is_triggered = True
+        # 公式: (K_max - Start + 1) × Step
+        raw_penalty = (max_conse - inertia_start + 1) * inertia_step
+        penalty_rate = min(raw_penalty, inertia_max)
+
+    return {
+        'penalty_rate': round(penalty_rate, 3),
+        'max_consecutive': max_conse,
+        'is_triggered': is_triggered,
+        'start_threshold': inertia_start,
+        'step': inertia_step,
+        'max_penalty': inertia_max
+    }
+
+
 def calculate_learning_ability_new(
     current_violations: int,
     previous_violations: Optional[int],
@@ -1282,167 +1491,199 @@ def calculate_learning_ability_new(
     config: dict = None
 ) -> Dict:
     """
-    学习能力评分算法（新版）- 动态水位线 + 趋势分类 + 群体校准
+    [V5.0 核心算法一] 单月风险状态判定 (L_month)
 
-    设计原则：
-    1. 纯数量趋势分析，只关注违规数量变化
-    2. 动态水位线：关注线 = max(班组均值 × ratio, floor)
-    3. 熔断机制：超过熔断线直接0分
-    4. 群体校准：优于/劣于班组平均时调整系数
+    升级说明：
+    - 不再单纯看趋势，而是根据动态水位判定当月处于哪个"风险区域"
+    - 必须返回当月的"区域状态 (Zone Status)"，供长周期算法计算惯性
+
+    水位线计算：
+    - warning_line = max(group_avg × ratio, warning_floor, historical_baseline)
+    - warning_line = min(warning_line, ceiling_floor)  # 绝对天花板限制
+    - critical_line = max(group_avg × critical_ratio, critical_floor)
+
+    区域判定：
+    - CRITICAL: N >= critical_line → 分数 0.0, 一票否决
+    - DANGER:   N >= warning_line  → 分数按危险区系数计算
+    - SAFE:     N < warning_line   → 分数按安全区系数计算
 
     Args:
-        current_violations: 本月违规次数
-        previous_violations: 上月违规次数（None表示无数据/新员工）
-        group_avg_violations: 班组平均违规次数
+        current_violations: 本月违规数
+        previous_violations: 上月违规数 (用于辅助判定改善/恶化)
+        group_avg_violations: 班组均值
         config: 算法配置
 
     Returns:
         {
-            'learning_score': 学习能力分数,
-            'trend_type': 趋势类型 (improvement/solidification/deterioration/safe),
-            'status_color': 状态颜色,
-            'alert_tag': 警示标签
+            'score': float,           # 单月得分 (0-100)
+            'learning_score': float,  # 兼容旧字段名
+            'zone': str,              # 'SAFE' | 'DANGER' | 'CRITICAL'
+            'count': int,             # 当月违规数
+            'trend_type': str,        # 细分类型
+            'status_color': str,      # UI颜色
+            'alert_tag': str,         # 警示标签
+            'warning_line': float,    # 关注线
+            'critical_line': float    # 熔断线
         }
     """
-    # 读取配置
+    # 1. 提取配置
     if config is None:
         from services.algorithm_config_service import AlgorithmConfigService
         config = AlgorithmConfigService.get_active_config()
 
-    learning_config = config.get('learning_new', {
-        'trend_warning_ratio': 1.5,
-        'trend_warning_floor': 2,
-        'trend_critical_ratio': 3.0,
-        'trend_critical_floor': 5,
-        'factor_improvement': 1.2,
-        'factor_solidification': 0.4,
-        'factor_deterioration': 0.0,
-        'historical_baseline': 3,
-        'factor_high_improvement': 0.8,
-        'deterioration_mode': 'progressive',
-        'factor_deterioration_mild': 0.3
-    })
+    cfg = config.get('learning_new', {})
 
-    warning_ratio = learning_config.get('trend_warning_ratio', 1.5)
-    warning_floor = learning_config.get('trend_warning_floor', 2)
-    critical_ratio = learning_config.get('trend_critical_ratio', 3.0)
-    critical_floor = learning_config.get('trend_critical_floor', 5)
-    factor_improvement = learning_config.get('factor_improvement', 1.2)
-    factor_solidification = learning_config.get('factor_solidification', 0.4)
-    factor_deterioration = learning_config.get('factor_deterioration', 0.0)
-    
-    # 新增参数
-    historical_baseline = learning_config.get('historical_baseline', 3)
-    factor_high_improvement = learning_config.get('factor_high_improvement', 0.8)
-    deterioration_mode = learning_config.get('deterioration_mode', 'progressive')
-    factor_deterioration_mild = learning_config.get('factor_deterioration_mild', 0.3)
+    # =====================================================
+    # A. 动态水位配置 (The Filter) - 防止群体漂移的核心红线
+    # =====================================================
+    ceiling_floor = cfg.get('trend_ceiling_floor', 5)         # 绝对天花板
+    warning_ratio = cfg.get('trend_warning_ratio', 1.5)       # 关注线倍率
+    warning_floor = cfg.get('trend_warning_floor', 2)         # 关注线保底
+    critical_ratio = cfg.get('trend_critical_ratio', 3.0)     # 熔断线倍率
+    critical_floor = cfg.get('trend_critical_floor', 5)       # 熔断线保底
+    historical_baseline = cfg.get('historical_baseline', 3)   # 历史基准
 
-    # Step 1: 计算动态水位线 (修正：引入历史基准线防止群体退化)
-    warning_line = max(group_avg_violations * warning_ratio, warning_floor, historical_baseline)
-    critical_line = max(group_avg_violations * critical_ratio, critical_floor, historical_baseline * 2)
+    # =====================================================
+    # B. 阶梯趋势系数 (The Matrix)
+    # =====================================================
+    # 安全区系数
+    factor_reward = cfg.get('factor_reward', cfg.get('factor_improvement', 1.2))
+    factor_stable = cfg.get('factor_stable', 1.0)
+    factor_safe_fluctuation = cfg.get('factor_safe_fluctuation', 0.9)
+    # 危险区系数
+    factor_mitigation = cfg.get('factor_mitigation', cfg.get('factor_high_improvement', 0.8))
+    factor_warning = cfg.get('factor_warning', 0.6)
+    factor_solidification = cfg.get('factor_solidification', 0.4)
+    factor_deterioration = cfg.get('factor_deterioration', 0.3)
 
-    # Step 2: 熔断判定
+    # =====================================================
+    # 计算水位线
+    # =====================================================
+    # 关注线 = max(group_avg × ratio, warning_floor, historical_baseline)
+    warning_line_dynamic = max(
+        group_avg_violations * warning_ratio,
+        warning_floor,
+        historical_baseline
+    )
+    # 应用绝对天花板：水位线不能超过 ceiling_floor
+    warning_line = warning_line_dynamic
+    if ceiling_floor > 0:
+        warning_line = min(warning_line, ceiling_floor)
+
+    # 熔断线
+    critical_line = max(group_avg_violations * critical_ratio, critical_floor)
+    # 保证 critical >= warning + 1 (至少差1)
+    critical_line = max(critical_line, warning_line + 1)
+
+    # =====================================================
+    # 区域判定 (Zone Detection)
+    # =====================================================
+    zone = 'SAFE'
+    score_base = 90
+    coeff = 1.0
+    trend_type = 'stable'
+    status_color = 'GREEN'
+    alert_tag = ''
+
+    # --- (1) CRITICAL ZONE: 触达熔断线 → 一票否决 ---
     if current_violations >= critical_line:
         return {
-            'learning_score': 0,
+            'score': 0.0,
+            'learning_score': 0.0,
+            'zone': 'CRITICAL',
+            'count': current_violations,
             'trend_type': 'meltdown',
-            'warning_line': round(warning_line, 1),
-            'critical_line': round(critical_line, 1),
             'status_color': 'RED',
-            'alert_tag': f'⛔ 熔断（违规{current_violations}次≥熔断线{critical_line:.0f}）'
+            'alert_tag': f'⛔ 触达熔断线 ({current_violations}≥{critical_line:.0f})',
+            'warning_line': round(warning_line, 1),
+            'critical_line': round(critical_line, 1)
         }
 
-    # Step 3: 冷启动处理（无上月数据）
-    if previous_violations is None:
-        if current_violations == 0:
-            learning_score = 85
-            trend_type = 'cold_start_good'
-            status_color = 'GREEN'
-            alert_tag = '✅ 新入职/无历史，本月无违规'
+    # --- (2) DANGER ZONE: 高于关注线 ---
+    elif current_violations >= warning_line:
+        zone = 'DANGER'
+        score_base = 60  # 危险区及格分起点
+
+        # 细分趋势判定
+        if previous_violations is not None:
+            if current_violations < previous_violations:
+                # 危险区改善 (Mitigation): 减轻惩罚但不奖励
+                coeff = factor_mitigation  # 0.8
+                trend_type = 'high_improvement'
+                alert_tag = '⚠️ 高位改善 (未脱险)'
+                status_color = 'YELLOW'
+            elif current_violations == previous_violations:
+                # 危险区固化 (Solidification): 严厉惩罚
+                coeff = factor_solidification  # 0.4
+                trend_type = 'solidification'
+                alert_tag = '⛔ 风险固化'
+                status_color = 'ORANGE'
+            else:
+                # 危险区恶化 (Warning): 更严厉
+                coeff = factor_deterioration  # 0.3
+                trend_type = 'deterioration'
+                alert_tag = '🔴 高位恶化'
+                status_color = 'RED'
         else:
-            learning_score = 70
+            # 无历史数据 (冷启动高位)
+            coeff = factor_warning  # 0.6
             trend_type = 'cold_start_warning'
+            alert_tag = '⚠️ 起步高危'
             status_color = 'YELLOW'
-            alert_tag = f'⚠️ 新入职/无历史，本月{current_violations}次违规'
 
-        return {
-            'learning_score': round(learning_score, 1),
-            'trend_type': trend_type,
-            'warning_line': round(warning_line, 1),
-            'critical_line': round(critical_line, 1),
-            'status_color': status_color,
-            'alert_tag': alert_tag
-        }
-
-    # Step 4: 安全区判定（本月和上月都低于关注线）
-    if current_violations < warning_line and previous_violations < warning_line:
-        # 群体校准：是否优于班组平均
-        base_score = 90
-        if current_violations < group_avg_violations:
-            base_score = min(100, base_score + 5)  # 优于平均+5分
-        
-        return {
-            'learning_score': round(base_score, 1),
-            'trend_type': 'safe',
-            'warning_line': round(warning_line, 1),
-            'critical_line': round(critical_line, 1),
-            'status_color': 'GREEN',
-            'alert_tag': '✅ 安全区（违规次数持续低于关注线）'
-        }
-
-    # Step 5: 高位趋势分类
-    base_score = 60  # 高位基础分
-
-    if current_violations < previous_violations:
-        # 改善：数量下降
-        if current_violations < warning_line:
-            # 真正的改善：已经进入安全区
-            trend_type = 'improvement'
-            learning_score = base_score * factor_improvement
-            status_color = 'GREEN'
-            alert_tag = f'📈 改善（{previous_violations}→{current_violations}次，已进入安全区）'
-        else:
-            # 高位改善：仍在关注线以上，只减轻惩罚
-            trend_type = 'high_improvement'
-            learning_score = base_score * factor_high_improvement
-            status_color = 'YELLOW'
-            alert_tag = f'⚠️ 高位改善（{previous_violations}→{current_violations}次，仍高于关注线{warning_line:.1f}）'
-
-    elif current_violations == previous_violations:
-        # 固化：高位持平
-        trend_type = 'solidification'
-        learning_score = base_score * factor_solidification
-        status_color = 'ORANGE'
-        alert_tag = f'⚠️ 固化（持续{current_violations}次违规）'
-
+    # --- (3) SAFE ZONE: 低于关注线 ---
     else:
-        # 恶化：高位上升
-        if deterioration_mode == 'immediate':
-            # 立即归零模式
-            trend_type = 'deterioration'
-            learning_score = base_score * factor_deterioration
-            status_color = 'RED'
-            alert_tag = f'⛔ 恶化（{previous_violations}→{current_violations}次）'
-        else:
-            # 渐进式模式（默认）- 单次恶化给予轻度惩罚而非直接归零
-            trend_type = 'deterioration_mild'
-            learning_score = base_score * factor_deterioration_mild
-            status_color = 'RED'
-            alert_tag = f'🔴 恶化（{previous_violations}→{current_violations}次，进入重点关注）'
+        zone = 'SAFE'
+        score_base = 95
 
-    # Step 6: 群体校准
+        # 奖励机制
+        if previous_violations is not None:
+            if current_violations < previous_violations:
+                # 安全区改善: 奖励
+                coeff = factor_reward  # 1.2
+                trend_type = 'improvement'
+                alert_tag = '📈 持续改善'
+                status_color = 'GREEN'
+            elif current_violations == previous_violations:
+                # 安全区稳定: 保持
+                coeff = factor_stable  # 1.0
+                trend_type = 'safe_stable'
+                alert_tag = '✅ 保持平稳'
+                status_color = 'GREEN'
+            else:
+                # 安全区波动: 轻微惩罚
+                coeff = factor_safe_fluctuation  # 0.9
+                trend_type = 'safe_fluctuation'
+                alert_tag = '📉 安全波动'
+                status_color = 'BLUE'
+        else:
+            # 冷启动良好
+            coeff = factor_stable  # 1.0
+            trend_type = 'cold_start_good'
+            alert_tag = '✅ 表现良好'
+            status_color = 'GREEN'
+
+    # =====================================================
+    # 计算最终得分
+    # =====================================================
+    final_score = score_base * coeff
+
+    # 群体校准补偿：优于班组平均 +10%
     if current_violations < group_avg_violations:
-        learning_score = min(100, learning_score * 1.2)  # 优于平均+20%
-    elif current_violations > group_avg_violations * 1.5:
-        learning_score = learning_score * 0.8  # 远差于平均-20%
+        final_score *= 1.1
+
+    final_score = min(100, max(0, final_score))
 
     return {
-        'learning_score': round(max(0, min(100, learning_score)), 1),
+        'score': round(final_score, 1),
+        'learning_score': round(final_score, 1),  # 兼容旧字段名
+        'zone': zone,
+        'count': current_violations,
         'trend_type': trend_type,
-        'warning_line': round(warning_line, 1),
-        'critical_line': round(critical_line, 1),
         'status_color': status_color,
-        'alert_tag': alert_tag
+        'alert_tag': alert_tag,
+        'warning_line': round(warning_line, 1),
+        'critical_line': round(critical_line, 1)
     }
 
 
@@ -3329,6 +3570,9 @@ def api_students_list():
         if start_date and end_date and start_date != end_date:
             is_long_term = True
             
+        # 初始化班组平均违规数（默认值）
+        group_avg_violations = 1.0
+            
         if is_long_term:
             # 长周期模式：逐月计算学习能力分，然后加权平均（近期权重高）
             try:
@@ -3994,7 +4238,7 @@ def api_comprehensive_profile(emp_no):
     learning_result = None
     
     if is_long_term:
-        # 长周期模式：逐月计算学习能力分，然后加权平均
+        # 长周期模式：V5.0 风险惯性模型
         try:
             # 1. 初始化每月计数
             monthly_counts = {}
@@ -4031,9 +4275,8 @@ def api_comprehensive_profile(emp_no):
                     if m_str in monthly_counts:
                         monthly_counts[m_str] += 1
                         
-            # 3. 逐月计算
-            monthly_scores = []
-            last_violations = pre_period_count
+            # 3. 准备参数调用核心算法
+            score_list = [monthly_counts[m] for m in months_seq]
             
             # 获取班组平均（周期整体）
             period_group_avg = 1.0 
@@ -4050,66 +4293,39 @@ def api_comprehensive_profile(emp_no):
                     avg_res = cur.fetchone()
                     if avg_res and avg_res['avg_viol']:
                         period_group_avg = float(avg_res['avg_viol'])
+                        group_avg_violations = period_group_avg  # 更新外部变量
                  except:
                     pass
 
-            trend_status_counts = {'improvement': 0, 'deterioration': 0, 'solidification': 0, 'safe': 0}
-
-            for m_str in months_seq:
-                curr_viol = monthly_counts[m_str]
-                res = calculate_learning_ability_new(
-                    current_violations=curr_viol,
-                    previous_violations=last_violations,
-                    group_avg_violations=period_group_avg,
-                    config=algo_config
-                )
-                monthly_scores.append(res['learning_score'])
-                if 'trend_type' in res:
-                    t = res['trend_type']
-                    if t == 'high_improvement':
-                        trend_status_counts['improvement'] += 1
-                    elif t in ['deterioration_mild', 'meltdown']:
-                        trend_status_counts['deterioration'] += 1
-                    elif t in trend_status_counts:
-                        trend_status_counts[t] += 1
-                last_violations = curr_viol
+            # 4. 调用 calculate_learning_ability_longterm (V5.0 核心)
+            # 注意：此函数已更新接受 initial_prev_viol
+            learning_result = calculate_learning_ability_longterm(
+                score_list=score_list,
+                config=algo_config,
+                group_avg=period_group_avg,
+                initial_prev_viol=pre_period_count
+            )
             
-            # 4. 加权平均（近期权重高）
-            total_weight = 0
-            weighted_sum = 0
-            time_decay_rate = algo_config.get('learning_new', {}).get('time_decay_rate', 0.2)
-            
-            for i, score in enumerate(monthly_scores):
-                weight = 1.0 + (i * time_decay_rate) 
-                weighted_sum += score * weight
-                total_weight += weight
-            
-            final_score = weighted_sum / total_weight if total_weight > 0 else 0
-            
-            # 确定趋势
-            overall_trend = 'fluctuation'
-            if trend_status_counts['deterioration'] > len(months_seq) / 3:
-                overall_trend = 'deterioration'
-            elif trend_status_counts['improvement'] > len(months_seq) / 3:
-                 overall_trend = 'improvement'
-            elif trend_status_counts['safe'] > len(months_seq) / 2:
-                overall_trend = 'safe'
-            elif trend_status_counts['solidification'] > len(months_seq) / 2:
-                overall_trend = 'solidification'
-            
-            learning_result = {
-                'learning_score': final_score,
-                'trend_type': overall_trend,
-                'status_color': 'BLUE',
-                'alert_tag': f'🗓️ 周期加权评分（{len(monthly_scores)}个月）'
-            }
-            
+            # 补全部分前端需要的字段（如果 missed）
+            # long-term函数返回了 risk_level, inertia_penalty_rate, max_consecutive_danger 等关键字段
+            # 我们只需要补充 trend_type 供兼容旧代码逻辑判断
+            if learning_result['risk_level'] == 'SAFE':
+                learning_result['trend_type'] = 'safe'
+            elif learning_result['risk_level'] in ['HIGH_RISK', 'PRE_ACCIDENT']:
+                learning_result['trend_type'] = 'deterioration'
+            elif learning_result['risk_level'] == 'WATCH_LIST':
+                 learning_result['trend_type'] = 'yellow_alert'
+            else:
+                 learning_result['trend_type'] = 'fluctuation'
+                 
             # 兼容设置
             current_violations = monthly_counts[months_seq[-1]]
             if len(months_seq) >= 2:
                 previous_violations = monthly_counts[months_seq[-2]]
             else:
                 previous_violations = pre_period_count
+                
+            monthly_scores = [0] * len(months_seq) # 标记为非空列表以触发 learning_months 计算
 
         except Exception as e:
             current_app.logger.error(f": 长周期学习能力计算异常: {e}")
@@ -4176,6 +4392,25 @@ def api_comprehensive_profile(emp_no):
     learning_score = learning_result['learning_score']
     learning_status_color = learning_result['status_color']
     learning_alert_tag = learning_result['alert_tag']
+    
+    # [V5.0 补全] 确保 risk_level 等关键字段存在 (兼容单月/短周期模式)
+    if 'risk_level' not in learning_result:
+        zone = learning_result.get('zone', 'SAFE')
+        if zone == 'CRITICAL':
+             learning_result['risk_level'] = 'PRE_ACCIDENT'
+        elif zone == 'DANGER':
+             learning_result['risk_level'] = 'HIGH_RISK'
+        elif zone == 'SAFE':
+             learning_result['risk_level'] = 'SAFE'
+        else:
+             learning_result['risk_level'] = zone
+             
+    if 'inertia_penalty_rate' not in learning_result:
+        learning_result['inertia_penalty_rate'] = 0.0
+        
+    if 'max_consecutive_danger' not in learning_result:
+        learning_result['max_consecutive_danger'] = 0
+
     raw_trend_type = learning_result.get('trend_type', '未知')
     if raw_trend_type == 'high_improvement':
         learning_tier = 'improvement'
@@ -4183,10 +4418,19 @@ def api_comprehensive_profile(emp_no):
         learning_tier = 'deterioration'
     else:
         learning_tier = raw_trend_type
-    learning_delta = 0  # 新算法不使用delta
-    learning_slope = 0  # 新算法不使用slope
-    learning_months = 1  # 新算法基于月度
-    previous_comprehensive = 0  # 新算法不使用previous_comprehensive
+    
+    # 获取新算法的详细指标
+    learning_warning_line = learning_result.get('warning_line', 0)
+    learning_critical_line = learning_result.get('critical_line', 0)
+    
+    # 尝试获取统计周期月数（如果是长周期模式）
+    # 注意：在前面的代码中我们可能定义了 monthly_scores
+    if 'monthly_scores' in locals() and monthly_scores:
+        learning_months = len(monthly_scores)
+    elif 'learning_result' in locals() and 'months' in learning_result:
+        learning_months = learning_result['months']
+    else:
+        learning_months = 1
 
 
     # 6. 稳定性评估（V2版本：支持波动率熔断）
@@ -4447,12 +4691,21 @@ def api_comprehensive_profile(emp_no):
             'learning_score': round(learning_score, 1),
             'status_color': learning_status_color,
             'alert_tag': learning_alert_tag,
-            'tier': learning_tier,  # 已经是中文（从alert_tag提取）
-            'delta': round(learning_delta, 1) if learning_delta else 0,
-            'slope': round(learning_slope, 3) if learning_slope else 0,
-            'current_comprehensive': round(current_comprehensive, 1),
-            'previous_comprehensive': round(previous_comprehensive, 1) if previous_comprehensive else 0,
-            'months': learning_months
+            'tier': learning_tier,
+            'current_violations': current_violations,
+            'previous_violations': previous_violations if previous_violations is not None else -1,  # -1表示无记录(冷启动)
+            'group_avg': round(group_avg_violations, 1),
+            'warning_line': learning_warning_line,
+            'critical_line': learning_critical_line,
+            'months': learning_months,
+            # V5.0 新增字段
+            'risk_level': learning_result.get('risk_level', 'UNKNOWN'),
+            'inertia_penalty_rate': learning_result.get('inertia_penalty_rate', 0),
+            'max_consecutive_danger': learning_result.get('max_consecutive_danger', 0),
+            'base_score': learning_result.get('base_score', 0),  # 基础加权分（惯性扣减前）
+            'has_meltdown': learning_result.get('has_meltdown', False),  # 是否曾触发熔断
+            'zone': learning_result.get('zone', 'UNKNOWN'),  # 当前区域状态
+            'slope': learning_result.get('slope', 0)
         },
         'stability_details': {
             'stability_score': round(stability_score, 1),

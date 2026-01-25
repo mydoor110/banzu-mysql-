@@ -265,31 +265,74 @@
                                                 title="根据单次违规扣分值的严重程度，乘以不同的惩罚系数"></i>
                                         </label>
                                         <div class="alert alert-light border p-3">
-                                            <div class="row g-3 mb-3">
+                                            <!-- 轻微违规 -->
+                                            <div class="row g-3 mb-3 align-items-center">
+                                                <div class="col-md-3">
+                                                    <label class="form-label small fw-bold">1. 轻微违规</label>
+                                                </div>
                                                 <div class="col-md-4">
-                                                    <label class="form-label small">轻微违规 (&lt;3分)</label>
-                                                    <div class="input-group">
-                                                        <span class="input-group-text">系数</span>
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">分值 &lt;</span>
+                                                        <input type="number" class="form-control" min="1" max="10"
+                                                            data-path="safety.severity_track.score_ranges.0.max"
+                                                            placeholder="3">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">惩罚系数</span>
                                                         <input type="number" class="form-control" step="0.1" min="0.1"
                                                             max="10"
                                                             data-path="safety.severity_track.score_ranges.0.multiplier"
                                                             placeholder="1.0">
                                                     </div>
                                                 </div>
+                                            </div>
+
+                                            <!-- 中等违规 -->
+                                            <div class="row g-3 mb-3 align-items-center">
+                                                <div class="col-md-3">
+                                                    <label class="form-label small fw-bold">2. 中等违规</label>
+                                                </div>
                                                 <div class="col-md-4">
-                                                    <label class="form-label small">中等违规 (3-5分)</label>
-                                                    <div class="input-group">
-                                                        <span class="input-group-text">系数</span>
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">分值</span>
+                                                        <input type="number" class="form-control" min="1" max="10"
+                                                            data-path="safety.severity_track.score_ranges.1.min"
+                                                            placeholder="3">
+                                                        <span class="input-group-text">~</span>
+                                                        <input type="number" class="form-control" min="1" max="10"
+                                                            data-path="safety.severity_track.score_ranges.1.max"
+                                                            placeholder="5">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">惩罚系数</span>
                                                         <input type="number" class="form-control" step="0.1" min="0.1"
                                                             max="10"
                                                             data-path="safety.severity_track.score_ranges.1.multiplier"
                                                             placeholder="2.5">
                                                     </div>
                                                 </div>
+                                            </div>
+
+                                            <!-- 严重违规 -->
+                                            <div class="row g-3 mb-3 align-items-center">
+                                                <div class="col-md-3">
+                                                    <label class="form-label small fw-bold">3. 严重违规</label>
+                                                </div>
                                                 <div class="col-md-4">
-                                                    <label class="form-label small">严重违规 (≥5分)</label>
-                                                    <div class="input-group">
-                                                        <span class="input-group-text">系数</span>
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">分值 ≥</span>
+                                                        <input type="number" class="form-control" min="1" max="10"
+                                                            data-path="safety.severity_track.score_ranges.2.min"
+                                                            placeholder="5">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">惩罚系数</span>
                                                         <input type="number" class="form-control" step="0.1" min="0.1"
                                                             max="10"
                                                             data-path="safety.severity_track.score_ranges.2.multiplier"
@@ -297,8 +340,10 @@
                                                     </div>
                                                 </div>
                                             </div>
+
                                             <small class="text-muted">
-                                                <i class="bi bi-lightbulb"></i> 推荐值：轻微1.0倍，中等2.5倍，严重5.0倍
+                                                <i class="bi bi-lightbulb"></i> 推荐设置：轻微(&lt;3) 1.0倍，中等(3~5) 2.5倍，严重(≥5)
+                                                5.0倍。请确保分值区间连续且不重叠。
                                             </small>
                                         </div>
                                     </div>
@@ -409,49 +454,92 @@
                                     <!-- AFR年化失格率阈值 -->
                                     <div class="mb-4">
                                         <label class="form-label fw-bold">
-                                            AFR年化失格率阈值
+                                            AFR年化失格率阈值（可配置）
                                             <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
-                                                title="根据失格频率年化后的比率，分档惩罚"></i>
+                                                title="此阈值决定失格频率分类：afr >= 高频阈值（高频），>= 偏高阈值（偏高），>= 偶发阈值（偶发）"></i>
                                         </label>
                                         <div class="alert alert-light border p-3">
-                                            <div class="row g-3 mb-3">
+                                            <!-- 高频失格配置 -->
+                                            <div class="row g-3 mb-3 align-items-center">
+                                                <div class="col-md-3">
+                                                    <label class="form-label small fw-bold">1. 高频失格</label>
+                                                </div>
                                                 <div class="col-md-4">
-                                                    <label class="form-label small">高频失格 (AFR≥2.5)</label>
-                                                    <div class="input-group">
-                                                        <span class="input-group-text">系数</span>
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">AFR ≥</span>
+                                                        <input type="number" class="form-control" step="0.1" min="0"
+                                                            max="10"
+                                                            data-path="training.penalty_rules.afr_thresholds.0.threshold"
+                                                            placeholder="2.5">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">惩罚系数</span>
                                                         <input type="number" class="form-control" step="0.05" min="0"
                                                             max="1"
                                                             data-path="training.penalty_rules.afr_thresholds.0.coefficient"
                                                             placeholder="0.5">
                                                     </div>
-                                                    <small class="text-muted">AFR≥2.5次/年</small>
+                                                </div>
+                                            </div>
+
+                                            <!-- 频率偏高配置 -->
+                                            <div class="row g-3 mb-3 align-items-center">
+                                                <div class="col-md-3">
+                                                    <label class="form-label small fw-bold">2. 频率偏高</label>
                                                 </div>
                                                 <div class="col-md-4">
-                                                    <label class="form-label small">频率偏高 (1.5≤AFR&lt;2.5)</label>
-                                                    <div class="input-group">
-                                                        <span class="input-group-text">系数</span>
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">AFR ≥</span>
+                                                        <input type="number" class="form-control" step="0.1" min="0"
+                                                            max="10"
+                                                            data-path="training.penalty_rules.afr_thresholds.1.threshold"
+                                                            placeholder="1.5">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">惩罚系数</span>
                                                         <input type="number" class="form-control" step="0.05" min="0"
                                                             max="1"
                                                             data-path="training.penalty_rules.afr_thresholds.1.coefficient"
                                                             placeholder="0.7">
                                                     </div>
-                                                    <small class="text-muted">1.5≤AFR&lt;2.5次/年</small>
+                                                </div>
+                                            </div>
+
+                                            <!-- 偶发失格配置 -->
+                                            <div class="row g-3 mb-3 align-items-center">
+                                                <div class="col-md-3">
+                                                    <label class="form-label small fw-bold">3. 偶发失格</label>
                                                 </div>
                                                 <div class="col-md-4">
-                                                    <label class="form-label small">偶发失格 (0.5≤AFR&lt;1.5)</label>
-                                                    <div class="input-group">
-                                                        <span class="input-group-text">系数</span>
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">AFR ≥</span>
+                                                        <input type="number" class="form-control" step="0.1" min="0"
+                                                            max="10"
+                                                            data-path="training.penalty_rules.afr_thresholds.2.threshold"
+                                                            placeholder="0.5">
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    <div class="input-group input-group-sm">
+                                                        <span class="input-group-text">惩罚系数</span>
                                                         <input type="number" class="form-control" step="0.05" min="0"
                                                             max="1"
                                                             data-path="training.penalty_rules.afr_thresholds.2.coefficient"
                                                             placeholder="0.9">
                                                     </div>
-                                                    <small class="text-muted">0.5≤AFR&lt;1.5次/年</small>
                                                 </div>
                                             </div>
+
+                                            <small class="text-muted d-block mt-2">
+                                                <i class="bi bi-lightbulb"></i>
+                                                推荐值：高频(AFR≥2.5)系数0.5，偏高(AFR≥1.5)系数0.7，偶发(AFR≥0.5)系数0.9
+                                            </small>
                                             <small class="text-muted">
-                                                <i class="bi bi-lightbulb"></i> 推荐值：高频0.5，偏高0.7，偶发0.9<br>
-                                                <i class="bi bi-info-circle"></i> AFR = 失格次数 / (入职天数 / 365)，反映年化失格频率
+                                                <i class="bi bi-info-circle"></i> AFR = 失格次数 / (入职天数 / 365)
                                             </small>
                                         </div>
                                     </div>
@@ -553,196 +641,213 @@
                                 </div>
                             </div>
 
-                            <!-- 4.2 学习能力算法参数卡片（新版） -->
+                            <!-- 4.2 安全趋势算法参数卡片（新版） -->
                             <div class="card mb-4 border-info">
                                 <div class="card-header bg-info bg-opacity-10">
                                     <h6 class="mb-0 text-info">
-                                        <i class="bi bi-graph-up-arrow"></i> 📈 学习能力算法参数（新版）
+                                        <i class="bi bi-graph-up-arrow"></i> 📈 安全趋势算法参数（新版）
                                     </h6>
                                 </div>
                                 <div class="card-body">
                                     <!-- 算法说明区域 -->
                                     <div class="alert alert-light border p-3 mb-4">
-                                        <h6 class="text-info fw-bold"><i class="bi bi-calculator"></i> 算法逻辑说明（V4.0
-                                            动态水位线）</h6>
+                                        <h6 class="text-info fw-bold"><i class="bi bi-calculator"></i> 算法逻辑说明（V5.0
+                                            风险惯性模型 - 行为演化与事故预测）</h6>
                                         <div class="small text-muted">
                                             <p class="mb-2"><strong>核心理念：</strong>
-                                                <code>关注趋势变化，而非绝对数值</code>。引入"动态水位线"概念，根据班组平均水平自动调整要求。
+                                                <code>风险惯性 (Risk Inertia)</code>。系统具备"记忆力"，能够识别<span class="text-danger fw-bold">长尾高风险群体</span>，防止短期数据"洗白"。
                                             </p>
 
                                             <div class="mb-2">
-                                                <strong>1. 动态水位线：</strong><br>
-                                                <code>关注线 = MAX(班组均值×倍率, 保底值, 历史安全基准线)</code><br>
-                                                <em>不仅参考班组平均（相对标准），还强制设定了"历史基准线"（绝对底线），防止班组集体退化导致标准过低。</em>
-                                            </div>
-
-                                            <div class="mb-2">
-                                                <strong>2. 趋势判定与奖惩：</strong><br>
-                                                <code>得分 = 基础分 × 趋势系数</code>
-                                                <ul class="mb-0">
-                                                    <li><span class="text-success">📉 有效改善（安全区）：</span>
-                                                        基础分~90，系数×1.0~1.2</li>
-                                                    <li><span class="text-warning">⚠️ 高位改善（危险区）：</span>
-                                                        基础分~60，系数×0.8（减轻惩罚）</li>
-                                                    <li><span class="text-danger">📈 恶化：</span> 基础分~60，系数×0.3（渐进惩罚）或
-                                                        0（归零）</li>
+                                                <strong>1. 单月状态判定 (L<sub>month</sub>)：</strong><br>
+                                                <em>水位线计算：</em><br>
+                                                <code>关注线 = min(max(班组均值×倍率, 保底值, 历史基准), <span class="text-danger">绝对天花板</span>)</code><br>
+                                                <code>熔断线 = max(班组均值×熔断倍率, 熔断保底值)</code><br>
+                                                <em>区域判定：</em>
+                                                <ul class="mb-1 ps-3">
+                                                    <li><span class="text-success">✅ 安全区 (SAFE)：</span> 违规数 < 关注线 → 分数按安全区系数计算</li>
+                                                    <li><span class="text-warning">⚠️ 危险区 (DANGER)：</span> 违规数 ≥ 关注线 → 分数按危险区系数计算</li>
+                                                    <li><span class="text-danger">⛔ 熔断区 (CRITICAL)：</span> 违规数 ≥ 熔断线 → 分数=0 (一票否决)</li>
                                                 </ul>
+                                                <em>返回：{'score': 80, 'zone': 'DANGER', 'count': 5}</em>
                                             </div>
 
-                                            <p class="mb-0 mt-2"><strong>熔断机制：</strong> 违规数超过"熔断线"（通常是均值的3倍），直接判定为0分。
-                                            </p>
+                                            <div class="mb-2">
+                                                <strong>2. 风险惯性惩罚公式：</strong><br>
+                                                扫描周期内 zone 序列，寻找 <strong>连续处于 DANGER/CRITICAL 的最大月数 (K<sub>max</sub>)</strong><br>
+                                                <code>若 K<sub>max</sub> < 惯性启动月数: 惯性 = 0</code><br>
+                                                <code class="text-danger fw-bold">若 K<sub>max</sub> ≥ 惯性启动月数: 惯性 = min((K<sub>max</sub> - 启动月数 + 1) × 步长, 最大惩罚)</code><br>
+                                                <em class="text-info">例如：连续3个月危险 (启动=2, 步长=0.15) → (3-2+1)×0.15 = 30% 惩罚</em>
+                                            </div>
+
+                                            <div class="mb-2">
+                                                <strong>3. 最终计算：</strong><br>
+                                                <code class="text-primary fw-bold">最终得分 = 基础加权分 × (1 - 惯性扣减率)</code><br>
+                                                <em class="text-danger">业务含义：一个连续 4 个月处于危险边缘的"老油条"，即使每月得分60分，经过惯性惩罚(-45%)后，最终只有33分（高危）。</em>
+                                            </div>
+
+                                            <div class="mb-0 border-top pt-2">
+                                                <strong>4. 风险等级映射：</strong><br>
+                                                <span class="badge bg-dark">⛔ 事故前兆</span> 惯性惩罚≥40% 或 曾触发熔断 |
+                                                <span class="badge bg-danger">🔴 高危</span> 分数<60 |
+                                                <span class="badge bg-warning text-dark">⚠️ 重点关注</span> 近期处于危险区 |
+                                                <span class="badge bg-success">✅ 安全</span> 其他
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <!-- 动态水位线参数 -->
+                                    <!-- A. 动态水位 (The Filter) -->
                                     <div class="mb-4">
                                         <label class="form-label fw-bold">
-                                            动态水位线
+                                            A. 动态水位 (The Filter) - 防止群体漂移的核心红线
                                             <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
                                                 title="关注线和熔断线的计算参数"></i>
                                         </label>
                                         <div class="row g-3">
-                                            <div class="col-md-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label small text-danger fw-bold">绝对天花板 (Ceiling)</label>
+                                                <input type="number" class="form-control border-danger" min="1" max="20"
+                                                    data-path="learning_new.trend_ceiling_floor" placeholder="5">
+                                                <small class="text-danger">⚠️ 核心红线：超过此值必入危险区</small>
+                                            </div>
+                                            <div class="col-md-4">
                                                 <label class="form-label small">关注线倍率</label>
                                                 <input type="number" class="form-control" step="0.1" min="1" max="5"
                                                     data-path="learning_new.trend_warning_ratio" placeholder="1.5">
+                                                <small class="text-muted">班组均值 × 此倍率</small>
                                             </div>
-                                            <div class="col-md-3">
+                                            <div class="col-md-4">
                                                 <label class="form-label small">关注线保底值</label>
                                                 <input type="number" class="form-control" min="1" max="10"
                                                     data-path="learning_new.trend_warning_floor" placeholder="2">
+                                                <small class="text-muted">最低关注线</small>
                                             </div>
-                                            <div class="col-md-3">
+                                            <div class="col-md-4">
                                                 <label class="form-label small">熔断线倍率</label>
                                                 <input type="number" class="form-control" step="0.1" min="2" max="10"
                                                     data-path="learning_new.trend_critical_ratio" placeholder="3.0">
+                                                <small class="text-danger">超过此线直接0分</small>
                                             </div>
-                                            <div class="col-md-3">
+                                            <div class="col-md-4">
                                                 <label class="form-label small">熔断线保底值</label>
                                                 <input type="number" class="form-control" min="3" max="20"
                                                     data-path="learning_new.trend_critical_floor" placeholder="5">
                                             </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small">历史安全基准</label>
+                                                <input type="number" class="form-control" min="1" max="10"
+                                                    data-path="learning_new.historical_baseline" placeholder="3">
+                                                <small class="text-muted">关注线兜底值</small>
+                                            </div>
                                         </div>
                                         <small class="text-muted mt-2">
-                                            <i class="bi bi-lightbulb"></i> 关注线=max(班组均值×倍率, 保底值)，超过熔断线直接0分
+                                            <i class="bi bi-lightbulb"></i> 关注线 = min(max(班组均值×倍率, 保底值, 历史基准), <span class="text-danger">绝对天花板</span>)
                                         </small>
                                     </div>
 
-                                    <!-- 历史安全基准线 -->
                                     <hr>
-                                    <div class="mb-4">
-                                        <label class="form-label fw-bold">
-                                            安全基准线
-                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
-                                                title="防止群体退化的绝对底线"></i>
-                                        </label>
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label small">历史安全基准线（次）</label>
-                                                <input type="number" class="form-control" min="1" max="10"
-                                                    data-path="learning_new.historical_baseline" placeholder="3">
-                                                <small class="text-muted">关注线的绝对下限，防止群体漂移</small>
-                                            </div>
-                                        </div>
-                                    </div>
 
-                                    <!-- 高位改善系数 -->
-                                    <hr>
-                                    <div class="mb-4">
-                                        <label class="form-label fw-bold">
-                                            高位改善系数
-                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
-                                                title="违规数高于关注线但在下降时使用"></i>
-                                        </label>
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label small">高位改善系数</label>
-                                                <input type="number" class="form-control" step="0.1" min="0" max="1"
-                                                    data-path="learning_new.factor_high_improvement" placeholder="0.8">
-                                                <small class="text-warning">减轻惩罚但不奖励，推荐0.8</small>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- 恶化处理模式 -->
-                                    <hr>
+                                    <!-- B. 阶梯趋势系数 (The Matrix) -->
                                     <div class="mb-3">
                                         <label class="form-label fw-bold">
-                                            恶化处理模式
+                                            B. 阶梯趋势系数 (The Matrix)
                                             <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
-                                                title="选择如何处理违规数上升的情况"></i>
+                                                title="安全区与危险区的评分因子"></i>
                                         </label>
-                                        <div class="row g-3">
-                                            <div class="col-md-6">
-                                                <label class="form-label small">处理模式</label>
-                                                <select class="form-select" data-path="learning_new.deterioration_mode">
-                                                    <option value="progressive">渐进式（推荐）</option>
-                                                    <option value="immediate">立即归零</option>
-                                                </select>
-                                                <small class="text-muted">渐进式：单次恶化降分但不归零</small>
-                                            </div>
-                                            <div class="col-md-6">
-                                                <label class="form-label small">轻度恶化系数</label>
-                                                <input type="number" class="form-control" step="0.1" min="0" max="1"
-                                                    data-path="learning_new.factor_deterioration_mild"
-                                                    placeholder="0.3">
-                                                <small class="text-muted">用于单次恶化，推荐0.3</small>
-                                            </div>
+                                        <div class="alert alert-info py-2 mb-2">
+                                            <small><i class="bi bi-info-circle"></i> <strong>安全区系数：</strong> 奖励=1.2, 稳定=1.0, 波动=0.9 | <strong>危险区系数：</strong> 改善=0.8, 冷启动=0.6, 固化=0.4, 恶化=0.3</small>
                                         </div>
-                                    </div>
-
-                                    <hr>
-
-                                    <!-- 趋势奖惩系数 -->
-                                    <div class="mb-3">
-                                        <label class="form-label fw-bold">
-                                            趋势奖惩系数
-                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
-                                                title="根据违规趋势变化给予不同的奖惩"></i>
-                                        </label>
                                         <div class="row g-3">
-                                            <div class="col-md-4">
-                                                <label class="form-label small">改善系数（数量下降）</label>
+                                            <div class="col-md-3">
+                                                <label class="form-label small text-success">安全区·奖励系数</label>
                                                 <input type="number" class="form-control" step="0.1" min="1" max="2"
-                                                    data-path="learning_new.factor_improvement" placeholder="1.2">
-                                                <small class="text-success">奖励系数，推荐1.2</small>
+                                                    data-path="learning_new.factor_reward" placeholder="1.2">
+                                                <small class="text-success">改善+20%</small>
                                             </div>
-                                            <div class="col-md-4">
-                                                <label class="form-label small">固化系数（高位持平）</label>
+                                            <div class="col-md-3">
+                                                <label class="form-label small text-success">安全区·稳定系数</label>
+                                                <input type="number" class="form-control" step="0.1" min="0.5" max="1.5"
+                                                    data-path="learning_new.factor_stable" placeholder="1.0">
+                                                <small class="text-success">保持原分</small>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small text-warning">危险区·改善系数</label>
                                                 <input type="number" class="form-control" step="0.1" min="0" max="1"
+                                                    data-path="learning_new.factor_mitigation" placeholder="0.8">
+                                                <small class="text-warning">减轻惩罚但不奖励</small>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small text-warning">危险区·冷启动系数</label>
+                                                <input type="number" class="form-control" step="0.1" min="0" max="1"
+                                                    data-path="learning_new.factor_warning" placeholder="0.6">
+                                                <small class="text-warning">无历史数据时</small>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small text-danger fw-bold">危险区·固化系数 (高位持平)</label>
+                                                <input type="number" class="form-control border-danger" step="0.1" min="0" max="1"
                                                     data-path="learning_new.factor_solidification" placeholder="0.4">
-                                                <small class="text-warning">惩罚系数，推荐0.4</small>
+                                                <small class="text-danger">⚠️ 风险固化严厉惩罚，推荐0.4</small>
                                             </div>
-                                            <div class="col-md-4">
-                                                <label class="form-label small">恶化系数（高位上升）</label>
-                                                <input type="number" class="form-control" step="0.1" min="0" max="1"
-                                                    data-path="learning_new.factor_deterioration" placeholder="0.0">
-                                                <small class="text-danger">惩罚系数，推荐0.0=直接0分</small>
+                                            <div class="col-md-6">
+                                                <label class="form-label small text-danger fw-bold">危险区·恶化系数 (高位上升)</label>
+                                                <input type="number" class="form-control border-danger" step="0.1" min="0" max="1"
+                                                    data-path="learning_new.factor_deterioration" placeholder="0.3">
+                                                <small class="text-danger">⚠️ 恶化更严厉，推荐0.3</small>
                                             </div>
                                         </div>
                                     </div>
 
                                     <hr>
 
-                                    <!-- 长周期聚合参数 -->
+                                    <!-- C. 风险惯性 (The Risk Inertia) -->
                                     <div class="mb-3">
                                         <label class="form-label fw-bold">
-                                            长周期聚合参数
-                                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip"
-                                                title="用于跨月/年度评估时的时间加权"></i>
+                                            C. 风险惯性 (The Risk Inertia) - V5.0 核心
+                                            <i class="bi bi-shield-exclamation text-danger" data-bs-toggle="tooltip"
+                                                title="识别长尾高风险群体，防止短期洗白"></i>
                                         </label>
+                                        <div class="alert alert-danger py-2 mb-2">
+                                            <small><i class="bi bi-exclamation-triangle"></i> <strong>风险惯性公式：</strong>
+                                                若连续 <strong>K<sub>max</sub></strong> 个月处于危险区 (≥启动月数)，
+                                                <code>惯性 = min((K<sub>max</sub> - 启动月数 + 1) × 步长, 最大惩罚)</code>
+                                                <br><em class="text-info">例如：连续3个月 → (3-2+1)×0.15 = 30% 惩罚</em>
+                                            </small>
+                                        </div>
                                         <div class="row g-3">
-                                            <div class="col-md-6">
+                                            <div class="col-md-3">
+                                                <label class="form-label small text-danger fw-bold">惯性启动阈值 (月)</label>
+                                                <input type="number" class="form-control border-danger" min="1" max="6"
+                                                    data-path="learning_new.inertia_start_months" placeholder="2">
+                                                <small class="text-danger">连续N月危险区开始计算惯性</small>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small text-danger fw-bold">惯性累积步长</label>
+                                                <input type="number" class="form-control border-danger" step="0.05"
+                                                    min="0" max="0.5" data-path="learning_new.inertia_step"
+                                                    placeholder="0.15">
+                                                <small class="text-danger">每多1月增加15%惩罚</small>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small text-danger fw-bold">最大惯性惩罚</label>
+                                                <input type="number" class="form-control border-danger" step="0.1"
+                                                    min="0" max="1.0" data-path="learning_new.inertia_max_penalty"
+                                                    placeholder="0.6">
+                                                <small class="text-danger">封顶扣除60%</small>
+                                            </div>
+                                            <div class="col-md-3">
                                                 <label class="form-label small">时间衰减率</label>
                                                 <input type="number" class="form-control" step="0.05" min="0" max="1"
                                                     data-path="learning_new.time_decay_rate" placeholder="0.2">
-                                                <small class="text-muted">用于长周期加权，值越大近期权重越高</small>
+                                                <small class="text-muted">近期月份权重更高</small>
                                             </div>
                                         </div>
-                                        <small class="text-muted mt-2">
-                                            <i class="bi bi-lightbulb"></i> 权重公式: weight = 1.0 + i ×
-                                            time_decay_rate（i为月份索引）
-                                        </small>
+                                        <div class="alert alert-info py-2 mt-3 mb-0">
+                                            <small><i class="bi bi-lightbulb"></i> <strong>业务含义：</strong>
+                                                一个连续4个月处于危险边缘的"老油条"，即使每月得分60分（及格），
+                                                经过惯性惩罚(-45%)后，最终得分只有33分（高危）。
+                                                这精准识别了"事故前兆群体"。
+                                            </small>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -756,7 +861,7 @@
                                 </div>
                                 <div class="card-body">
                                     <div class="alert alert-light border p-3">
-                                        <p class="mb-2"><strong>设计说明：</strong>九宫格Y轴 = 稳定度×权重 + 学习能力×权重</p>
+                                        <p class="mb-2"><strong>设计说明：</strong>九宫格Y轴 = 稳定度×权重 + 安全趋势×权重</p>
                                         <p class="mb-0 text-muted small">X轴使用三维综合分（绩效+安全+培训），复用综合评分权重配置</p>
                                     </div>
 
@@ -770,7 +875,7 @@
                                             </div>
                                         </div>
                                         <div class="col-md-6">
-                                            <label class="form-label small">学习能力权重</label>
+                                            <label class="form-label small">安全趋势权重</label>
                                             <div class="input-group">
                                                 <input type="number" class="form-control" step="0.1" min="0" max="1"
                                                     data-path="nine_grid.y_axis_weights.learning" placeholder="0.6">
@@ -779,7 +884,7 @@
                                         </div>
                                     </div>
                                     <small class="text-muted mt-2">
-                                        <i class="bi bi-lightbulb"></i> 推荐值：稳定度40% + 学习能力60%（两项之和应为1.0）
+                                        <i class="bi bi-lightbulb"></i> 推荐值：稳定度40% + 安全趋势60%（两项之和应为1.0）
                                     </small>
                                 </div>
                             </div>
@@ -1642,117 +1747,167 @@
                         const perf = cfg.performance || {};
                         const safety = cfg.safety || {};
                         const training = cfg.training || {};
+                        const stab = cfg.stability_new || {};
+                        const learn = cfg.learning_new || {};
                         const key = cfg.key_personnel || {};
 
-                        // 提取关键参数
-                        const dCap = perf.contamination_rules?.d_cap_score || 90;
-                        const cCap = perf.contamination_rules?.c_cap_score || 95;
-                        const cThreshold = perf.contamination_rules?.c_count_threshold || 2;
-                        const criticalThreshold = safety.severity_track?.critical_threshold || 12;
-                        const failCount = training.penalty_rules?.absolute_threshold?.fail_count || 3;
-                        const failCoeff = training.penalty_rules?.absolute_threshold?.coefficient || 0.5;
-                        const afrHigh = training.penalty_rules?.afr_thresholds?.[0] || {};
-                        const keyThreshold = key.comprehensive_threshold || 70;
-                        const keyViolation = key.monthly_violation_threshold || 3;
+                        // --- 1. 绩效参数 ---
+                        const pCoeffs = perf.grade_coefficients || {};
+                        const pRules = perf.contamination_rules || {};
+                        const dThresh = pRules.d_count_threshold ?? 1;
+                        const dCap = pRules.d_cap_score ?? 90;
+                        const cThresh = pRules.c_count_threshold ?? 2;
+                        const cCap = pRules.c_cap_score ?? 95;
+
+                        // --- 2. 安全参数 ---
+                        const sBehav = safety.behavior_track || {};
+                        const sSever = safety.severity_track || {};
+                        const fThresh = sBehav.freq_thresholds || [2, 5, 6];
+                        const fMult = sBehav.freq_multipliers || [2, 5, 10];
+                        const sRanges = sSever.score_ranges || [];
+                        const r0 = sRanges[0] || {};
+                        const r1 = sRanges[1] || {};
+                        const r2 = sRanges[2] || {};
+                        const r0Max = r0.max ?? 3;
+                        const r0Mult = r0.multiplier ?? 1.0;
+                        const r1Min = r1.min ?? 3;
+                        const r1Max = r1.max ?? 5;
+                        const r1Mult = r1.multiplier ?? 2.5;
+                        const r2Min = r2.min ?? 5;
+                        const r2Mult = r2.multiplier ?? 5.0;
+                        const sCrit = sSever.critical_threshold ?? 12;
+
+                        // --- 3. 培训参数 ---
+                        const tRules = training.penalty_rules || {};
+                        const tAbs = tRules.absolute_threshold || {};
+                        const tSmall = tRules.small_sample || {};
+                        const tAfr = tRules.afr_thresholds || [];
+                        const afr0 = tAfr[0] || { min: 2.5, coefficient: 0.5 };
+
+                        // --- 4. 稳定度参数 ---
+                        const stBase = stab.base_stability ?? 100;
+                        const stPen = stab.violation_penalty ?? 10;
+                        const stRed = stab.redline_penalty ?? 40;
+                        const stCV = stab.period_cv_sensitivity ?? 0.5;
+                        const stDecay = stab.time_decay_rate ?? 0.2;
+
+                        // --- 5. 安全趋势参数 ---
+                        const lCeiling = learn.trend_ceiling_floor ?? 5;
+                        const lRatio = learn.trend_warning_ratio ?? 1.5;
+                        const lWarnFloor = learn.trend_warning_floor ?? 2;
+                        const lBaseLine = learn.historical_baseline ?? 3;
+                        const lCritRatio = learn.trend_critical_ratio ?? 3.0;
+                        const lCritFloor = learn.trend_critical_floor ?? 5;
+                        const lReward = learn.factor_reward ?? learn.factor_improvement ?? 1.2;
+                        const lStable = learn.factor_stable ?? 1.0;
+                        const lSafeFluct = learn.factor_safe_fluctuation ?? 0.9;
+                        const lMitigation = learn.factor_mitigation ?? learn.factor_high_improvement ?? 0.8;
+                        const lWarning = learn.factor_warning ?? 0.6;
+                        const lSolid = learn.factor_solidification ?? 0.4;
+                        const lDeterioration = learn.factor_deterioration ?? 0.3;
+                        const lInertiaStart = learn.inertia_start_months ?? 2;
+                        const lInertiaStep = learn.inertia_step ?? 0.15;
+                        const lInertiaMax = learn.inertia_max_penalty ?? 0.6;
+                        const lDecay = learn.time_decay_rate ?? 0.2;
 
                         const card = `
                         <div class="col-md-4">
-                            <div class="card preset-card" data-preset="${preset.preset_key}" style="cursor: pointer; height: 100%;">
-                                <div class="card-header bg-${preset.preset_key === 'strict' ? 'danger' : preset.preset_key === 'standard' ? 'primary' : 'success'} text-white">
-                                    <h6 class="mb-0"><strong>${preset.preset_name}</strong></h6>
+                            <div class="card preset-card h-100" data-preset="${preset.preset_key}" style="cursor: pointer; border: 1px solid rgba(0,0,0,0.1);">
+                                <div class="card-header bg-${preset.preset_key === 'strict' ? 'danger' : preset.preset_key === 'standard' ? 'primary' : 'success'} text-white py-2">
+                                    <h6 class="mb-0 text-center"><strong>${preset.preset_name}</strong></h6>
                                 </div>
-                                <div class="card-body" style="font-size: 0.85rem; overflow-y: auto; max-height: 600px;">
-                                    <p class="text-muted mb-3">${preset.description}</p>
+                                <div class="card-body p-3" style="font-size: 0.8rem; overflow-y: auto; max-height: 650px;">
+                                    <p class="text-muted text-center mb-3 small">"${preset.description}"</p>
 
+                                    <!-- 1. 绩效 -->
                                     <div class="mb-3">
-                                        <h6 class="text-primary mb-2"><i class="bi bi-gear-fill"></i> 核心参数</h6>
-                                        <ul class="mb-0" style="padding-left: 1.2rem; line-height: 1.8;">
-                                            <li><strong>绩效熔断</strong>：D级≥1次 → 上限<span class="badge bg-warning text-dark">${dCap}分</span>，C级≥${cThreshold}次 → 上限<span class="badge bg-warning text-dark">${cCap}分</span></li>
-                                            <li><strong>安全红线</strong>：单次违规≥<span class="badge bg-danger">${criticalThreshold}分</span> → 直接不合格</li>
-                                            <li><strong>培训惩罚</strong>：失格≥<span class="badge bg-danger">${failCount}次</span> → 惩罚系数<span class="badge bg-danger">${failCoeff}</span></li>
-                                            <li><strong>关键人员</strong>：综合分&lt;<span class="badge bg-warning text-dark">${keyThreshold}</span> 或 月均违规≥<span class="badge bg-warning text-dark">${keyViolation}次</span></li>
-                                        </ul>
-                                    </div>
-
-                                    <div class="mb-3">
-                                        <h6 class="text-success mb-2"><i class="bi bi-calendar-month"></i> 月度计算公式</h6>
-                                        <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 0.8rem;">
-                                            <strong>1️⃣ 绩效评分：</strong><br>
-                                            &nbsp;&nbsp;绩效分 = 等级系数 × 基准分(95)<br>
-                                            &nbsp;&nbsp;• A级系数=1.1, B+级=1.0, B级=0.9, C级=0.6, D级=0.0<br>
-                                            <br>
-                                            <strong>2️⃣ 安全评分（双轨制）：</strong><br>
-                                            &nbsp;&nbsp;维度A（行为习惯）：月均频次 = ⌈违规次数 / 1⌉<br>
-                                            &nbsp;&nbsp;• 频次≤2 → 扣分=频次×2<br>
-                                            &nbsp;&nbsp;• 2&lt;频次≤5 → 扣分=频次×5<br>
-                                            &nbsp;&nbsp;• 频次>5 → 扣分=频次×10<br>
-                                            &nbsp;&nbsp;维度B（后果严重性）：总扣分 = Σ(违规值×系数)<br>
-                                            &nbsp;&nbsp;• 违规&lt;3分 → 系数=1.0<br>
-                                            &nbsp;&nbsp;• 3≤违规&lt;5 → 系数=2.5<br>
-                                            &nbsp;&nbsp;• 违规≥5 → 系数=5.0<br>
-                                            &nbsp;&nbsp;<strong>最终分 = min(维度A, 维度B)</strong><br>
-                                            <br>
-                                            <strong>3️⃣ 培训评分：</strong><br>
-                                            &nbsp;&nbsp;基础分 = 平均培训成绩<br>
-                                            &nbsp;&nbsp;惩罚系数规则（优先级从高到低）：<br>
-                                            &nbsp;&nbsp;• 失格≥${failCount}次 → 系数=${failCoeff}<br>
-                                            &nbsp;&nbsp;• 培训&lt;10次且有失格 → 系数=0.6~0.8<br>
-                                            &nbsp;&nbsp;• 按AFR年化失格率计算（见年度公式）<br>
-                                            &nbsp;&nbsp;<strong>最终分 = 基础分 × 惩罚系数</strong><br>
-                                            <br>
-                                            <strong>4️⃣ 稳定度评分（V4.0）：</strong><br>
-                                            &nbsp;&nbsp;单月计算：基础分100 - (违规次数×penalty)<br>
-                                            &nbsp;&nbsp;• 普通违规：每次扣${cfg.stability_new?.violation_penalty || 10}分<br>
-                                            &nbsp;&nbsp;• <span class="text-danger"><strong>红线违规</strong>（≥${criticalThreshold}分）：每次扣${cfg.stability_new?.redline_penalty || 40}分</span><br>
-                                            <br>
-                                            <strong>5️⃣ 综合评分：</strong><br>
-                                            &nbsp;&nbsp;综合分 = 绩效×35% + 安全×30% + 培训×20%<br>
-                                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ 稳定×10% + 学习×5%
+                                        <h6 class="text-primary fw-bold border-bottom pb-1 mb-2">1. 工作绩效 (Performance)</h6>
+                                        <div class="ps-2 text-muted">
+                                            <div class="mb-1"><strong>单月公式：</strong>系数 × 基准(95)</div>
+                                            <div class="mb-2 ps-3 small">
+                                                A=${pCoeffs.A ?? 1.1}, B=${pCoeffs.B ?? 0.9}, C=${pCoeffs.C ?? 0.6}, D=${pCoeffs.D ?? 0.0}
+                                            </div>
+                                            <div class="mb-1"><strong>长周期(熔断)：</strong></div>
+                                            <ul class="mb-0 ps-3 small">
+                                                <li>D级≥${dThresh}次 → 上限${dCap}分</li>
+                                                <li>C级≥${cThresh}次 → 上限${cCap}分</li>
+                                            </ul>
                                         </div>
                                     </div>
 
-                                    <div class="mb-2">
-                                        <h6 class="text-info mb-2"><i class="bi bi-calendar-range"></i> 跨月/年度计算公式</h6>
-                                        <div style="background-color: #e7f3ff; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 0.8rem;">
-                                            <strong>📊 绩效（周期加权）：</strong><br>
-                                            &nbsp;&nbsp;平均系数 = (Σ各月系数) / 月数<br>
-                                            &nbsp;&nbsp;基础分 = 平均系数 × 95<br>
-                                            &nbsp;&nbsp;<span class="text-danger"><strong>熔断机制</strong>：D级≥1次 → 上限${dCap}分，C级≥${cThreshold}次 → 上限${cCap}分</span><br>
-                                            <br>
-                                            <strong>🛡️ 安全（累积评估）：</strong><br>
-                                            &nbsp;&nbsp;月均频次 = ⌈违规总次数 / 月数⌉<br>
-                                            &nbsp;&nbsp;按月度公式的频次规则计算扣分<br>
-                                            &nbsp;&nbsp;<span class="text-danger"><strong>重大红线</strong>：任一违规≥${criticalThreshold}分 → 直接不合格</span><br>
-                                            <br>
-                                            <strong>🎓 培训（AFR年化失格率）：</strong><br>
-                                            &nbsp;&nbsp;<span class="text-primary"><strong>AFR = (失格次数 / 统计天数) × 365</strong></span><br>
-                                            &nbsp;&nbsp;示例：30天内失格2次 → AFR=(2/30)×365=24.3次/年<br>
-                                            &nbsp;&nbsp;<strong>年化分档惩罚</strong>：<br>
-                                            &nbsp;&nbsp;• AFR≥${afrHigh.min || 2.5}次/年 → 系数=${afrHigh.coefficient || 0.5} (${afrHigh.label || '高频失格'})<br>
-                                            &nbsp;&nbsp;• 1.5≤AFR&lt;${afrHigh.min || 2.5} → 系数=0.6~0.7 (频率偏高)<br>
-                                            &nbsp;&nbsp;• 0.5≤AFR&lt;1.5 → 系数=0.85~0.95 (偶发失格)<br>
-                                            &nbsp;&nbsp;• AFR&lt;0.5 → 系数=1.0 (能力达标)<br>
-                                            <br>
-                                            <strong>🏆 稳定度（V4.0 - 长周期聚合）：</strong><br>
-                                            &nbsp;&nbsp;<span class="text-primary"><strong>长周期 = 加权平均 - CV波动打击</strong></span><br>
-                                            &nbsp;&nbsp;• 时间加权：近期月份权重更高（衰减率=${cfg.stability_new?.time_decay_rate || 0.2}）<br>
-                                            &nbsp;&nbsp;• CV打击：波动越大扣分越多（敏感度=${cfg.stability_new?.period_cv_sensitivity || 0.5}）<br>
-                                            &nbsp;&nbsp;<span class="text-danger"><strong>⚠️ Veto熔断</strong>：任意月份红线(≥40分)或归零(≥100分扣分) → 整体归零</span><br>
-                                            <br>
-                                            <strong>📈 学习能力（V4.0 - 动态水位线）：</strong><br>
-                                            &nbsp;&nbsp;<span class="text-primary"><strong>基于违规数量趋势，不依赖综合分</strong></span><br>
-                                            &nbsp;&nbsp;关注线 = max(班组均值×${cfg.learning_new?.trend_warning_ratio || 1.5}, ${cfg.learning_new?.trend_warning_floor || 2}次, ${cfg.learning_new?.historical_baseline || 3}次)<br>
-                                            &nbsp;&nbsp;熔断线 = max(班组均值×${cfg.learning_new?.trend_critical_ratio || 3.0}, ${cfg.learning_new?.trend_critical_floor || 5}次)<br>
-                                            &nbsp;&nbsp;• 违规下降（安全区）→ 奖励系数${cfg.learning_new?.factor_improvement || 1.2}<br>
-                                            &nbsp;&nbsp;• 违规下降（仍高位）→ 改善系数${cfg.learning_new?.factor_high_improvement || 0.8}<br>
-                                            &nbsp;&nbsp;• 高位持平 → 惩罚系数${cfg.learning_new?.factor_solidification || 0.4}<br>
-                                            &nbsp;&nbsp;• <span class="text-danger"><strong>高位上升</strong> → ${cfg.learning_new?.deterioration_mode === 'immediate' ? '直接0分' : '渐进惩罚(×' + (cfg.learning_new?.factor_deterioration_mild || 0.3) + ')'}</span>
+                                    <!-- 2. 安全 -->
+                                    <div class="mb-3">
+                                        <h6 class="fw-bold border-bottom pb-1 mb-2" style="color: #fd7e14;">2. 安全意识 (Safety)</h6>
+                                        <div class="ps-2 text-muted">
+                                            <div class="mb-1"><strong>单月(双轨取低)：</strong></div>
+                                            <ul class="mb-0 ps-3 small">
+                                                <li>频率轨: ≤${fThresh[0]}次(x${fMult[0]}), ≤${fThresh[1]}次(x${fMult[1]}), >${fThresh[1]}次(x${fMult[2]})</li>
+                                                <li>严重轨: &lt;${r0Max}(x${r0Mult}), ${r1Min}-${r1Max}(x${r1Mult}), ≥${r2Min}(x${r2Mult})</li>
+                                                <li class="text-danger">红线: 单次≥${sCrit}分 → 0分</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <!-- 3. 培训 -->
+                                    <div class="mb-3">
+                                        <h6 class="text-success fw-bold border-bottom pb-1 mb-2">3. 培训能力 (Training)</h6>
+                                        <div class="ps-2 text-muted">
+                                            <div class="mb-1"><strong>单月(惩罚)：</strong></div>
+                                            <ul class="mb-0 ps-3 small">
+                                                <li>绝对失格: ≥${tAbs.fail_count ?? 3}次 → 系数x${tAbs.coefficient ?? 0.5}</li>
+                                                <li>小样本: &lt;${tSmall.sample_size ?? 10}次 → 系数x${tSmall.coefficient ?? 0.7}</li>
+                                            </ul>
+                                            <div class="mb-1 mt-1"><strong>长周期(AFR)：</strong></div>
+                                            <div class="ps-3 small">
+                                                高频(≥${afr0.min}) → 系数x${afr0.coefficient}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 4. 稳定度 -->
+                                    <div class="mb-3">
+                                        <h6 class="text-secondary fw-bold border-bottom pb-1 mb-2">4. 职业稳定度 (Stability)</h6>
+                                        <div class="ps-2 text-muted">
+                                            <div class="mb-1"><strong>单月评分：</strong></div>
+                                            <div class="ps-3 small">
+                                                基准${stBase}分 - (违规x${stPen} + 红线x${stRed})
+                                            </div>
+                                            <div class="mb-1 mt-1"><strong>长周期聚合：</strong></div>
+                                            <ul class="mb-0 ps-3 small">
+                                                <li>CV敏感度: ${stCV}</li>
+                                                <li>时间衰减: ${stDecay}</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+
+                                    <!-- 5. 安全趋势 -->
+                                    <div class="mb-3">
+                                        <h6 class="text-info fw-bold border-bottom pb-1 mb-2">5. 安全趋势 (Trend)</h6>
+                                        <div class="ps-2 text-muted">
+                                            <div class="mb-1"><strong>水位线(动态)：</strong></div>
+                                            <ul class="mb-0 ps-3 small">
+                                                <li>关注线 = min(max(均值x${lRatio}, ${lWarnFloor}, ${lBaseLine}), ${lCeiling})</li>
+                                                <li>熔断线 = max(均值x${lCritRatio}, ${lCritFloor})</li>
+                                            </ul>
+                                            <div class="mb-1 mt-1"><strong>区间系数：</strong></div>
+                                            <ul class="mb-0 ps-3 small">
+                                                <li>安全区: 奖励x${lReward}, 稳定x${lStable}, 波动x${lSafeFluct}</li>
+                                                <li>危险区: 改善x${lMitigation}, 冷启动x${lWarning}, 固化x${lSolid}, 恶化x${lDeterioration}</li>
+                                            </ul>
+                                            <div class="mb-1 mt-1"><strong>风险惯性：</strong></div>
+                                            <div class="ps-3 small">
+                                                连续≥${lInertiaStart}月 → 惯性=min((K-启动+1)x${lInertiaStep}, 上限${lInertiaMax})
+                                            </div>
+                                            <div class="mb-1 mt-1"><strong>长周期聚合：</strong></div>
+                                            <div class="ps-3 small">
+                                                时间衰减: ${lDecay}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    `;
+                        `;
                         container.innerHTML += card;
                     });
 
@@ -1972,10 +2127,10 @@
     function displayPreviewResults(result) {
         // 显示人员信息
         const empInfo = `
-        <strong>姓名：</strong>${result.employee_name} &nbsp;&nbsp;
-        <strong>工号：</strong>${result.employee_id} &nbsp;&nbsp;
-        <strong>部门：</strong>${result.department_id || '未知'}
-    `;
+                                                                                                                                        <strong>姓名：</strong>${result.employee_name} &nbsp;&nbsp;
+                                                                                                                                        <strong>工号：</strong>${result.employee_id} &nbsp;&nbsp;
+                                                                                                                                        <strong>部门：</strong>${result.department_id || '未知'}
+                                                                                                                                        `;
         document.getElementById('employee-info').innerHTML = empInfo;
 
         // 生成对比表格
@@ -1990,20 +2145,20 @@
             const diffIcon = diff > 0 ? '↑' : (diff < 0 ? '↓' : '');
 
             tbody += `
-            <tr>
-                <td><strong>📊 工作绩效</strong></td>
-                <td>
-                    等级：<span class="badge bg-secondary">${curr.grade}</span><br>
-                    系数：${curr.coefficient.toFixed(2)}<br>
-                    得分：<strong>${curr.final_score.toFixed(1)}</strong>
-                </td>
-                <td>
-                    等级：<span class="badge bg-secondary">${newP.grade}</span><br>
-                    系数：${newP.coefficient.toFixed(2)}<br>
-                    得分：<strong class="${diffClass}">${newP.final_score.toFixed(1)}${diff !== 0 ? ` ${diffIcon}${Math.abs(diff).toFixed(1)}` : ''}</strong>
-                </td>
-            </tr>
-        `;
+                                                                                                                                        <tr>
+                                                                                                                                            <td><strong>📊 工作绩效</strong></td>
+                                                                                                                                            <td>
+                                                                                                                                                等级：<span class="badge bg-secondary">${curr.grade}</span><br>
+                                                                                                                                                    系数：${curr.coefficient.toFixed(2)}<br>
+                                                                                                                                                        得分：<strong>${curr.final_score.toFixed(1)}</strong>
+                                                                                                                                                    </td>
+                                                                                                                                                    <td>
+                                                                                                                                                        等级：<span class="badge bg-secondary">${newP.grade}</span><br>
+                                                                                                                                                            系数：${newP.coefficient.toFixed(2)}<br>
+                                                                                                                                                                得分：<strong class="${diffClass}">${newP.final_score.toFixed(1)}${diff !== 0 ? ` ${diffIcon}${Math.abs(diff).toFixed(1)}` : ''}</strong>
+                                                                                                                                                            </td>
+                                                                                                                                                        </tr>
+                                                                                                                                                        `;
         }
 
         // 安全维度
@@ -2015,24 +2170,24 @@
             const diffIcon = diff > 0 ? '↑' : (diff < 0 ? '↓' : '');
 
             tbody += `
-            <tr>
-                <td><strong>🛡️ 安全意识</strong></td>
-                <td>
-                    违规记录：${curr.violations_detail}<br>
-                    违规次数：${curr.violations_count}次<br>
-                    维度A（频率）：${curr.dimension_a.toFixed(1)}分<br>
-                    维度B（严重性）：${curr.dimension_b.toFixed(1)}分<br>
-                    得分：<strong>${curr.final_score.toFixed(1)}</strong>
-                </td>
-                <td>
-                    违规记录：${newS.violations_detail}<br>
-                    违规次数：${newS.violations_count}次<br>
-                    维度A（频率）：${newS.dimension_a.toFixed(1)}分<br>
-                    维度B（严重性）：${newS.dimension_b.toFixed(1)}分<br>
-                    得分：<strong class="${diffClass}">${newS.final_score.toFixed(1)}${diff !== 0 ? ` ${diffIcon}${Math.abs(diff).toFixed(1)}` : ''}</strong>
-                </td>
-            </tr>
-        `;
+                                                                                                                                                        <tr>
+                                                                                                                                                            <td><strong>🛡️ 安全意识</strong></td>
+                                                                                                                                                            <td>
+                                                                                                                                                                违规记录：${curr.violations_detail}<br>
+                                                                                                                                                                    违规次数：${curr.violations_count}次<br>
+                                                                                                                                                                        维度A（频率）：${curr.dimension_a.toFixed(1)}分<br>
+                                                                                                                                                                            维度B（严重性）：${curr.dimension_b.toFixed(1)}分<br>
+                                                                                                                                                                                得分：<strong>${curr.final_score.toFixed(1)}</strong>
+                                                                                                                                                                            </td>
+                                                                                                                                                                            <td>
+                                                                                                                                                                                违规记录：${newS.violations_detail}<br>
+                                                                                                                                                                                    违规次数：${newS.violations_count}次<br>
+                                                                                                                                                                                        维度A（频率）：${newS.dimension_a.toFixed(1)}分<br>
+                                                                                                                                                                                            维度B（严重性）：${newS.dimension_b.toFixed(1)}分<br>
+                                                                                                                                                                                                得分：<strong class="${diffClass}">${newS.final_score.toFixed(1)}${diff !== 0 ? ` ${diffIcon}${Math.abs(diff).toFixed(1)}` : ''}</strong>
+                                                                                                                                                                                            </td>
+                                                                                                                                                                                        </tr>
+                                                                                                                                                                                        `;
         }
 
         // 培训维度
@@ -2044,22 +2199,22 @@
             const diffIcon = diff > 0 ? '↑' : (diff < 0 ? '↓' : '');
 
             tbody += `
-            <tr>
-                <td><strong>🎓 培训能力</strong></td>
-                <td>
-                    培训记录：${curr.records_count}次（合格${curr.qualified_count}次）<br>
-                    平均分：${curr.avg_score.toFixed(1)}分<br>
-                    惩罚系数：${curr.penalty_coefficient.toFixed(2)}<br>
-                    得分：<strong>${curr.final_score.toFixed(1)}</strong>
-                </td>
-                <td>
-                    培训记录：${newT.records_count}次（合格${newT.qualified_count}次）<br>
-                    平均分：${newT.avg_score.toFixed(1)}分<br>
-                    惩罚系数：${newT.penalty_coefficient.toFixed(2)}<br>
-                    得分：<strong class="${diffClass}">${newT.final_score.toFixed(1)}${diff !== 0 ? ` ${diffIcon}${Math.abs(diff).toFixed(1)}` : ''}</strong>
-                </td>
-            </tr>
-        `;
+                                                                                                                                                                                        <tr>
+                                                                                                                                                                                            <td><strong>🎓 培训能力</strong></td>
+                                                                                                                                                                                            <td>
+                                                                                                                                                                                                培训记录：${curr.records_count}次（合格${curr.qualified_count}次）<br>
+                                                                                                                                                                                                    平均分：${curr.avg_score.toFixed(1)}分<br>
+                                                                                                                                                                                                        惩罚系数：${curr.penalty_coefficient.toFixed(2)}<br>
+                                                                                                                                                                                                            得分：<strong>${curr.final_score.toFixed(1)}</strong>
+                                                                                                                                                                                                        </td>
+                                                                                                                                                                                                        <td>
+                                                                                                                                                                                                            培训记录：${newT.records_count}次（合格${newT.qualified_count}次）<br>
+                                                                                                                                                                                                                平均分：${newT.avg_score.toFixed(1)}分<br>
+                                                                                                                                                                                                                    惩罚系数：${newT.penalty_coefficient.toFixed(2)}<br>
+                                                                                                                                                                                                                        得分：<strong class="${diffClass}">${newT.final_score.toFixed(1)}${diff !== 0 ? ` ${diffIcon}${Math.abs(diff).toFixed(1)}` : ''}</strong>
+                                                                                                                                                                                                                    </td>
+                                                                                                                                                                                                                </tr>
+                                                                                                                                                                                                                `;
         }
 
         // 学习能力维度
@@ -2071,29 +2226,44 @@
             const diffIcon = diff > 0 ? '↑' : (diff < 0 ? '↓' : '');
 
             // 定级badge颜色
-            const tierColorMap = {
-                '潜力股': 'success',
-                '稳健型': 'info',
-                '懈怠型': 'warning'
+            // 风险等级颜色映射
+            const riskColorMap = {
+                'SAFE': 'success',
+                'WATCH_LIST': 'warning',
+                'HIGH_RISK': 'danger',
+                'PRE_ACCIDENT': 'dark',
+                'UNKNOWN': 'secondary'
             };
-            const currTierColor = tierColorMap[curr.tier] || 'secondary';
-            const newTierColor = tierColorMap[newL.tier] || 'secondary';
+            const riskNameMap = {
+                'SAFE': '安全',
+                'WATCH_LIST': '重点关注',
+                'HIGH_RISK': '高危',
+                'PRE_ACCIDENT': '事故前兆',
+                'UNKNOWN': '未知'
+            };
+
+            const currRiskColor = riskColorMap[curr.risk_level] || 'secondary';
+            const newRiskColor = riskColorMap[newL.risk_level] || 'secondary';
+            const currRiskName = riskNameMap[curr.risk_level] || curr.risk_level;
+            const newRiskName = riskNameMap[newL.risk_level] || newL.risk_level;
 
             tbody += `
-            <tr>
-                <td><strong>📈 学习能力</strong></td>
-                <td>
-                    ${curr.trend_description}<br>
-                    成长类型：<span class="badge bg-${currTierColor}">${curr.tier}</span><br>
-                    得分：<strong>${curr.final_score.toFixed(1)}</strong>
-                </td>
-                <td>
-                    ${newL.trend_description}<br>
-                    成长类型：<span class="badge bg-${newTierColor}">${newL.tier}</span><br>
-                    得分：<strong class="${diffClass}">${newL.final_score.toFixed(1)}${diff !== 0 ? ` ${diffIcon}${Math.abs(diff).toFixed(1)}` : ''}</strong>
-                </td>
-            </tr>
-        `;
+                <tr>
+                    <td><strong>📉 安全趋势</strong><br><small class="text-muted">(原学习能力)</small></td>
+                    <td>
+                        风险级：<span class="badge bg-${currRiskColor}">${currRiskName}</span><br>
+                        惯性扣减：${curr.inertia_penalty || '0%'}<br>
+                        <small class="text-muted">${curr.trend_description}</small><br>
+                        得分：<strong>${curr.final_score.toFixed(1)}</strong>
+                    </td>
+                    <td>
+                        风险级：<span class="badge bg-${newRiskColor}">${newRiskName}</span><br>
+                        惯性扣减：${newL.inertia_penalty || '0%'}<br>
+                        <small class="text-muted">${newL.trend_description}</small><br>
+                        得分：<strong class="${diffClass}">${newL.final_score.toFixed(1)}${diff !== 0 ? ` ${diffIcon}${Math.abs(diff).toFixed(1)}` : ''}</strong>
+                    </td>
+                </tr>
+            `;
         }
 
         document.getElementById('comparison-tbody').innerHTML = tbody;
