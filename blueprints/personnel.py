@@ -1264,133 +1264,332 @@ def calculate_stability_score(
     }
 
 
+def _month_index(month_str: str) -> int:
+    year, month = map(int, month_str.split('-'))
+    return year * 12 + (month - 1)
+
+
+def _month_shift(month_str: str, delta: int) -> str:
+    idx = _month_index(month_str) + delta
+    year = idx // 12
+    month = idx % 12 + 1
+    return f"{year:04d}-{month:02d}"
+
+
+def _month_range(start_month: str, end_month: str) -> List[str]:
+    if _month_index(start_month) > _month_index(end_month):
+        return []
+    months = []
+    curr = start_month
+    while _month_index(curr) <= _month_index(end_month):
+        months.append(curr)
+        curr = _month_shift(curr, 1)
+    return months
+
+
+def _resolve_stability_window(start_date: Optional[str], end_date: Optional[str], config: dict) -> tuple:
+    from datetime import datetime
+
+    stability_config = config.get('stability_new', {})
+    window_months = stability_config.get('window_months', 12)
+    min_effective_months = stability_config.get('min_effective_months', 6)
+
+    end_month = end_date or datetime.now().strftime('%Y-%m')
+    window_start = _month_shift(end_month, -(window_months - 1))
+
+    if start_date and _month_index(start_date) > _month_index(window_start):
+        window_start = start_date
+
+    span = _month_index(end_month) - _month_index(window_start) + 1
+    if span < min_effective_months:
+        window_start = _month_shift(end_month, -(min_effective_months - 1))
+
+    return window_start, end_month
+
+
+def _load_monthly_safety_violations(cur, emp_name: str, start_month: str, end_month: str) -> Dict[str, List[float]]:
+    from blueprints.safety import extract_score_from_assessment
+
+    start_date = f"{start_month}-01"
+    end_next = f"{_month_shift(end_month, 1)}-01"
+
+    cur.execute("""
+        SELECT assessment, inspection_date
+        FROM safety_inspection_records
+        WHERE inspected_person = %s
+        AND inspection_date >= %s
+        AND inspection_date < %s
+    """, [emp_name, start_date, end_next])
+    rows = cur.fetchall()
+
+    violations_by_month = {}
+    for row in rows:
+        insp_date = row['inspection_date']
+        month_str = insp_date.strftime('%Y-%m') if hasattr(insp_date, 'strftime') else str(insp_date)[:7]
+        score_val = extract_score_from_assessment(row['assessment'])
+        if score_val > 0:
+            violations_by_month.setdefault(month_str, []).append(float(score_val))
+
+    return violations_by_month
+
+
+def _build_monthly_safety_scores(violations_by_month: Dict[str, List[float]], months: List[str], config: dict) -> tuple:
+    monthly_scores = {}
+    monthly_issue_counts = {}
+
+    for m in months:
+        violations = violations_by_month.get(m, [])
+        monthly_issue_counts[m] = len(violations)
+        monthly_scores[m] = calculate_safety_score_dual_track(violations, 1, config)['final_score']
+
+    return monthly_scores, monthly_issue_counts
+
+
+def calculate_stability_for_employee(
+    emp_name: str,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    config: dict,
+    cur,
+    safety_score_for_tip: Optional[float] = None,
+    monthly_comprehensive_scores: Optional[Dict[str, float]] = None
+) -> Dict:
+    window_start, window_end = _resolve_stability_window(start_date, end_date, config)
+    window_months = _month_range(window_start, window_end)
+
+    last_12_start = _month_shift(window_end, -11)
+    query_start = window_start if _month_index(window_start) <= _month_index(last_12_start) else last_12_start
+
+    violations_by_month = _load_monthly_safety_violations(cur, emp_name, query_start, window_end)
+    monthly_safety_scores, monthly_issue_counts = _build_monthly_safety_scores(violations_by_month, window_months, config)
+
+    last_12_months = _month_range(last_12_start, window_end)
+    issue_counts_last_12 = [len(violations_by_month.get(m, [])) for m in last_12_months]
+
+    if not window_months:
+        return {
+            'stability_score': 50.0,
+            'stability_label': '暂无数据',
+            'status_color': 'GRAY',
+            'alert_tag': '暂无数据'
+        }
+
+    return calculate_stability_score_new(
+        window_months=window_months,
+        monthly_safety_scores=monthly_safety_scores,
+        monthly_issue_counts=monthly_issue_counts,
+        issue_counts_last_12=issue_counts_last_12,
+        monthly_comprehensive_scores=monthly_comprehensive_scores,
+        safety_score_for_tip=safety_score_for_tip,
+        config=config
+    )
+
+
 def calculate_stability_score_new(
-    violations_list: List[float],
-    historical_safety_scores: Optional[List[float]] = None,
-    historical_comprehensive_scores: Optional[List[float]] = None,
-    config: dict = None
+    window_months: List[str],
+    monthly_safety_scores: Dict[str, float],
+    monthly_issue_counts: Dict[str, int],
+    issue_counts_last_12: List[int],
+    config: dict = None,
+    monthly_comprehensive_scores: Optional[Dict[str, float]] = None,
+    safety_score_for_tip: Optional[float] = None
 ) -> Dict:
     """
-    职业稳定度评分算法（V2版本）- 原子化单月计算 + 波动率熔断
-    
+    稳定度评分算法（波动型）- 仅衡量安全表现波动
+
     设计原则：
-    1. 基础分100分，根据违规记录扣分
-    2. 红线违规扣更多分
-    3. 波动率熔断：若 safety_cv > comprehensive_cv * safety_cv_limit，封顶volatility_cap分
-    
+    1. 使用近 window_months 个月安全分序列（不足 6 个月则标记低置信度）
+    2. 0 记录按“无问题/未覆盖”规则区分
+    3. 使用波动指标映射为稳定度分数（0-100）
+
     Args:
-        violations_list: 当月违规扣分值列表，如 [3, 5, 12]
-        historical_safety_scores: 过去12个月的安全分列表（用于CV计算）
-        historical_comprehensive_scores: 过去12个月的综合分列表（用于CV计算）
+        window_months: 月份序列（YYYY-MM）
+        monthly_safety_scores: 月度安全分（按月）
+        monthly_issue_counts: 月度问题数（按月）
+        issue_counts_last_12: 近 12 个月月度问题数列表（用于 0 记录判断）
         config: 算法配置
-    
+        monthly_comprehensive_scores: 月度综合分（用于 CV 对比提示，可选）
+        safety_score_for_tip: 安全维度雷达分（用于低水平提示，可选）
+
     Returns:
         {
-            'stability_score': 最终稳定度分数,
-            'base_deduction': 基础扣分,
-            'cv_capped': 是否被波动率封顶,
-            'safety_cv': 安全CV值,
-            'comprehensive_cv': 综合CV值,
+            'stability_score': 稳定度分数,
+            'stability_label': 标签,
             'status_color': 状态颜色,
-            'alert_tag': 警示标签
+            'alert_tag': 标签文案,
+            'volatility_metric': 波动指标,
+            'volatility_value': 波动值,
+            'coverage': 覆盖率 (有效月/窗口月),
+            'confidence': 置信度,
+            'volatility_tip': 波动异常提示,
+            'low_level_tip': 低水平提示,
+            'sample_tip': 样本不足提示,
+            'safety_cv': 安全CV,
+            'comprehensive_cv': 综合CV,
+            'mean_safety': 安全均值
         }
     """
-    import numpy as np
-    
+    import statistics
+
     # 读取配置
     if config is None:
         from services.algorithm_config_service import AlgorithmConfigService
         config = AlgorithmConfigService.get_active_config()
-    
-    # 新算法配置
-    stability_config = config.get('stability_new', {
-        'base_stability': 100.0,
-        'violation_penalty': 10.0,
-        'redline_penalty': 40.0,
-        'safety_cv_limit': 1.2,
-        'volatility_cap': 60.0
-    })
-    
-    # 红线阈值复用安全配置
-    safety_config = config.get('safety', {})
-    critical_threshold = safety_config.get('severity_track', {}).get('critical_threshold', 12)
-    
-    base_stability = stability_config.get('base_stability', 100.0)
-    violation_penalty = stability_config.get('violation_penalty', 10.0)
-    redline_penalty = stability_config.get('redline_penalty', 40.0)
-    safety_cv_limit = stability_config.get('safety_cv_limit', 1.2)
-    volatility_cap = stability_config.get('volatility_cap', 60.0)
-    
-    # Step 1: 计算基础扣分
-    base_deduction = 0.0
-    redline_count = 0
-    normal_count = 0
-    
-    for score in violations_list:
-        if score >= critical_threshold:
-            base_deduction += redline_penalty
-            redline_count += 1
+
+    stability_config = config.get('stability_new', {})
+    metric = stability_config.get('volatility_metric', 'mean_abs_delta')
+    min_effective_months = stability_config.get('min_effective_months', 6)
+    high_vol_threshold = stability_config.get('high_vol_threshold', 0.0667)
+    k_multiplier = stability_config.get('k_multiplier', 1.2)
+    score_floor = stability_config.get('score_floor', 40.0)
+    score_ceiling = stability_config.get('score_ceiling', 100.0)
+
+    # 0 记录判定规则
+    avg_issues_12 = sum(issue_counts_last_12) / len(issue_counts_last_12) if issue_counts_last_12 else 0.0
+    zero_streak_months = set()
+    current_streak = []
+    for m in window_months:
+        if monthly_issue_counts.get(m, 0) == 0:
+            current_streak.append(m)
         else:
-            base_deduction += violation_penalty
-            normal_count += 1
-    
-    # 计算基础稳定度分数
-    stability_score = max(0, base_stability - base_deduction)
-    
-    # Step 2: 波动率熔断（仅当历史>=3个月时生效）
-    cv_capped = False
-    safety_cv = 0.0
-    comprehensive_cv = 0.0
-    
-    if (historical_safety_scores and len(historical_safety_scores) >= 3 and
-        historical_comprehensive_scores and len(historical_comprehensive_scores) >= 3):
-        
-        # 计算安全分CV
-        safety_array = np.array(historical_safety_scores)
-        safety_mean = np.mean(safety_array)
-        safety_std = np.std(safety_array)
-        if safety_mean > 0:
-            safety_cv = safety_std / safety_mean
-        
-        # 计算综合分CV
-        comp_array = np.array(historical_comprehensive_scores)
-        comp_mean = np.mean(comp_array)
-        comp_std = np.std(comp_array)
-        if comp_mean > 0:
-            comprehensive_cv = comp_std / comp_mean
-        
-        # 判定：若安全CV > 综合CV * 敏感系数，触发熔断
-        if safety_cv > comprehensive_cv * safety_cv_limit:
-            stability_score = min(stability_score, volatility_cap)
-            cv_capped = True
-    
-    # Step 3: 确定状态和标签
-    if stability_score >= 80:
-        status_color = 'GREEN'
-        alert_tag = '✅ 稳定可靠'
-    elif stability_score >= 60:
-        status_color = 'YELLOW'
-        if cv_capped:
-            alert_tag = f'⚠️ 波动异常（CV={safety_cv:.2f}）'
-        else:
-            alert_tag = '⚠️ 需要关注'
+            if len(current_streak) >= 3:
+                zero_streak_months.update(current_streak)
+            current_streak = []
+    if len(current_streak) >= 3:
+        zero_streak_months.update(current_streak)
+
+    effective_months = []
+    effective_scores = []
+    for m in window_months:
+        issue_count = monthly_issue_counts.get(m, 0)
+        is_zero = issue_count == 0
+        is_effective = (not is_zero) or (avg_issues_12 < 1) or (m in zero_streak_months)
+        if is_effective:
+            effective_months.append(m)
+            effective_scores.append(float(monthly_safety_scores.get(m, 100.0)))
+
+    window_count = len(window_months)
+    effective_count = len(effective_scores)
+    coverage = f"{effective_count}/{window_count}" if window_count else "0/0"
+
+    # 波动指标计算
+    metric_value = 0.0
+    if metric == 'mean_abs_delta':
+        if effective_count >= 2:
+            diffs = [abs(effective_scores[i] - effective_scores[i - 1]) for i in range(1, effective_count)]
+            metric_value = sum(diffs) / len(diffs) if diffs else 0.0
+    elif metric == 'mad':
+        if effective_count >= 1:
+            median_val = statistics.median(effective_scores)
+            deviations = [abs(s - median_val) for s in effective_scores]
+            metric_value = statistics.median(deviations) if deviations else 0.0
+    elif metric == 'cv':
+        if effective_count >= 2:
+            mean_val = statistics.mean(effective_scores)
+            if mean_val > 0:
+                metric_value = statistics.pstdev(effective_scores) / mean_val
     else:
+        if effective_count >= 2:
+            diffs = [abs(effective_scores[i] - effective_scores[i - 1]) for i in range(1, effective_count)]
+            metric_value = sum(diffs) / len(diffs) if diffs else 0.0
+
+    # 分位映射（线性插值）
+    map_low_value = stability_config.get('score_map_low', 1.09)
+    map_high_value = stability_config.get('score_map_high', 6.00)
+    map_low_score = stability_config.get('score_map_low_score', 90.0)
+    map_high_score = stability_config.get('score_map_high_score', 60.0)
+
+    if map_high_value == map_low_value:
+        stability_score = (map_low_score + map_high_score) / 2
+    else:
+        slope = (map_high_score - map_low_score) / (map_high_value - map_low_value)
+        stability_score = map_low_score + slope * (metric_value - map_low_value)
+
+    stability_score = max(score_floor, min(score_ceiling, stability_score))
+
+    # 标签判定
+    label_cutoffs = stability_config.get('label_cutoffs', {})
+    stable_cut = label_cutoffs.get('stable', 75)
+    medium_cut = label_cutoffs.get('medium', 60)
+
+    if stability_score >= stable_cut:
+        stability_label = '稳定'
+        status_color = 'GREEN'
+        alert_tag = '✅ 稳定'
+    elif stability_score >= medium_cut:
+        stability_label = '波动偏大'
+        status_color = 'ORANGE'
+        alert_tag = '⚠️ 波动偏大'
+    else:
+        stability_label = '波动较大'
         status_color = 'RED'
-        if redline_count > 0:
-            alert_tag = f'⛔ 存在{redline_count}次红线违规'
-        else:
-            alert_tag = '⛔ 稳定性差'
-    
+        alert_tag = '⛔ 波动较大'
+
+    # CV 计算（用于提示）
+    safety_cv = 0.0
+    if effective_count >= 2:
+        mean_safety = statistics.mean(effective_scores)
+        if mean_safety > 0:
+            safety_cv = statistics.pstdev(effective_scores) / mean_safety
+    else:
+        mean_safety = statistics.mean(effective_scores) if effective_scores else 0.0
+
+    comprehensive_cv = None
+    comp_scores = []
+    if monthly_comprehensive_scores:
+        for m in effective_months:
+            score_val = monthly_comprehensive_scores.get(m)
+            if isinstance(score_val, (int, float)):
+                comp_scores.append(float(score_val))
+    if len(comp_scores) >= 2:
+        mean_comp = statistics.mean(comp_scores)
+        if mean_comp > 0:
+            comprehensive_cv = statistics.pstdev(comp_scores) / mean_comp
+
+    volatility_tip = None
+    if comprehensive_cv is not None:
+        if safety_cv >= high_vol_threshold and safety_cv > comprehensive_cv * k_multiplier:
+            volatility_tip = "安全表现波动明显，波动高于整体表现"
+
+    low_level_tip = None
+    low_level_threshold = stability_config.get('low_level_threshold')
+    if low_level_threshold is None:
+        low_level_threshold = config.get('safety', {}).get('thresholds', {}).get('fail_score', 60)
+    tip_basis = None
+    if isinstance(safety_score_for_tip, (int, float)):
+        tip_basis = float(safety_score_for_tip)
+    elif effective_scores:
+        tip_basis = mean_safety
+
+    if tip_basis is not None and tip_basis <= low_level_threshold:
+        low_level_tip = "整体安全水平偏低（即使稳定，仍需关注）"
+
+    sample_tip = None
+    if effective_count < min_effective_months:
+        sample_tip = "样本不足，稳定度参考价值有限"
+
+    metric_labels = {
+        'mean_abs_delta': 'Mean |Δ|',
+        'mad': 'MAD',
+        'cv': 'CV'
+    }
+
     return {
-        'stability_score': round(stability_score, 1),
-        'base_deduction': round(base_deduction, 1),
-        'redline_count': redline_count,
-        'normal_count': normal_count,
-        'cv_capped': cv_capped,
-        'safety_cv': round(safety_cv, 3),
-        'comprehensive_cv': round(comprehensive_cv, 3),
+        'stability_score': round(float(stability_score), 1),
+        'stability_label': stability_label,
         'status_color': status_color,
-        'alert_tag': alert_tag
+        'alert_tag': alert_tag,
+        'volatility_metric': metric,
+        'volatility_metric_label': metric_labels.get(metric, metric),
+        'volatility_value': round(float(metric_value), 3),
+        'coverage': coverage,
+        'confidence': 'LOW' if effective_count < min_effective_months else 'OK',
+        'volatility_tip': volatility_tip,
+        'low_level_tip': low_level_tip,
+        'sample_tip': sample_tip,
+        'safety_cv': round(float(safety_cv), 3) if effective_scores else None,
+        'comprehensive_cv': round(float(comprehensive_cv), 3) if comprehensive_cv is not None else None,
+        'mean_safety': round(float(mean_safety), 2) if effective_scores else None
     }
 
 
@@ -3193,146 +3392,17 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
         l_res = calculate_learning_ability_new(current_violations, previous_violations, group_avg, algo_config)
         learning_score = l_res['learning_score']
 
-    # 5. 稳定性（V2版本：支持波动率熔断）
-    stability_result = None
-    historical_safety_scores = []
-    
-    # 判断是否为长周期（跨月）
-    is_long_term_stab = False
-    if start_date and end_date and start_date != end_date:
-        is_long_term_stab = True
-        
-    if is_long_term_stab:
-        # 长周期模式：逐月计算稳定度得分，然后加权平均
-        monthly_stability_scores = []
-        
-        try:
-            curr_hist = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-            end_hist = datetime.strptime(end_date + '-01', '%Y-%m-%d')
-            
-            while curr_hist <= end_hist:
-                month_str = curr_hist.strftime('%Y-%m')
-                
-                # 1. 获取当月违规列表
-                current_month_violations = []
-                # 筛选属于该月的违规
-                for row in safety_rows:
-                    if row['inspected_person'] == emp_name and extract_score_from_assessment(row['assessment']) > 0:
-                        insp_date = row['inspection_date']
-                        m_str = insp_date.strftime('%Y-%m') if hasattr(insp_date, 'strftime') else str(insp_date)[:7]
-                        if m_str == month_str:
-                            current_month_violations.append(float(extract_score_from_assessment(row['assessment'])))
-                
-                # 2. 获取截至当月的历史数据（为了波动率检测）
-                hist_safety_month = []
-                hist_comp_month = []
-                
-                h_start = (curr_hist.replace(day=1) - timedelta(days=95)).replace(day=1) # 约3个月前
-                h_curr = h_start
-                while h_curr < curr_hist:
-                    h_str = h_curr.strftime('%Y-%m')
-                    cur.execute("""
-                        SELECT assessment FROM safety_inspection_records 
-                        WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
-                    """, [emp_name, h_str])
-                    h_rows = cur.fetchall()
-                    h_v = []
-                    for hr in h_rows:
-                        hsc = extract_score_from_assessment(hr['assessment'])
-                        if hsc > 0: h_v.append(float(hsc))
-                    
-                    h_res = calculate_safety_score_dual_track(h_v, 1, algo_config)
-                    hist_safety_month.append(h_res['final_score'])
-                    hist_comp_month.append(h_res['final_score']) 
-                    h_curr = (h_curr.replace(day=1) + timedelta(days=32)).replace(day=1)
-                
-                # 3. 计算单月稳定度
-                m_stab_res = calculate_stability_score_new(
-                    violations_list=current_month_violations,
-                    historical_safety_scores=hist_safety_month if len(hist_safety_month) >= 1 else None, 
-                    historical_comprehensive_scores=hist_comp_month if len(hist_comp_month) >= 1 else None,
-                    config=algo_config
-                )
-                monthly_stability_scores.append(m_stab_res['stability_score'])
-                
-                curr_hist = (curr_hist.replace(day=1) + timedelta(days=32)).replace(day=1)
-            
-            # 4. 加权平均
-            total_w = 0
-            w_sum = 0
-            time_decay = algo_config.get('learning_new', {}).get('time_decay_rate', 0.2)
-            for i, s in enumerate(monthly_stability_scores):
-                w = 1.0 + (i * time_decay)
-                w_sum += s * w
-                total_w += w
-            
-            stability_score = w_sum / total_w if total_w > 0 else 100.0
-            
-            stability_result = {
-                'stability_score': stability_score,
-                'status_color': 'BLUE' if stability_score > 80 else ('ORANGE' if stability_score > 60 else 'RED')
-            }
-
-        except Exception as e:
-            pass
-            is_long_term_stab = False
-
-    if not is_long_term_stab:
-        # 查询历史数据
-        historical_safety_scores = []
-        historical_comprehensive_scores = []
-        
-        try:
-            if start_date and end_date:
-                start_dt_calc = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-                end_dt_calc = datetime.strptime(end_date + '-01', '%Y-%m-%d')
-                selected_months_count = (end_dt_calc.year - start_dt_calc.year) * 12 + (end_dt_calc.month - start_dt_calc.month) + 1
-                
-                # 确定实际查询范围
-                if selected_months_count < 3:
-                     actual_start_dt = (end_dt_calc.replace(day=1) - timedelta(days=1)).replace(day=1)
-                     actual_start_dt = (actual_start_dt.replace(day=1) - timedelta(days=1)).replace(day=1)
-                     actual_start = actual_start_dt.strftime('%Y-%m')
-                     actual_end = end_date
-                else:
-                    actual_start = start_date
-                    actual_end = end_date
-                
-                # 查询历史安全分
-                curr_dt_hist = datetime.strptime(actual_start + '-01', '%Y-%m-%d')
-                end_query_dt = datetime.strptime(actual_end + '-01', '%Y-%m-%d')
-                
-                if is_long_term_stab:
-                     end_query_dt = (end_query_dt.replace(day=1) - timedelta(days=1)).replace(day=1)
-                
-                while curr_dt_hist <= end_query_dt:
-                    month_str = curr_dt_hist.strftime('%Y-%m')
-                    cur.execute("""
-                        SELECT assessment FROM safety_inspection_records
-                        WHERE inspected_person = %s 
-                        AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
-                    """, [emp_name, month_str])
-                    month_safety_rows = cur.fetchall()
-                    month_violations = []
-                    for sr in month_safety_rows:
-                        score_val = extract_score_from_assessment(sr['assessment'])
-                        if score_val > 0:
-                            month_violations.append(float(score_val))
-                    month_safety_result = calculate_safety_score_dual_track(month_violations, 1, algo_config)
-                    historical_safety_scores.append(month_safety_result['final_score'])
-                    historical_comprehensive_scores.append(month_safety_result['final_score'])
-                    curr_dt_hist = (curr_dt_hist.replace(day=1) + timedelta(days=32)).replace(day=1)
-        except Exception as e:
-            pass
-    
-        stability_result = calculate_stability_score_new(
-        violations_list, 
-        historical_safety_scores if len(historical_safety_scores) >= 3 else None,
-        historical_comprehensive_scores if len(historical_comprehensive_scores) >= 3 else None,
-        algo_config
+    # 5. 稳定性（波动型）
+    stability_result = calculate_stability_for_employee(
+        emp_name,
+        start_date,
+        end_date,
+        algo_config,
+        cur,
+        safety_score_for_tip=safety_score
     )
-    stability_score = stability_result['stability_score']
-    if stability_score is None or not isinstance(stability_score, (int, float)):
+    stability_score = stability_result.get('stability_score', 50)
+    if not isinstance(stability_score, (int, float)):
         stability_score = 50
 
     return {
@@ -3756,149 +3826,16 @@ def api_students_list():
             )
         learning_score = learning_result['learning_score']
 
-        # 5. 稳定性（新版：基于违规扣分 + 波动率熔断）
-        # 查询历史数据用于波动率检测
-        is_long_term_stab = False
-        if start_date and end_date and start_date != end_date:
-            is_long_term_stab = True
-
-        if is_long_term_stab:
-            # 长周期模式：V4.0 (原子化计算 + 切片聚合 + 红线熔断 + 波动折扣)
-            monthly_data = []
-            redline_threshold = algo_config.get('stability_new', {}).get('redline_penalty', 40.0)
-            
-            # 逐月计算
-            curr_hist = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-            end_hist = datetime.strptime(end_date + '-01', '%Y-%m-%d')
-            
-            while curr_hist <= end_hist:
-                month_str = curr_hist.strftime('%Y-%m')
-                
-                # 1. 获取当月违规列表
-                current_month_violations = []
-                cur.execute("""
-                    SELECT assessment FROM safety_inspection_records
-                    WHERE inspected_person = %s 
-                    AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
-                """, [emp_name, month_str])
-                m_rows = cur.fetchall()
-                for r in m_rows:
-                    sc = extract_score_from_assessment(r['assessment'])
-                    if sc > 0:
-                        current_month_violations.append(float(sc))
-                
-                # 2. 获取截至当月的历史数据（用于单月波动率检测）
-                hist_safety = []
-                hist_comp = []
-                
-                h_start = (curr_hist.replace(day=1) - timedelta(days=365)).replace(day=1) # 12个月
-                h_curr = h_start
-                while h_curr < curr_hist:
-                    h_str = h_curr.strftime('%Y-%m')
-                    cur.execute("""
-                        SELECT assessment FROM safety_inspection_records 
-                        WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
-                    """, [emp_name, h_str])
-                    h_rows = cur.fetchall()
-                    h_v = []
-                    for hr in h_rows:
-                        hsc = extract_score_from_assessment(hr['assessment'])
-                        if hsc > 0: h_v.append(float(hsc))
-                    
-                    h_res = calculate_safety_score_dual_track(h_v, 1, algo_config)
-                    hist_safety.append(h_res['final_score'])
-                    # 简化：用安全分近似综合分，或需更复杂查询
-                    hist_comp.append(h_res['final_score']) 
-                    h_curr = (h_curr.replace(day=1) + timedelta(days=32)).replace(day=1)
-                
-                # 3. 计算单月稳定度
-                m_stab_res = calculate_stability_score_new(
-                    violations_list=current_month_violations,
-                    historical_safety_scores=hist_safety if len(hist_safety) >= 1 else None, 
-                    historical_comprehensive_scores=hist_comp if len(hist_comp) >= 1 else None,
-                    config=algo_config
-                )
-                
-                # 4. 收集数据用于聚合
-                has_redline = any(v >= redline_threshold for v in current_month_violations)
-                monthly_data.append({
-                    'score': m_stab_res['stability_score'],
-                    'has_redline': has_redline
-                })
-                
-                curr_hist = (curr_hist.replace(day=1) + timedelta(days=32)).replace(day=1)
-            
-            # 5. 调用聚合函数
-            agg_result = calculate_stability_period_aggregated(monthly_data, algo_config)
-            stability_score = agg_result['final_score']
-            
-            # 标记结果
-            stability_result = {
-                'stability_score': stability_score,
-                'status_color': 'BLUE' if stability_score > 80 else ('ORANGE' if stability_score > 60 else 'RED'),
-                'alert_tag': agg_result['alert_tag'],
-                # 附加调试信息
-                'cv_discount': agg_result['cv_discount'],
-                'is_veto': agg_result['is_veto']
-            }
-            
-        else:
-            # 单月模式（保持原有的逻辑）
-            # 查询历史数据用于波动率检测
-            historical_safety_scores = []
-            historical_comprehensive_scores = []
-            
-            try:
-                # 计算选择周期的月数（此时实际上是单月或短周期，应该按单月处理）
-                if start_date:
-                    start_dt_calc = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-                    
-                    # 向前补足到3个月
-                    actual_start_dt = (start_dt_calc.replace(day=1) - timedelta(days=1)).replace(day=1)
-                    actual_start_dt = (actual_start_dt.replace(day=1) - timedelta(days=1)).replace(day=1)
-                    actual_start = actual_start_dt.strftime('%Y-%m')
-                    actual_end = start_date
-                    
-                    # 查询历史安全分（按月）
-                    curr_dt_hist = datetime.strptime(actual_start + '-01', '%Y-%m-%d')
-                    end_query_dt = datetime.strptime(actual_end + '-01', '%Y-%m-%d')
-                    
-                    # 注意：这里要排除查询月本身，只查历史
-                    end_query_dt = (end_query_dt.replace(day=1) - timedelta(days=1)).replace(day=1)
-                    
-                    while curr_dt_hist <= end_query_dt:
-                        month_str = curr_dt_hist.strftime('%Y-%m')
-                        
-                        cur.execute("""
-                            SELECT assessment FROM safety_inspection_records
-                            WHERE inspected_person = %s 
-                            AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
-                        """, [emp_name, month_str])
-                        month_safety_rows = cur.fetchall()
-                        
-                        month_violations = []
-                        for sr in month_safety_rows:
-                            score_val = extract_score_from_assessment(sr['assessment'])
-                            if score_val > 0:
-                                month_violations.append(float(score_val))
-                        
-                        month_safety_result = calculate_safety_score_dual_track(month_violations, 1, algo_config)
-                        historical_safety_scores.append(month_safety_result['final_score'])
-                        historical_comprehensive_scores.append(month_safety_result['final_score'])
-                        
-                        curr_dt_hist = (curr_dt_hist.replace(day=1) + timedelta(days=32)).replace(day=1)
-            
-            except Exception as e:
-                current_app.logger.debug(f" [api_students_list-员工{emp_no}]: 历史数据查询失败: {e}")
-            
-            # 调用新算法（V2版本，支持波动率熔断）
-            stability_result = calculate_stability_score_new(
-                violations_list=violations_list,
-                historical_safety_scores=historical_safety_scores if len(historical_safety_scores) >= 1 else None,
-                historical_comprehensive_scores=historical_comprehensive_scores if len(historical_comprehensive_scores) >= 1 else None,
-                config=algo_config
-            )
-            stability_score = stability_result['stability_score']
+        # 5. 稳定性（波动型）
+        stability_result = calculate_stability_for_employee(
+            emp_name,
+            start_date,
+            end_date,
+            algo_config,
+            cur,
+            safety_score_for_tip=safety_score
+        )
+        stability_score = stability_result.get('stability_score', 50)
 
         # 异常情况：使用简单计算作为降级方案
         # Note: The new stability algorithm is designed to be robust.
@@ -4433,178 +4370,108 @@ def api_comprehensive_profile(emp_no):
         learning_months = 1
 
 
-    # 6. 稳定性评估（V2版本：支持波动率熔断）
-    stability_result = None
-    historical_safety_scores = []
-    
-    # 判断是否为长周期（跨月）
-    is_long_term_stab = False
-    if start_date and end_date and start_date != end_date:
-        is_long_term_stab = True
-        
-    if is_long_term_stab:
-        # 长周期模式：逐月计算稳定度得分，然后加权平均
-        # 长周期模式：V4.0 (原子化计算 + 切片聚合 + 红线熔断 + 波动折扣)
-        monthly_data = []
-        monthly_safety_scores = []  # 用于计算安全CV
-        redline_threshold = algo_config.get('stability_new', {}).get('redline_penalty', 40.0)
-        
-        try:
-            curr_hist = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-            end_hist = datetime.strptime(end_date + '-01', '%Y-%m-%d')
-            
-            while curr_hist <= end_hist:
-                month_str = curr_hist.strftime('%Y-%m')
-                
-                # 1. 获取当月违规列表
-                current_month_violations = []
-                # 筛选属于该月的违规
-                for row in safety_rows:
-                    if row['inspected_person'] == emp_name and extract_score_from_assessment(row['assessment']) > 0:
-                        insp_date = row['inspection_date']
-                        m_str = insp_date.strftime('%Y-%m') if hasattr(insp_date, 'strftime') else str(insp_date)[:7]
-                        if m_str == month_str:
-                            current_month_violations.append(float(extract_score_from_assessment(row['assessment'])))
-                
-                # 2. 获取截至当月的历史数据（为了波动率检测）
-                hist_safety_month = []
-                hist_comp_month = []
-                
-                h_start = (curr_hist.replace(day=1) - timedelta(days=95)).replace(day=1) # 约3个月前
-                h_curr = h_start
-                while h_curr < curr_hist:
-                    h_str = h_curr.strftime('%Y-%m')
-                    cur.execute("""
-                        SELECT assessment FROM safety_inspection_records 
-                        WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
-                    """, [emp_name, h_str])
-                    h_rows = cur.fetchall()
-                    h_v = []
-                    for hr in h_rows:
-                        hsc = extract_score_from_assessment(hr['assessment'])
-                        if hsc > 0: h_v.append(float(hsc))
-                    
-                    h_res = calculate_safety_score_dual_track(h_v, 1, algo_config)
-                    hist_safety_month.append(h_res['final_score'])
-                    hist_comp_month.append(h_res['final_score']) 
-                    h_curr = (h_curr.replace(day=1) + timedelta(days=32)).replace(day=1)
-                
-                # 3. 计算单月稳定度
-                m_stab_res = calculate_stability_score_new(
-                    violations_list=current_month_violations,
-                    historical_safety_scores=hist_safety_month if len(hist_safety_month) >= 1 else None, 
-                    historical_comprehensive_scores=hist_comp_month if len(hist_comp_month) >= 1 else None,
-                    config=algo_config
-                )
-                
-                # 4. 收集数据
-                has_redline = any(v >= redline_threshold for v in current_month_violations)
-                monthly_data.append({
-                    'score': m_stab_res['stability_score'],
-                    'has_redline': has_redline
-                })
-                
-                # 计算当月安全分用于CV
-                month_safety_score = calculate_safety_score_dual_track(current_month_violations, 1, algo_config)['final_score']
-                monthly_safety_scores.append(month_safety_score)
-                
-                curr_hist = (curr_hist.replace(day=1) + timedelta(days=32)).replace(day=1)
-            
-            # 5. 调用聚合函数
-            agg_result = calculate_stability_period_aggregated(monthly_data, algo_config)
-            stability_score = agg_result['final_score']
-            
-            # 计算安全CV
-            import statistics
-            safety_cv = 0.0
-            if len(monthly_safety_scores) >= 2:
-                mean_safety = statistics.mean(monthly_safety_scores)
-                if mean_safety > 0.001:
-                    stdev_safety = statistics.pstdev(monthly_safety_scores)
-                    safety_cv = stdev_safety / mean_safety
-            
-            # 记录基础数据（仅展示用）
-            base_deduction = 100.0 - agg_result['avg_score']
-            
-            stability_result = {
-                'stability_score': stability_score,
-                'base_deduction': base_deduction,
-                'safety_cv': safety_cv,
-                'redline_count': sum(1 for m in monthly_data if m['has_redline']),
-                'status_color': 'BLUE' if stability_score > 80 else ('ORANGE' if stability_score > 60 else 'RED'),
-                'alert_tag': agg_result['alert_tag'],
-                'cv_discount': agg_result['cv_discount'],
-                'is_veto': agg_result['is_veto'],
-                'cv_capped': agg_result['is_veto']
-            }
+    # 6. 稳定性评估（波动型）
+    stability_window_start, stability_window_end = _resolve_stability_window(start_date, end_date, algo_config)
+    stability_window_months = _month_range(stability_window_start, stability_window_end)
+    last_12_start = _month_shift(stability_window_end, -11)
+    stability_query_start = (
+        stability_window_start
+        if _month_index(stability_window_start) <= _month_index(last_12_start)
+        else last_12_start
+    )
 
-        except Exception as e:
-            current_app.logger.debug(f" [api_comprehensive_profile-员工{emp_no}]: 长周期稳定度计算失败: {e}")
-            is_long_term_stab = False
+    violations_by_month = _load_monthly_safety_violations(cur, emp_name, stability_query_start, stability_window_end)
+    monthly_safety_scores, monthly_issue_counts = _build_monthly_safety_scores(
+        violations_by_month, stability_window_months, algo_config
+    )
+    issue_counts_last_12 = [
+        len(violations_by_month.get(m, []))
+        for m in _month_range(last_12_start, stability_window_end)
+    ]
 
-    if not is_long_term_stab:
-        # 单月模式：保持原有逻辑
-        # 查询历史数据用于波动率检测
-        historical_safety_scores = []
-        historical_comprehensive_scores = []
-        
-        try:
-            if start_date and end_date:
-                start_dt_calc = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-                end_dt_calc = datetime.strptime(end_date + '-01', '%Y-%m-%d')
-                selected_months_count = (end_dt_calc.year - start_dt_calc.year) * 12 + (end_dt_calc.month - start_dt_calc.month) + 1
-                
-                # 确定实际查询范围
-                if selected_months_count < 3:
-                    actual_start_dt = (end_dt_calc.replace(day=1) - timedelta(days=1)).replace(day=1)
-                    actual_start_dt = (actual_start_dt.replace(day=1) - timedelta(days=1)).replace(day=1)
-                    actual_start = actual_start_dt.strftime('%Y-%m')
-                    actual_end = end_date
-                else:
-                    actual_start = start_date
-                    actual_end = end_date
-                
-                # 查询历史安全分
-                curr_dt_hist = datetime.strptime(actual_start + '-01', '%Y-%m-%d')
-                end_query_dt = datetime.strptime(actual_end + '-01', '%Y-%m-%d')
-                
-                # 注意：如果是长周期降级过来的，这里只查询前一个月的历史，避免重复叠加
-                if is_long_term_stab: # 实际上已变为False，这里逻辑是为了明确意图
-                     end_query_dt = (end_query_dt.replace(day=1) - timedelta(days=1)).replace(day=1)
+    # 计算月度综合分（用于CV对比提示）
+    monthly_comprehensive_scores = {}
+    if stability_window_months:
+        perf_scores_by_month = {}
+        train_scores_by_month = {}
 
-                while curr_dt_hist <= end_query_dt:
-                    month_str = curr_dt_hist.strftime('%Y-%m')
-                    
-                    cur.execute("""
-                        SELECT assessment FROM safety_inspection_records
-                        WHERE inspected_person = %s 
-                        AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
-                    """, [emp_name, month_str])
-                    month_safety_rows = cur.fetchall()
-                    
-                    month_violations = []
-                    for sr in month_safety_rows:
-                        score_val = extract_score_from_assessment(sr['assessment'])
-                        if score_val > 0:
-                            month_violations.append(float(score_val))
-                    
-                    month_safety_result = calculate_safety_score_dual_track(month_violations, 1, algo_config)
-                    historical_safety_scores.append(month_safety_result['final_score'])
-                    historical_comprehensive_scores.append(month_safety_result['final_score'])
-                    
-                    curr_dt_hist = (curr_dt_hist.replace(day=1) + timedelta(days=32)).replace(day=1)
-        
-        except Exception as e:
-            current_app.logger.debug(f" [api_comprehensive_profile-员工{emp_no}]: 历史数据查询失败: {e}")
-            # 查询失败时使用空列表，算法会自动降级
-        
-        stability_result = calculate_stability_score_new(
-            violations_list=violations_list,
-            historical_safety_scores=historical_safety_scores if len(historical_safety_scores) >= 1 else None,
-            historical_comprehensive_scores=historical_comprehensive_scores if len(historical_comprehensive_scores) >= 1 else None,
-            config=algo_config
-        )
-        stability_score = stability_result['stability_score']
+        perf_start_year, perf_start_month = map(int, stability_window_months[0].split('-'))
+        perf_end_year, perf_end_month = map(int, stability_window_months[-1].split('-'))
+
+        cur.execute("""
+            SELECT score, grade, year, month
+            FROM performance_records
+            WHERE emp_no = %s
+            AND (year > %s OR (year = %s AND month >= %s))
+            AND (year < %s OR (year = %s AND month <= %s))
+        """, [emp_no, perf_start_year, perf_start_year, perf_start_month,
+              perf_end_year, perf_end_year, perf_end_month])
+        perf_rows_window = cur.fetchall()
+
+        for row in perf_rows_window:
+            m_str = f"{int(row['year']):04d}-{int(row['month']):02d}"
+            raw_score = float(row['score']) if row['score'] else 95
+            grade = row['grade'] if row['grade'] else 'B+'
+            perf_score = calculate_performance_score_monthly(grade, raw_score, algo_config)['radar_value']
+            perf_scores_by_month.setdefault(m_str, []).append(perf_score)
+
+        for m_str, scores in perf_scores_by_month.items():
+            if scores:
+                perf_scores_by_month[m_str] = sum(scores) / len(scores)
+
+        train_start_date = f"{stability_window_months[0]}-01"
+        train_end_date = f"{_month_shift(stability_window_months[-1], 1)}-01"
+        cur.execute("""
+            SELECT score, is_qualified, is_disqualified, training_date
+            FROM training_records
+            WHERE emp_no = %s
+            AND training_date >= %s
+            AND training_date < %s
+        """, [emp_no, train_start_date, train_end_date])
+        train_rows_window = cur.fetchall()
+
+        train_by_month = {}
+        for row in train_rows_window:
+            t_date = row['training_date']
+            m_str = t_date.strftime('%Y-%m') if hasattr(t_date, 'strftime') else str(t_date)[:7]
+            train_by_month.setdefault(m_str, []).append(row)
+
+        for m_str, records in train_by_month.items():
+            if records:
+                train_score = calculate_training_score_with_penalty(records, 30, cert_years, algo_config)['radar_score']
+                train_scores_by_month[m_str] = train_score
+
+        for m_str in stability_window_months:
+            components = {}
+            if m_str in monthly_safety_scores:
+                components['safety'] = monthly_safety_scores[m_str]
+            if m_str in perf_scores_by_month:
+                components['performance'] = perf_scores_by_month[m_str]
+            if m_str in train_scores_by_month:
+                components['training'] = train_scores_by_month[m_str]
+
+            if components:
+                weight_sum = 0.0
+                weighted_sum = 0.0
+                for key, value in components.items():
+                    w = score_weights.get(key, 0)
+                    weight_sum += w
+                    weighted_sum += value * w
+                if weight_sum > 0:
+                    monthly_comprehensive_scores[m_str] = weighted_sum / weight_sum
+
+    stability_result = calculate_stability_score_new(
+        window_months=stability_window_months,
+        monthly_safety_scores=monthly_safety_scores,
+        monthly_issue_counts=monthly_issue_counts,
+        issue_counts_last_12=issue_counts_last_12,
+        monthly_comprehensive_scores=monthly_comprehensive_scores,
+        safety_score_for_tip=safety_score,
+        config=algo_config
+    )
+    stability_score = stability_result.get('stability_score', 50)
+    if not isinstance(stability_score, (int, float)):
+        stability_score = 50
 
 
 
@@ -4711,11 +4578,18 @@ def api_comprehensive_profile(emp_no):
             'stability_score': round(stability_score, 1),
             'status_color': stability_result.get('status_color', 'GRAY'),
             'alert_tag': stability_result.get('alert_tag', '暂无数据'),
-            'base_deduction': round(stability_result.get('base_deduction', 0), 1),
-            'redline_count': stability_result.get('redline_count', 0),
-            'normal_count': stability_result.get('normal_count', 0),
-            'cv_capped': stability_result.get('cv_capped', False),
-            'safety_cv': round(stability_result.get('safety_cv', 0), 3) if stability_result.get('safety_cv') else None
+            'stability_label': stability_result.get('stability_label'),
+            'volatility_metric': stability_result.get('volatility_metric'),
+            'volatility_metric_label': stability_result.get('volatility_metric_label'),
+            'volatility_value': stability_result.get('volatility_value'),
+            'coverage': stability_result.get('coverage'),
+            'confidence': stability_result.get('confidence'),
+            'volatility_tip': stability_result.get('volatility_tip'),
+            'low_level_tip': stability_result.get('low_level_tip'),
+            'sample_tip': stability_result.get('sample_tip'),
+            'safety_cv': stability_result.get('safety_cv'),
+            'comprehensive_cv': stability_result.get('comprehensive_cv'),
+            'mean_safety': stability_result.get('mean_safety')
         }
     })
 

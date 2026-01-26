@@ -532,14 +532,18 @@
                             <div class="card-body" id="stabilityStats">
                                 <p class="mb-1"><span class="text-muted">稳定度分值:</span> <span class="text-secondary"
                                         id="stabilityScoreValue">--</span> 分</p>
-                                <p class="mb-1"><span class="text-muted">基础扣分:</span> <span
-                                        id="stabilityBaseDeduction">--</span> 分</p>
-                                <p class="mb-1"><span class="text-muted">红线违规:</span> <span class="text-danger"
-                                        id="stabilityRedlineCount">--</span> 次</p>
-                                <p class="mb-1"><span class="text-muted">波动熔断:</span> <span
-                                        id="stabilityCvCapped">--</span></p>
-                                <p class="mb-0"><span class="text-muted">安全CV:</span> <span
-                                        id="stabilitySafetyCv">--</span></p>
+                                <p class="mb-1"><span class="text-muted">波动指标:</span> <span
+                                        id="stabilityVolatilityValue">--</span>
+                                    <small class="text-muted" id="stabilityVolatilityMetric">--</small>
+                                </p>
+                                <p class="mb-1"><span class="text-muted">覆盖率:</span> <span
+                                        id="stabilityCoverage">--</span></p>
+                                <p class="mb-1"><span class="text-muted">置信度:</span> <span
+                                        id="stabilityConfidence">--</span></p>
+                                <p class="mb-1"><span class="text-muted">波动提示:</span> <span
+                                        id="stabilityVolatilityTip">--</span></p>
+                                <p class="mb-0"><span class="text-muted">低水平提示:</span> <span
+                                        id="stabilityLowLevelTip">--</span></p>
                             </div>
                         </div>
                     </div>
@@ -857,7 +861,8 @@
 
         // 重置详情数据
         const dataFields = [
-            'stabilityScoreValue', 'stabilityBaseDeduction', 'stabilityRedlineCount', 'stabilityCvCapped', 'stabilitySafetyCv',
+            'stabilityScoreValue', 'stabilityVolatilityValue', 'stabilityVolatilityMetric', 'stabilityCoverage',
+            'stabilityConfidence', 'stabilityVolatilityTip', 'stabilityLowLevelTip',
             'safetyViolations', 'safetyDeduction', 'safetyAvgFreq', 'safetyScoreA', 'safetyScoreB', 'safetyInspector', 'safetyRectifier',
             'trainingRadarScore', 'trainingOriginalScore', 'trainingCoefficient', 'totalTrainings', 'trainingFailCount',
             'recentPerformance', 'performanceLabel', 'performanceMode', 'performanceRange', 'performanceCount',
@@ -924,15 +929,17 @@
             // 更新稳定度信息
             const stabilityDetails = data.stability_details || {};
             document.getElementById('stabilityScoreValue').textContent = formatNum(data.scores?.stability);
-            document.getElementById('stabilityBaseDeduction').textContent = formatNum(stabilityDetails.base_deduction);
-            document.getElementById('stabilityRedlineCount').textContent = stabilityDetails.redline_count ?? '--';
-            document.getElementById('stabilityCvCapped').textContent = stabilityDetails.cv_capped ? '是' : '否';
-            document.getElementById('stabilitySafetyCv').textContent = formatNum(stabilityDetails.safety_cv, 3);
+            document.getElementById('stabilityVolatilityValue').textContent = formatNum(stabilityDetails.volatility_value, 3);
+            document.getElementById('stabilityVolatilityMetric').textContent = stabilityDetails.volatility_metric_label || '--';
+            document.getElementById('stabilityCoverage').textContent = stabilityDetails.coverage || '--';
+            document.getElementById('stabilityConfidence').textContent = stabilityDetails.sample_tip || (stabilityDetails.confidence === 'LOW' ? '样本不足' : '正常');
+            document.getElementById('stabilityVolatilityTip').textContent = stabilityDetails.volatility_tip || '—';
+            document.getElementById('stabilityLowLevelTip').textContent = stabilityDetails.low_level_tip || '—';
 
             // 更新稳定度警示标签
             const stabilityBadge = document.getElementById('stabilityAlertBadge');
             if (stabilityBadge) {
-                stabilityBadge.textContent = stabilityDetails.alert_tag || '✅ 稳定';
+                stabilityBadge.textContent = stabilityDetails.alert_tag || stabilityDetails.stability_label || '✅ 稳定';
                 stabilityBadge.className = 'badge'; // 重置类名
 
                 const sColor = stabilityDetails.status_color;

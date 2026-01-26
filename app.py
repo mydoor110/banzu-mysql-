@@ -190,13 +190,17 @@ def _init_algorithm_config():
             "slope_amplifier": 10
         },
         "stability_new": {
-            "base_stability": 100.0,
-            "violation_penalty": 10.0,
-            "redline_penalty": 40.0,
-            "safety_cv_limit": 1.2,
-            "volatility_cap": 60.0,
-            "period_cv_sensitivity": 0.5,
-            "time_decay_rate": 0.2
+            "window_months": 12,
+            "min_effective_months": 6,
+            "volatility_metric": "mean_abs_delta",
+            "score_map_low": 1.09,
+            "score_map_high": 6.00,
+            "score_map_low_score": 90.0,
+            "score_map_high_score": 60.0,
+            "high_vol_threshold": 0.0667,
+            "k_multiplier": 1.2,
+            "label_cutoffs": {"stable": 75, "medium": 60},
+            "low_level_threshold": 60
         },
         "learning_new": {
             "trend_ceiling_floor": 5,
@@ -253,13 +257,17 @@ def _init_algorithm_config():
         "slope_amplifier": 10
     }
     strict_config["stability_new"] = {
-        "base_stability": 100.0,
-        "violation_penalty": 15.0,
-        "redline_penalty": 50.0,
-        "safety_cv_limit": 1.0,
-        "volatility_cap": 60.0,
-        "period_cv_sensitivity": 0.7,
-        "time_decay_rate": 0.25
+        "window_months": 6,
+        "min_effective_months": 6,
+        "volatility_metric": "mean_abs_delta",
+        "score_map_low": 0.65,
+        "score_map_high": 5.41,
+        "score_map_low_score": 90.0,
+        "score_map_high_score": 60.0,
+        "high_vol_threshold": 0.0576,
+        "k_multiplier": 1.1,
+        "label_cutoffs": {"stable": 85, "medium": 55},
+        "low_level_threshold": 60
     }
     strict_config["learning_new"] = {
         "trend_ceiling_floor": 4,
@@ -316,13 +324,17 @@ def _init_algorithm_config():
         "slope_amplifier": 10
     }
     lenient_config["stability_new"] = {
-        "base_stability": 100.0,
-        "violation_penalty": 8.0,
-        "redline_penalty": 30.0,
-        "safety_cv_limit": 1.5,
-        "volatility_cap": 60.0,
-        "period_cv_sensitivity": 0.3,
-        "time_decay_rate": 0.15
+        "window_months": 12,
+        "min_effective_months": 6,
+        "volatility_metric": "mean_abs_delta",
+        "score_map_low": 1.46,
+        "score_map_high": 7.32,
+        "score_map_low_score": 90.0,
+        "score_map_high_score": 60.0,
+        "high_vol_threshold": 0.0855,
+        "k_multiplier": 1.3,
+        "label_cutoffs": {"stable": 70, "medium": 55},
+        "low_level_threshold": 60
     }
     lenient_config["learning_new"] = {
         "trend_ceiling_floor": 6,
