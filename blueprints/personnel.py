@@ -5,6 +5,7 @@
 负责员工信息管理、导入导出等功能
 """
 import json
+import os
 import pymysql
 from collections import Counter
 from datetime import date, datetime, timedelta
@@ -14,7 +15,7 @@ from typing import Dict, List, Optional
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, send_file, session, current_app
 from openpyxl import Workbook, load_workbook
 
-from config.settings import APP_TITLE
+from config.settings import APP_TITLE, EXPORT_DIR
 from models.database import get_db, get_year_month_concat
 from .decorators import login_required, manager_required
 from .helpers import (
@@ -3159,6 +3160,192 @@ def api_nine_grid_data():
     return jsonify(data)
 
 
+@personnel_bp.route('/nine-grid/export')
+@login_required
+def export_nine_grid():
+    """导出人才九宫格数据"""
+    from datetime import datetime
+    
+    conn = get_db()
+    cur = conn.cursor()
+
+    # 获取筛选参数
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    department_filter = request.args.get('department_id')
+
+    # 默认当月
+    if not start_date and not end_date:
+        current_month = datetime.now().strftime('%Y-%m')
+        start_date = current_month
+        end_date = current_month
+
+    # 读取配置
+    from services.algorithm_config_service import AlgorithmConfigService
+    algo_config = AlgorithmConfigService.get_active_config()
+    
+    rows = list_personnel()
+    
+    # 筛选
+    if department_filter:
+        try:
+            dept_id_filter = int(department_filter)
+            rows = [r for r in rows if r.get('department_id') == dept_id_filter]
+        except ValueError:
+            pass
+
+    # 获取权重配置
+    score_weights = algo_config['comprehensive']['score_weights']
+    nine_grid_weights = algo_config['nine_grid']['y_axis_weights']
+    
+    # 三维分权重归一化
+    w_perf = score_weights.get('performance', 35)
+    w_safe = score_weights.get('safety', 30)
+    w_train = score_weights.get('training', 20)
+    w_x_total = w_perf + w_safe + w_train
+    if w_x_total <= 0: w_x_total = 1
+
+    # 九宫格标签映射
+    grid_labels = {
+        (1, 1): '培养对象',
+        (1, 2): '潜力新星',
+        (1, 3): '明星员工',
+        (2, 1): '改善对象',
+        (2, 2): '中坚力量',
+        (2, 3): '骨干员工',
+        (3, 1): '问题员工',
+        (3, 2): '需关注',
+        (3, 3): '待观察稳定'
+    }
+
+    # 汇总数据：按九宫格位置统计
+    summary_data = {}
+    detail_data = []
+    
+    for row in rows:
+        try:
+            scores = _calculate_single_employee_score(row, start_date, end_date, algo_config, cur)
+            
+            # 计算X轴（三维综合分）
+            x_raw = (scores['performance'] * w_perf + 
+                     scores['safety'] * w_safe + 
+                     scores['training'] * w_train)
+            if w_x_total < 5:
+                x_score = round(x_raw / w_x_total, 1)
+            else:
+                x_score = round(x_raw / w_x_total, 1)
+            
+            # 计算Y轴（稳定 + 学习）
+            y_w_stab = nine_grid_weights.get('stability', 0.4) 
+            y_w_learn = nine_grid_weights.get('learning', 0.6)
+            y_total = y_w_stab + y_w_learn
+            if y_total <= 0: y_total = 1
+            
+            y_raw = (scores['stability'] * y_w_stab + scores['learning'] * y_w_learn)
+            y_score = round(y_raw / y_total, 1)
+
+            # 判定九宫格位置
+            x_level = 1
+            if x_score >= 90: x_level = 3
+            elif x_score >= 75: x_level = 2
+            
+            y_level = 1
+            if y_score >= 90: y_level = 3
+            elif y_score >= 75: y_level = 2
+            
+            grid_row = 4 - y_level
+            grid_col = x_level
+            
+            # 汇总统计
+            grid_key = (grid_row, grid_col)
+            if grid_key not in summary_data:
+                summary_data[grid_key] = []
+            summary_data[grid_key].append(row.get('name'))
+            
+            # 明细数据
+            detail_data.append({
+                'emp_no': row.get('emp_no'),
+                'name': row.get('name'),
+                'department_name': row.get('department_name'),
+                'x_score': x_score,
+                'y_score': y_score,
+                'grid_label': grid_labels.get(grid_key, ''),
+                'performance': scores['performance'],
+                'safety': scores['safety'],
+                'training': scores['training'],
+                'stability': scores['stability'],
+                'learning': scores['learning']
+            })
+        except Exception as e:
+            current_app.logger.error(f"Error calculating score for {row.get('name')}: {e}")
+            continue
+
+    conn.close()
+
+    # 创建Excel工作簿
+    wb = Workbook()
+    
+    # 第一个工作表：汇总（9个单元格）
+    ws_summary = wb.active
+    ws_summary.title = '汇总'
+    
+    # 设置汇总表的标题和数据
+    ws_summary['A1'] = '九宫格汇总'
+    ws_summary['A1'].font = ws_summary['A1'].font.copy()
+    
+    # 按照九宫格布局填充汇总数据
+    # 行标题（Y轴）
+    ws_summary['A2'] = '高'
+    ws_summary['A3'] = '中'
+    ws_summary['A4'] = '低'
+    
+    # 列标题（X轴）
+    ws_summary['B1'] = '低'
+    ws_summary['C1'] = '中'
+    ws_summary['D1'] = '高'
+    
+    # 填充9个单元格
+    for row_idx in range(1, 4):
+        for col_idx in range(1, 4):
+            grid_key = (row_idx, col_idx)
+            cell_row = row_idx + 1
+            cell_col = col_idx + 1
+            cell = ws_summary.cell(row=cell_row, column=cell_col)
+            
+            label = grid_labels.get(grid_key, '')
+            count = len(summary_data.get(grid_key, []))
+            names = ', '.join(summary_data.get(grid_key, []))
+            
+            cell.value = f"{label}\n({count}人)\n{names}"
+            cell.alignment = cell.alignment.copy()
+    
+    # 第二个工作表：明细
+    ws_detail = wb.create_sheet('明细')
+    ws_detail.append(['工号', '姓名', '部门', 'X分数', 'Y分数', '九宫格位置', '绩效', '安全', '培训', '稳定性', '学习能力'])
+    
+    for item in detail_data:
+        ws_detail.append([
+            item['emp_no'],
+            item['name'],
+            item['department_name'],
+            item['x_score'],
+            item['y_score'],
+            item['grid_label'],
+            item['performance'],
+            item['safety'],
+            item['training'],
+            item['stability'],
+            item['learning']
+        ])
+    
+    # 保存文件
+    export_filename = f"人才九宫格_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    xlsx_path = os.path.join(EXPORT_DIR, export_filename)
+    wb.save(xlsx_path)
+    
+    return send_file(xlsx_path, as_attachment=True, download_name=export_filename)
+
+
 def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur):
     """
     辅助函数：计算单个员工的各项评分
@@ -3644,26 +3831,26 @@ def api_students_list():
         group_avg_violations = 1.0
             
         if is_long_term:
-            # 长周期模式：逐月计算学习能力分，然后加权平均（近期权重高）
+            # 长周期模式：使用 calculate_learning_ability_longterm 保持与详情页一致
             try:
                 # 1. 初始化每月计数
                 monthly_counts = {}
                 start_dt = datetime.strptime(start_date + '-01', '%Y-%m-%d')
                 end_dt = datetime.strptime(end_date + '-01', '%Y-%m-%d')
-                
+
                 # 预先查询周期前一个月的数据（作为第一个月的previous基础）
                 pre_period_month = (start_dt.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
                 pre_period_count = 0
                 try:
                     cur.execute("""
-                        SELECT assessment FROM safety_inspection_records 
+                        SELECT assessment FROM safety_inspection_records
                         WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s
                     """, [emp_name, pre_period_month])
                     pre_rows = cur.fetchall()
                     pre_period_count = sum(1 for r in pre_rows if extract_score_from_assessment(r['assessment']) > 0)
                 except:
                     pre_period_count = None # 无数据
-                
+
                 # 构建月份序列
                 curr = start_dt
                 months_seq = []
@@ -3672,7 +3859,7 @@ def api_students_list():
                     monthly_counts[m_str] = 0
                     months_seq.append(m_str)
                     curr = (curr.replace(day=1) + timedelta(days=32)).replace(day=1)
-                
+
                 # 2. 填充数据
                 for row in safety_rows:
                     if extract_score_from_assessment(row['assessment']) > 0:
@@ -3680,13 +3867,9 @@ def api_students_list():
                         m_str = insp_date.strftime('%Y-%m') if hasattr(insp_date, 'strftime') else str(insp_date)[:7]
                         if m_str in monthly_counts:
                             monthly_counts[m_str] += 1
-                            
-                # 3. 逐月计算分数
-                monthly_scores = []
-                last_violations = pre_period_count
-                
+
                 # 获取班组平均作为参考（使用周期内的整体平均）
-                period_group_avg = 1.0 
+                period_group_avg = 1.0
                 if dept_id:
                      try:
                         cur.execute("""
@@ -3703,61 +3886,27 @@ def api_students_list():
                      except:
                         pass
 
-                trend_status_counts = {'improvement': 0, 'deterioration': 0, 'solidification': 0, 'safe': 0}
+                # 3. 构建违规数量列表（按月份顺序）
+                score_list = [monthly_counts[m] for m in months_seq]
 
-                for m_str in months_seq:
-                    curr_viol = monthly_counts[m_str]
-                    
-                    # 调用新算法计算当月得分
-                    res = calculate_learning_ability_new(
-                        current_violations=curr_viol,
-                        previous_violations=last_violations,
-                        group_avg_violations=period_group_avg,
-                        config=algo_config
-                    )
-                    monthly_scores.append(res['learning_score'])
-                    if 'trend_type' in res:
-                        t = res['trend_type']
-                        if t == 'high_improvement':
-                            trend_status_counts['improvement'] += 1
-                        elif t in ['deterioration_mild', 'meltdown']:
-                            trend_status_counts['deterioration'] += 1
-                        elif t in trend_status_counts:
-                            trend_status_counts[t] += 1
-                            
-                    last_violations = curr_viol # 更新为下一次比较的基础
-                
-                # 4. 加权平均（近期权重更高）
-                total_weight = 0
-                weighted_sum = 0
-                time_decay_rate = algo_config.get('learning_new', {}).get('time_decay_rate', 0.2)
-                
-                for i, score in enumerate(monthly_scores):
-                    # 线性权重: 1.0 -> 1.0 + (N-1)*time_decay_rate
-                    weight = 1.0 + (i * time_decay_rate) 
-                    weighted_sum += score * weight
-                    total_weight += weight
-                
-                final_score = weighted_sum / total_weight if total_weight > 0 else 0
-                
-                # 确定总体趋势描述
-                overall_trend = 'fluctuation'
-                if trend_status_counts['deterioration'] > len(months_seq) / 3:
-                    overall_trend = 'deterioration' # 恶化
-                elif trend_status_counts['improvement'] > len(months_seq) / 3:
-                     overall_trend = 'improvement' # 改善
-                elif trend_status_counts['safe'] > len(months_seq) / 2:
-                    overall_trend = 'safe'
-                elif trend_status_counts['solidification'] > len(months_seq) / 2:
-                    overall_trend = 'solidification'
-                
-                learning_result = {
-                    'learning_score': final_score,
-                    'trend_type': overall_trend,
-                    'status_color': 'BLUE',
-                    'alert_tag': f'🗓️ 周期加权评分（{len(monthly_scores)}个月）' 
-                }
-                
+                # 4. 调用 calculate_learning_ability_longterm（与详情页一致，包含风险惯性惩罚）
+                learning_result = calculate_learning_ability_longterm(
+                    score_list=score_list,
+                    config=algo_config,
+                    group_avg=period_group_avg,
+                    initial_prev_viol=pre_period_count
+                )
+
+                # 补全部分前端需要的字段
+                if learning_result['risk_level'] == 'SAFE':
+                    learning_result['trend_type'] = 'safe'
+                elif learning_result['risk_level'] in ['HIGH_RISK', 'PRE_ACCIDENT']:
+                    learning_result['trend_type'] = 'deterioration'
+                elif learning_result['risk_level'] == 'WATCH_LIST':
+                    learning_result['trend_type'] = 'yellow_alert'
+                else:
+                    learning_result['trend_type'] = 'fluctuation'
+
                 # 设置current/previous用于后续兼容（使用最后两个月数据）
                 current_violations = monthly_counts[months_seq[-1]]
                 if len(months_seq) >= 2:
