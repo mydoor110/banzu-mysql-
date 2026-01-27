@@ -5,6 +5,7 @@
 提供算法配置的读取、更新、校验等功能
 """
 import json
+import math
 import time
 from typing import Dict, Tuple, Optional, List
 from datetime import datetime
@@ -18,6 +19,7 @@ class AlgorithmConfigService:
     _cache: Optional[dict] = None
     _cache_time: float = 0
     _cache_ttl: int = 300  # 5分钟缓存
+    _cache_updated_at: Optional[str] = None
 
     @classmethod
     def get_active_config(cls) -> dict:
@@ -33,13 +35,23 @@ class AlgorithmConfigService:
         # 检查缓存
         current_time = time.time()
         if cls._cache is not None and (current_time - cls._cache_time) < cls._cache_ttl:
-            return cls._cache
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT updated_at FROM algorithm_active_config WHERE id = 1
+                """)
+                row = cur.fetchone()
+                if row and row['updated_at'] == cls._cache_updated_at:
+                    return cls._cache
+            except Exception:
+                pass
 
         # 从数据库读取
         conn = get_db()
         cur = conn.cursor()
         cur.execute("""
-            SELECT config_data FROM algorithm_active_config WHERE id = 1
+            SELECT config_data, updated_at FROM algorithm_active_config WHERE id = 1
         """)
         row = cur.fetchone()
 
@@ -51,11 +63,47 @@ class AlgorithmConfigService:
         # 更新缓存
         cls._cache = config_data
         cls._cache_time = current_time
+        cls._cache_updated_at = row.get('updated_at') if row else None
 
         return config_data
 
+    @staticmethod
+    def _flatten_config(data: object, prefix: str = "") -> Dict[str, object]:
+        """将配置展开为路径映射，便于diff"""
+        result = {}
+        if isinstance(data, dict):
+            for key, value in data.items():
+                path = f"{prefix}.{key}" if prefix else str(key)
+                result.update(AlgorithmConfigService._flatten_config(value, path))
+        elif isinstance(data, list):
+            for index, value in enumerate(data):
+                path = f"{prefix}[{index}]" if prefix else f"[{index}]"
+                result.update(AlgorithmConfigService._flatten_config(value, path))
+        else:
+            result[prefix] = data
+        return result
+
     @classmethod
-    def apply_preset(cls, preset_key: str, user_id: int, reason: str, username: str = None, ip_address: str = None) -> Tuple[bool, str]:
+    def _diff_configs(cls, old_config: Optional[dict], new_config: Optional[dict]) -> List[dict]:
+        """生成配置diff列表"""
+        old_flat = cls._flatten_config(old_config or {})
+        new_flat = cls._flatten_config(new_config or {})
+
+        keys = set(old_flat.keys()) | set(new_flat.keys())
+        diffs = []
+        for key in sorted(keys):
+            old_val = old_flat.get(key)
+            new_val = new_flat.get(key)
+            if old_val != new_val:
+                diffs.append({
+                    "path": key,
+                    "old": old_val,
+                    "new": new_val
+                })
+        return diffs
+
+    @classmethod
+    def apply_preset(cls, preset_key: str, user_id: int, reason: str, username: Optional[str] = None, ip_address: Optional[str] = None) -> Tuple[bool, str]:
         """
         应用预设方案
 
@@ -124,7 +172,7 @@ class AlgorithmConfigService:
             return False, f"应用预设方案失败: {str(e)}"
 
     @classmethod
-    def update_custom_config(cls, config_data: dict, user_id: int, reason: str, username: str = None, ip_address: str = None) -> Tuple[bool, str]:
+    def update_custom_config(cls, config_data: dict, user_id: int, reason: str, username: Optional[str] = None, ip_address: Optional[str] = None) -> Tuple[bool, str]:
         """
         更新自定义配置
 
@@ -184,6 +232,133 @@ class AlgorithmConfigService:
         except Exception as e:
             conn.rollback()
             return False, f"更新配置失败: {str(e)}"
+
+    @classmethod
+    def update_preset(cls, preset_key: str, config_data: dict, user_id: int, reason: str,
+                      username: Optional[str] = None, ip_address: Optional[str] = None) -> Tuple[bool, str]:
+        """更新预设方案配置"""
+        is_valid, error_msg = cls.validate_config(config_data)
+        if not is_valid:
+            return False, f"配置校验失败: {error_msg}"
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        try:
+            cur.execute("""
+                SELECT preset_name, config_data FROM algorithm_presets
+                WHERE preset_key = %s
+            """, (preset_key,))
+            preset_row = cur.fetchone()
+
+            if not preset_row:
+                return False, f"预设方案不存在: {preset_key}"
+
+            preset_name = preset_row['preset_name']
+            old_config_data = preset_row['config_data']
+            new_config_json = json.dumps(config_data, ensure_ascii=False)
+
+            cur.execute("""
+                UPDATE algorithm_presets
+                SET config_data = %s
+                WHERE preset_key = %s
+            """, (new_config_json, preset_key))
+
+            if not username:
+                cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+                user_row = cur.fetchone()
+                username = user_row['username'] if user_row else f"用户{user_id}"
+
+            cur.execute("""
+                INSERT INTO algorithm_config_logs
+                (action, preset_name, old_config, new_config, change_reason, changed_by, changed_by_name, ip_address)
+                VALUES ('UPDATE_PRESET', %s, %s, %s, %s, %s, %s, %s)
+            """, (preset_name, old_config_data, new_config_json, reason, user_id, username, ip_address))
+
+            conn.commit()
+            cls.clear_cache()
+
+            return True, f"成功更新预设方案: {preset_name}"
+
+        except Exception as e:
+            conn.rollback()
+            return False, f"更新预设方案失败: {str(e)}"
+
+    @classmethod
+    def rollback_preset_update(cls, log_id: int, user_id: int, reason: str,
+                               username: Optional[str] = None, ip_address: Optional[str] = None) -> Tuple[bool, str]:
+        """回滚预设方案配置"""
+        conn = get_db()
+        cur = conn.cursor()
+
+        try:
+            cur.execute("""
+                SELECT action, preset_name, old_config, new_config
+                FROM algorithm_config_logs
+                WHERE id = %s
+            """, (log_id,))
+            log_row = cur.fetchone()
+
+            if not log_row:
+                return False, "日志不存在"
+
+            if log_row['action'] != 'UPDATE_PRESET':
+                return False, "仅支持回滚预设更新日志"
+
+            preset_name = log_row['preset_name']
+            old_config_data = log_row['old_config']
+            current_config_data = log_row['new_config']
+
+            cur.execute("""
+                SELECT preset_key, config_data FROM algorithm_presets
+                WHERE preset_name = %s
+            """, (preset_name,))
+            preset_row = cur.fetchone()
+
+            if not preset_row:
+                return False, f"预设方案不存在: {preset_name}"
+
+            preset_key = preset_row['preset_key']
+            preset_current = preset_row['config_data']
+
+            # 回滚预设配置
+            cur.execute("""
+                UPDATE algorithm_presets
+                SET config_data = %s
+                WHERE preset_key = %s
+            """, (old_config_data, preset_key))
+
+            # 如当前配置正在使用该预设，则同步应用
+            cur.execute("""
+                SELECT based_on_preset, is_customized FROM algorithm_active_config WHERE id = 1
+            """)
+            active_row = cur.fetchone()
+            if active_row and active_row['based_on_preset'] == preset_key and int(active_row['is_customized'] or 0) == 0:
+                cur.execute("""
+                    REPLACE INTO algorithm_active_config
+                    (id, based_on_preset, is_customized, config_data, updated_by, updated_at)
+                    VALUES (1, %s, 0, %s, %s, %s)
+                """, (preset_key, old_config_data, user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+
+            if not username:
+                cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+                user_row = cur.fetchone()
+                username = user_row['username'] if user_row else f"用户{user_id}"
+
+            cur.execute("""
+                INSERT INTO algorithm_config_logs
+                (action, preset_name, old_config, new_config, change_reason, changed_by, changed_by_name, ip_address)
+                VALUES ('ROLLBACK_PRESET', %s, %s, %s, %s, %s, %s, %s)
+            """, (preset_name, preset_current, old_config_data, reason, user_id, username, ip_address))
+
+            conn.commit()
+            cls.clear_cache()
+
+            return True, f"已回滚预设方案: {preset_name}"
+
+        except Exception as e:
+            conn.rollback()
+            return False, f"回滚失败: {str(e)}"
 
     @classmethod
     def simulate_calculation(cls, config_data: dict, sample_data: dict) -> dict:
@@ -300,6 +475,14 @@ class AlgorithmConfigService:
         Returns:
             Tuple[bool, str]: (是否有效, 错误消息)
         """
+        def is_number(value) -> bool:
+            return isinstance(value, (int, float)) and not (isinstance(value, float) and math.isnan(value))
+
+        def require_number(value, label: str) -> Tuple[bool, str]:
+            if not is_number(value):
+                return False, f"{label} 必须是数字"
+            return True, ""
+
         try:
             # 1. 结构完整性校验
             required_sections = ["performance", "safety", "training", "comprehensive", "key_personnel"]
@@ -318,14 +501,20 @@ class AlgorithmConfigService:
                     return False, f"缺少等级系数: {grade}"
 
                 coeff = perf["grade_coefficients"][grade]
-                if not isinstance(coeff, (int, float)) or coeff < 0 or coeff > 2:
+                ok, msg = require_number(coeff, f"等级系数 {grade}")
+                if not ok:
+                    return False, msg
+                if coeff < 0 or coeff > 2:
                     return False, f"等级系数 {grade} 超出范围 [0, 2]: {coeff}"
 
             # 3. 安全配置校验
             safety = config_data["safety"]
             if "severity_track" in safety and "critical_threshold" in safety["severity_track"]:
                 threshold = safety["severity_track"]["critical_threshold"]
-                if not isinstance(threshold, (int, float)) or threshold < 1 or threshold > 50:
+                ok, msg = require_number(threshold, "重大违规红线")
+                if not ok:
+                    return False, msg
+                if threshold < 1 or threshold > 50:
                     return False, f"重大违规红线超出范围 [1, 50]: {threshold}"
 
             # 4. 培训配置校验
@@ -335,7 +524,9 @@ class AlgorithmConfigService:
                 # 校验绝对失格
                 if "absolute_threshold" in training["penalty_rules"]:
                     fail_count = training["penalty_rules"]["absolute_threshold"].get("fail_count", 3)
-                    if not isinstance(fail_count, int) or fail_count < 1 or fail_count > 10:
+                    if not isinstance(fail_count, int):
+                        return False, "绝对失格次数必须为整数"
+                    if fail_count < 1 or fail_count > 10:
                         return False, f"绝对失格次数超出范围 [1, 10]: {fail_count}"
                 
                 # 校验AFR阈值（如果存在）
@@ -343,7 +534,10 @@ class AlgorithmConfigService:
                     for idx, rule in enumerate(training["penalty_rules"]["afr_thresholds"]):
                         if "threshold" in rule:
                             thresh = rule["threshold"]
-                            if not isinstance(thresh, (int, float)) or thresh < 0 or thresh > 50:
+                            ok, msg = require_number(thresh, f"AFR阈值[{idx}]")
+                            if not ok:
+                                return False, msg
+                            if thresh < 0 or thresh > 50:
                                 return False, f"AFR阈值[{idx}]超出范围 [0, 50]: {thresh}"
 
             # 5. 综合评分权重校验
@@ -352,6 +546,11 @@ class AlgorithmConfigService:
                 return False, "缺少综合评分权重配置"
 
             weights = comprehensive["score_weights"]
+            for key, value in weights.items():
+                ok, msg = require_number(value, f"综合评分权重 {key}")
+                if not ok:
+                    return False, msg
+
             total_weight = sum(weights.values())
             if abs(total_weight - 1.0) > 0.01:  # 容忍0.01的浮点误差
                 return False, f"综合评分权重总和必须为1.0，当前为: {total_weight}"
@@ -362,7 +561,10 @@ class AlgorithmConfigService:
                 return False, "缺少关键人员综合分阈值"
 
             threshold = key_personnel["comprehensive_threshold"]
-            if not isinstance(threshold, (int, float)) or threshold < 0 or threshold > 100:
+            ok, msg = require_number(threshold, "关键人员综合分阈值")
+            if not ok:
+                return False, msg
+            if threshold < 0 or threshold > 100:
                 return False, f"关键人员综合分阈值超出范围 [0, 100]: {threshold}"
 
             # 7. 安全趋势配置校验
@@ -373,7 +575,10 @@ class AlgorithmConfigService:
                         return False, f"无效的恶化处理模式: {ln['deterioration_mode']}"
                 if "factor_deterioration_mild" in ln:
                     f = ln["factor_deterioration_mild"]
-                    if not isinstance(f, (int, float)) or f < 0 or f > 1:
+                    ok, msg = require_number(f, "轻度恶化系数")
+                    if not ok:
+                        return False, msg
+                    if f < 0 or f > 1:
                         return False, f"轻度恶化系数超出范围 [0, 1]: {f}"
                         
             return True, "校验通过"
@@ -419,6 +624,38 @@ class AlgorithmConfigService:
             })
 
         return logs
+
+    @classmethod
+    def get_log_detail(cls, log_id: int) -> Optional[dict]:
+        """获取单条日志详情（含diff）"""
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                id, action, preset_name, change_reason, changed_by, changed_by_name,
+                changed_at, ip_address, old_config, new_config
+            FROM algorithm_config_logs
+            WHERE id = %s
+        """, (log_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+
+        old_config = json.loads(row['old_config']) if row['old_config'] else None
+        new_config = json.loads(row['new_config']) if row['new_config'] else None
+
+        return {
+            "id": row['id'],
+            "action": row['action'],
+            "preset_name": row['preset_name'],
+            "change_reason": row['change_reason'],
+            "changed_by": row['changed_by'],
+            "changed_by_name": row['changed_by_name'],
+            "changed_at": row['changed_at'],
+            "ip_address": row['ip_address'],
+            "diffs": cls._diff_configs(old_config, new_config)
+        }
 
     @classmethod
     def get_current_info(cls) -> dict:
@@ -484,3 +721,4 @@ class AlgorithmConfigService:
         """清除配置缓存"""
         cls._cache = None
         cls._cache_time = 0
+        cls._cache_updated_at = None

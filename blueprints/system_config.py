@@ -75,6 +75,12 @@ def api_apply_preset():
             }), 400
 
         user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': '用户信息缺失，请重新登录'
+            }), 401
+        user_id = int(user_id)
         username = session.get('username')
         ip_address = request.remote_addr
 
@@ -116,6 +122,12 @@ def api_update_config():
             }), 400
 
         user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': '用户信息缺失，请重新登录'
+            }), 401
+        user_id = int(user_id)
         username = session.get('username')
         ip_address = request.remote_addr
 
@@ -138,6 +150,107 @@ def api_update_config():
         return jsonify({
             'success': False,
             'error': f'更新配置失败: {str(e)}'
+        }), 500
+
+
+@system_config_bp.route('/api/update-preset', methods=['POST'])
+@admin_required
+def api_update_preset():
+    """API: 保存为预设方案"""
+    try:
+        data = request.get_json()
+        preset_key = data.get('preset_key')
+        config_data = data.get('config_data')
+        reason = data.get('reason', '更新预设方案')
+
+        if not preset_key:
+            return jsonify({
+                'success': False,
+                'error': '预设方案标识不能为空'
+            }), 400
+
+        if not config_data:
+            return jsonify({
+                'success': False,
+                'error': '配置数据不能为空'
+            }), 400
+
+        user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': '用户信息缺失，请重新登录'
+            }), 401
+        user_id = int(user_id)
+        username = session.get('username')
+        ip_address = request.remote_addr
+
+        success, message = AlgorithmConfigService.update_preset(
+            preset_key, config_data, user_id, reason, username, ip_address
+        )
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': message
+            }), 400
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'更新预设方案失败: {str(e)}'
+        }), 500
+
+
+@system_config_bp.route('/api/rollback-preset', methods=['POST'])
+@admin_required
+def api_rollback_preset():
+    """API: 回滚预设方案变更"""
+    try:
+        data = request.get_json()
+        log_id = data.get('log_id')
+        reason = data.get('reason', '回滚预设方案')
+
+        if not log_id:
+            return jsonify({
+                'success': False,
+                'error': '日志ID不能为空'
+            }), 400
+
+        user_id = session.get('user_id')
+        if not user_id:
+            return jsonify({
+                'success': False,
+                'error': '用户信息缺失，请重新登录'
+            }), 401
+        user_id = int(user_id)
+        username = session.get('username')
+        ip_address = request.remote_addr
+
+        success, message = AlgorithmConfigService.rollback_preset_update(
+            int(log_id), user_id, reason, username, ip_address
+        )
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': message
+            }), 400
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'回滚失败: {str(e)}'
         }), 500
 
 
@@ -194,6 +307,30 @@ def api_get_logs():
         }), 500
 
 
+@system_config_bp.route('/api/change-log/<int:log_id>', methods=['GET'])
+@admin_required
+def api_get_log_detail(log_id: int):
+    """API: 获取日志详情"""
+    try:
+        detail = AlgorithmConfigService.get_log_detail(log_id)
+        if not detail:
+            return jsonify({
+                'success': False,
+                'error': '日志不存在'
+            }), 404
+
+        return jsonify({
+            'success': True,
+            'detail': detail
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'获取日志详情失败: {str(e)}'
+        }), 500
+
+
 @system_config_bp.route('/api/validate-config', methods=['POST'])
 @admin_required
 def api_validate_config():
@@ -220,215 +357,6 @@ def api_validate_config():
         return jsonify({
             'success': False,
             'error': f'验证失败: {str(e)}'
-        }), 500
-
-
-@system_config_bp.route('/api/preview-effect', methods=['POST'])
-@admin_required
-def api_preview_effect():
-    """API: 预览配置效果 - 使用示例数据对比当前配置和新配置的效果"""
-    try:
-        from blueprints.personnel import (
-            calculate_performance_score_monthly,
-            calculate_safety_score_dual_track,
-            calculate_training_score_with_penalty,
-            calculate_learning_ability_longterm
-        )
-
-        data = request.get_json()
-        new_config = data.get('config_data')
-
-        if not new_config:
-            return jsonify({
-                'success': False,
-                'error': '配置数据不能为空'
-            }), 400
-
-        # 1. 获取当前配置
-        current_config = AlgorithmConfigService.get_active_config()
-
-        # 2. 使用示例数据（典型的中等表现员工）
-        emp_no = "SAMPLE-001"
-        employee_name = "示例员工（张三）"
-        department_id = 1
-
-        # 3. 准备示例数据
-        # 绩效数据：B级，基准分95
-        perf_grade = 'B'
-        perf_score = 95.0
-
-        # 安全违规记录：最近6个月有3次违规
-        # - 轻微违规1次（2分）
-        # - 中等违规1次（4分）
-        # - 严重违规1次（8分）
-        safety_violations = [2.0, 4.0, 8.0]
-        safety_months = 6
-
-        # 培训记录：10次培训，8次合格
-        # 格式：(score, is_qualified, is_disqualified, training_date)
-        from datetime import datetime, timedelta
-        base_date = datetime.now()
-        training_records = [
-            (85, 1, 0, (base_date - timedelta(days=270)).strftime('%Y-%m-%d')),
-            (78, 1, 0, (base_date - timedelta(days=240)).strftime('%Y-%m-%d')),
-            (92, 1, 0, (base_date - timedelta(days=210)).strftime('%Y-%m-%d')),
-            (88, 1, 0, (base_date - timedelta(days=180)).strftime('%Y-%m-%d')),
-            (65, 0, 1, (base_date - timedelta(days=150)).strftime('%Y-%m-%d')),  # 失格
-            (90, 1, 0, (base_date - timedelta(days=120)).strftime('%Y-%m-%d')),
-            (82, 1, 0, (base_date - timedelta(days=90)).strftime('%Y-%m-%d')),
-            (75, 0, 1, (base_date - timedelta(days=60)).strftime('%Y-%m-%d')),   # 失格
-            (88, 1, 0, (base_date - timedelta(days=30)).strftime('%Y-%m-%d')),
-            (91, 1, 0, (base_date - timedelta(days=10)).strftime('%Y-%m-%d'))
-        ]
-        training_duration_days = 365  # 统计周期：一年
-        cert_years = 3.0  # 取证3年
-
-        # 4. 使用两种配置分别计算各维度分数
-        result = {
-            'employee_id': emp_no,
-            'employee_name': employee_name,
-            'department_id': department_id,
-            'current': {},
-            'new': {}
-        }
-
-        # 计算绩效维度
-        perf_current = calculate_performance_score_monthly(perf_grade, perf_score, current_config)
-        perf_new = calculate_performance_score_monthly(perf_grade, perf_score, new_config)
-
-        # 从配置中获取系数
-        grade_coef_current = current_config['performance']['grade_coefficients'].get(perf_grade, 0)
-        grade_coef_new = new_config['performance']['grade_coefficients'].get(perf_grade, 0)
-
-        result['current']['performance'] = {
-            'grade': perf_grade,
-            'raw_score': perf_score,
-            'final_score': perf_current.get('radar_value', 0),
-            'coefficient': grade_coef_current
-        }
-        result['new']['performance'] = {
-            'grade': perf_grade,
-            'raw_score': perf_score,
-            'final_score': perf_new.get('radar_value', 0),
-            'coefficient': grade_coef_new
-        }
-
-        # 计算安全维度
-        safety_current = calculate_safety_score_dual_track(safety_violations, safety_months, current_config)
-        safety_new = calculate_safety_score_dual_track(safety_violations, safety_months, new_config)
-
-        result['current']['safety'] = {
-            'violations_count': len(safety_violations),
-            'violations_detail': f"轻微{safety_violations[0]}分, 中等{safety_violations[1]}分, 严重{safety_violations[2]}分",
-            'final_score': safety_current.get('final_score', 0),
-            'dimension_a': safety_current.get('score_a', 0),
-            'dimension_b': safety_current.get('score_b', 0)
-        }
-        result['new']['safety'] = {
-            'violations_count': len(safety_violations),
-            'violations_detail': f"轻微{safety_violations[0]}分, 中等{safety_violations[1]}分, 严重{safety_violations[2]}分",
-            'final_score': safety_new.get('final_score', 0),
-            'dimension_a': safety_new.get('score_a', 0),
-            'dimension_b': safety_new.get('score_b', 0)
-        }
-
-        # 计算培训维度
-        training_current = calculate_training_score_with_penalty(
-            training_records,
-            duration_days=training_duration_days,
-            cert_years=cert_years,
-            config=current_config
-        )
-        training_new = calculate_training_score_with_penalty(
-            training_records,
-            duration_days=training_duration_days,
-            cert_years=cert_years,
-            config=new_config
-        )
-
-        # 计算合格次数
-        qualified_count = sum(1 for rec in training_records if rec[1] == 1)
-
-        result['current']['training'] = {
-            'records_count': len(training_records),
-            'qualified_count': qualified_count,
-            'avg_score': training_current.get('original_score', 0),
-            'final_score': training_current.get('radar_score', 0),
-            'penalty_coefficient': training_current.get('penalty_coefficient', 1.0)
-        }
-        result['new']['training'] = {
-            'records_count': len(training_records),
-            'qualified_count': qualified_count,
-            'avg_score': training_new.get('original_score', 0),
-            'final_score': training_new.get('radar_score', 0),
-            'penalty_coefficient': training_new.get('penalty_coefficient', 1.0)
-        }
-
-        # ==================================================
-        # 4. 学习能力维度对比（基于历史综合分数趋势）
-        # ==================================================
-
-        # 示例历史违规数量（6个月，显示违规逐月减少的改善趋势）
-        # 模拟数据：3次 -> 2次 -> 2次 -> 1次 -> 0次 -> 0次
-        historical_violations = [3.0, 2.0, 2.0, 1.0, 0.0, 0.0]
-        group_avg_sim = 1.0  # 模拟班组平均违规数
-
-        # 使用当前配置计算
-        learning_current = calculate_learning_ability_longterm(
-            score_list=historical_violations,
-            config=current_config,
-            group_avg=group_avg_sim
-        )
-
-        # 使用新配置计算
-        learning_new = calculate_learning_ability_longterm(
-            score_list=historical_violations,
-            config=new_config,
-            group_avg=group_avg_sim
-        )
-
-        # 计算斜率（用于展示）
-        import numpy as np
-        x = np.arange(len(historical_violations))
-        # 拟合违规数量趋势
-        try:
-            line = np.polyfit(x, np.array(historical_violations), 1)
-            slope = line[0]
-        except:
-            slope = 0
-
-        result['current']['learning'] = {
-            'historical_count': len(historical_violations),
-            'avg_score': learning_current.get('average_score', 0),
-            'base_score': learning_current.get('base_score', 0),
-            'final_score': learning_current.get('learning_score', 0),
-            'inertia_penalty': f"{learning_current.get('inertia_penalty_rate', 0)*100:.0f}%",
-            'risk_level': learning_current.get('risk_level', 'UNKNOWN'),
-            'tier': learning_current.get('tier', '未知'),
-            'trend_description': f"基础分{learning_current.get('base_score',0)} × (1-惯性{learning_current.get('inertia_penalty_rate',0)*100:.0f}%)"
-        }
-        result['new']['learning'] = {
-            'historical_count': len(historical_violations),
-            'avg_score': learning_new.get('average_score', 0),
-            'base_score': learning_new.get('base_score', 0),
-            'final_score': learning_new.get('learning_score', 0),
-            'inertia_penalty': f"{learning_new.get('inertia_penalty_rate', 0)*100:.0f}%",
-            'risk_level': learning_new.get('risk_level', 'UNKNOWN'),
-            'tier': learning_new.get('tier', '未知'),
-            'trend_description': f"基础分{learning_new.get('base_score',0)} × (1-惯性{learning_new.get('inertia_penalty_rate',0)*100:.0f}%)"
-        }
-
-        return jsonify({
-            'success': True,
-            'result': result
-        })
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': f'预览失败: {str(e)}'
         }), 500
 
 
