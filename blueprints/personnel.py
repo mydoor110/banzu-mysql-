@@ -1509,9 +1509,14 @@ def calculate_stability_score_new(
     stability_score = max(score_floor, min(score_ceiling, stability_score))
 
     # 标签判定
-    label_cutoffs = stability_config.get('label_cutoffs', {})
-    stable_cut = label_cutoffs.get('stable', 75)
-    medium_cut = label_cutoffs.get('medium', 60)
+    label_cutoffs = stability_config.get('label_cutoffs') or {}
+    stable_cut = label_cutoffs.get('stable')
+    medium_cut = label_cutoffs.get('medium')
+
+    if not isinstance(stable_cut, (int, float)):
+        stable_cut = 75
+    if not isinstance(medium_cut, (int, float)):
+        medium_cut = 60
 
     if stability_score >= stable_cut:
         stability_label = '稳定'
@@ -3034,6 +3039,13 @@ def page_nine_grid():
     return render_template('personnel_nine_grid.html')
 
 
+@personnel_bp.route('/api/departments')
+@login_required
+def api_departments():
+    """API: 获取可访问部门列表"""
+    return jsonify(get_accessible_departments())
+
+
 @personnel_bp.route('/api/nine-grid-data')
 @login_required
 def api_nine_grid_data():
@@ -3072,7 +3084,10 @@ def api_nine_grid_data():
     
     # 获取权重配置
     score_weights = algo_config['comprehensive']['score_weights']
-    nine_grid_weights = algo_config['nine_grid']['y_axis_weights']
+    nine_grid_weights = algo_config.get('nine_grid', {}).get('y_axis_weights', {
+        'stability': 0.4,
+        'learning': 0.6,
+    })
     
     # 三维分权重归一化（去除稳定性和学习能力后的相对权重）
     w_perf = score_weights.get('performance', 35)
@@ -3196,7 +3211,10 @@ def export_nine_grid():
 
     # 获取权重配置
     score_weights = algo_config['comprehensive']['score_weights']
-    nine_grid_weights = algo_config['nine_grid']['y_axis_weights']
+    nine_grid_weights = algo_config.get('nine_grid', {}).get('y_axis_weights', {
+        'stability': 0.4,
+        'learning': 0.6,
+    })
     
     # 三维分权重归一化
     w_perf = score_weights.get('performance', 35)
