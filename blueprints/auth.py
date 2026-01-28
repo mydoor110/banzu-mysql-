@@ -39,7 +39,15 @@ def login():
         # 查询用户
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT id, password_hash, role FROM users WHERE username=%s", (username,))
+        cur.execute(
+            """
+            SELECT u.id, u.password_hash, u.role, u.department_id, d.level AS dept_level
+            FROM users u
+            LEFT JOIN departments d ON u.department_id = d.id
+            WHERE u.username = %s
+            """,
+            (username,)
+        )
         row = cur.fetchone()
 
         # 验证密码
@@ -52,6 +60,7 @@ def login():
             session['user_id'] = row['id']
             session['username'] = username
             session['role'] = row['role'] if row['role'] else 'user'
+            session['dept_level'] = row['dept_level']
             session.permanent = True
 
             # 记录审计日志
