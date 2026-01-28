@@ -3,6 +3,7 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js"></script>
+<script src="{{ url_for('static', filename='js/echarts-theme.js') }}"></script>
 <style>
   .chart-container {
     height: 400px;
@@ -495,14 +496,11 @@ function updateWordCloud() {
       drawOutOfBound: false,
       layoutAnimation: true,
       textStyle: {
-        fontFamily: 'sans-serif',
-        fontWeight: 'bold',
-        color: function () {
-          return 'rgb(' + [
-            Math.round(Math.random() * 160),
-            Math.round(Math.random() * 160),
-            Math.round(Math.random() * 160)
-          ].join(',') + ')';
+        fontFamily: 'IBM Plex Sans, Noto Sans SC, Microsoft YaHei, sans-serif',
+        fontWeight: 600,
+        color: function (params) {
+          const palette = window.enterpriseChartPalette || ['#2b5de6', '#0ea5e9', '#22c55e', '#f59e0b'];
+          return palette[params.dataIndex % palette.length];
         }
       },
       emphasis: {

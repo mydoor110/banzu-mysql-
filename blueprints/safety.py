@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 from config.settings import APP_TITLE, EXPORT_DIR, UPLOAD_DIR
 from models.database import get_db
 from .decorators import login_required, role_required, manager_required
-from .helpers import require_user_id, get_accessible_department_ids, build_department_filter, parse_date_filters, build_date_filter_sql, log_import_operation
+from .helpers import require_user_id, get_accessible_department_ids, build_department_filter, parse_date_filters, build_date_filter_sql, log_import_operation, validate_employee_access
 
 # 创建 Blueprint
 safety_bp = Blueprint('safety', __name__, url_prefix='/safety')
@@ -1484,8 +1484,11 @@ def api_analytics_severity_drilldown():
             })
 
 @safety_bp.route('/debug_check/<emp_no>')
+@login_required
 def debug_check_user(emp_no):
     """Temporary debug route to check why user is fused"""
+    if not validate_employee_access(emp_no):
+        return "无权限访问该员工", 403
     conn = get_db()
     cur = conn.cursor()
     
