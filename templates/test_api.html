@@ -19,9 +19,9 @@
 
         async function testStudentsList() {
             document.getElementById('output').textContent = '';
-            log('测试 /training/api/students-list ...');
+            log('测试 /personnel/api/students-list ...');
             try {
-                const response = await fetch('/training/api/students-list');
+                const response = await fetch('/personnel/api/students-list');
                 log('状态码: ' + response.status);
                 const data = await response.json();
                 log('返回数据: ' + JSON.stringify(data, null, 2));
@@ -32,9 +32,9 @@
 
         async function testStudentDetail() {
             document.getElementById('output').textContent = '';
-            log('测试 /training/api/student-detail/103280 ...');
+            log('测试 /personnel/api/student-detail/103280 ...');
             try {
-                const response = await fetch('/training/api/student-detail/103280');
+                const response = await fetch('/personnel/api/student-detail/103280');
                 log('状态码: ' + response.status);
                 const data = await response.json();
                 log('返回数据: ' + JSON.stringify(data, null, 2));
@@ -45,9 +45,9 @@
 
         async function testStudentGrowth() {
             document.getElementById('output').textContent = '';
-            log('测试 /training/api/student-growth/103280 ...');
+            log('测试 /personnel/api/student-growth/103280 ...');
             try {
-                const response = await fetch('/training/api/student-growth/103280');
+                const response = await fetch('/personnel/api/student-growth/103280');
                 log('状态码: ' + response.status);
                 const data = await response.json();
                 log('返回数据: ' + JSON.stringify(data, null, 2));
