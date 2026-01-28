@@ -257,6 +257,18 @@ class AIConfigService:
         return providers
 
     @classmethod
+    def has_providers(cls) -> bool:
+        """是否存在任何AI提供商配置"""
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) AS cnt FROM ai_providers")
+            row = cur.fetchone()
+            return bool(row and row['cnt'] > 0)
+        except Exception:
+            return False
+
+    @classmethod
     def get_provider_by_id(cls, provider_id: int) -> Optional[Dict]:
         """根据ID获取提供商配置"""
         conn = get_db()
@@ -660,7 +672,7 @@ class AIConfigService:
 
     @classmethod
     def log_usage(cls, provider_id: int, provider_name: str, model: str,
-                  tokens: int, success: bool, error_message: str, request_type: str):
+                  tokens: int, success: bool, error_message: Optional[str], request_type: str):
         """记录AI使用日志"""
         try:
             conn = get_db()
@@ -700,10 +712,10 @@ class AIConfigService:
             FROM ai_usage_logs
             WHERE created_at >= DATE_SUB(NOW(), INTERVAL {days} DAY)
         """)
-        row = cur.fetchone()
+        row = cur.fetchone() or {}
 
-        total_calls = row['total_calls'] or 0
-        success_rate = (row['success_count'] / total_calls * 100) if total_calls > 0 else 0
+        total_calls = row.get('total_calls') or 0
+        success_rate = (row.get('success_count', 0) / total_calls * 100) if total_calls > 0 else 0
 
         # 按提供商统计
         cur.execute(f"""
@@ -730,9 +742,9 @@ class AIConfigService:
 
         return {
             'total_calls': total_calls,
-            'total_tokens': row['total_tokens'] or 0,
-            'success_count': row['success_count'] or 0,
-            'error_count': row['error_count'] or 0,
+            'total_tokens': row.get('total_tokens') or 0,
+            'success_count': row.get('success_count') or 0,
+            'error_count': row.get('error_count') or 0,
             'success_rate': round(success_rate, 1),
             'by_provider': by_provider,
             'recent_errors': recent_errors
@@ -746,7 +758,8 @@ class AIConfigService:
 
         # 获取总数
         cur.execute("SELECT COUNT(*) AS cnt FROM ai_usage_logs")
-        total = cur.fetchone()['cnt']
+        row = cur.fetchone() or {}
+        total = row.get('cnt') or 0
 
         # 获取分页数据
         offset = (page - 1) * per_page

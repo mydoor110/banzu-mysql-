@@ -186,6 +186,8 @@ C. **状态型异常** (State Anomaly): 近期家庭变故、疲劳或情绪波�
             provider = AIConfigService.get_default_provider()
             if provider:
                 return provider
+            if AIConfigService.has_providers():
+                return None
         except Exception as e:
             print(f"Failed to load AI config from database: {e}")
 
@@ -810,7 +812,7 @@ C. **状态型异常** (State Anomaly): 近期家庭变故、疲劳或情绪波�
         name: str,
         risk_score: float,
         risk_data: Dict,
-        time_window: str = None
+        time_window: Optional[str] = None
     ) -> DiagnosisResult:
         """
         Synchronous version of diagnose for compatibility.
