@@ -18,6 +18,7 @@ class TextMiningService:
 
     _stopwords_cache: Optional[Set[str]] = None
     _cache_timestamp: Optional[float] = None
+    _cache_signature: Optional[str] = None
     CACHE_TTL = 300  # 5 minutes cache
 
     @classmethod
@@ -40,7 +41,9 @@ class TextMiningService:
             cls._stopwords_cache is not None and
             cls._cache_timestamp is not None and
             current_time - cls._cache_timestamp < cls.CACHE_TTL):
-            return cls._stopwords_cache
+            signature = cls._get_stopwords_signature()
+            if signature == cls._cache_signature:
+                return cls._stopwords_cache
 
         # Load from database
         conn = get_db()
@@ -50,6 +53,7 @@ class TextMiningService:
 
         cls._stopwords_cache = {row['word'] for row in rows}
         cls._cache_timestamp = current_time
+        cls._cache_signature = cls._get_stopwords_signature()
 
         return cls._stopwords_cache
 
@@ -58,6 +62,18 @@ class TextMiningService:
         """Clear the stopwords cache"""
         cls._stopwords_cache = None
         cls._cache_timestamp = None
+        cls._cache_signature = None
+
+    @classmethod
+    def _get_stopwords_signature(cls) -> str:
+        """Get a lightweight signature for stopwords table"""
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) AS total, MAX(id) AS max_id FROM stopwords")
+        row = cur.fetchone()
+        total = row['total'] if row else 0
+        max_id = row['max_id'] if row and row['max_id'] is not None else 0
+        return f"{total}:{max_id}"
 
     @staticmethod
     def _preprocess_text(text: str) -> str:
@@ -130,7 +146,7 @@ class TextMiningService:
         texts: List[str],
         top_n: int = 20,
         min_freq: int = 2
-    ) -> List[Dict[str, any]]:
+    ) -> List[Dict[str, object]]:
         """
         Extract top keywords from multiple texts.
 
