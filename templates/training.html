@@ -108,6 +108,7 @@
 <!-- 引入 ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js"></script>
+<script src="{{ url_for('static', filename='js/echarts-theme.js') }}"></script>
 
 <!-- 引入日期筛选器库 -->
 <script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
@@ -138,7 +139,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (name) params.append('name', name);
     if (dateParams.start_date) params.append('start_date', dateParams.start_date);
     if (dateParams.end_date) params.append('end_date', dateParams.end_date);
-    if (disqualified) params.append('disqualified', disqualified);
+    if (disqualified) {
+      const qualified = disqualified === '1' ? '0' : '1';
+      params.append('qualified', qualified);
+    }
 
     const apiUrl = `{{ url_for('training.api_data') }}?${params.toString()}`;
 
@@ -166,7 +170,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function updateKpis(data) {
     document.getElementById('kpi-total-count').textContent = data.length;
-    const disqualifiedCount = data.filter(r => r.is_disqualified === 1).length;
+    const disqualifiedCount = data.filter(r => r.is_qualified === 0).length;
     document.getElementById('kpi-disqualified-count').textContent = disqualifiedCount;
   }
 
@@ -195,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function renderProblemTypeChart(data) {
-    const disqualifiedData = data.filter(r => r.is_disqualified === 1);
+    const disqualifiedData = data.filter(r => r.is_qualified === 0);
     const problemCount = {};
     disqualifiedData.forEach(record => {
       const type = record.problem_type || '未分类';
@@ -222,7 +226,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function renderProjectDisqualifiedChart(data) {
-    const disqualifiedData = data.filter(r => r.is_disqualified === 1);
+    const disqualifiedData = data.filter(r => r.is_qualified === 0);
     const projectCount = {};
     disqualifiedData.forEach(record => {
       const project = record.project_category || '未分类';
@@ -249,7 +253,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function renderWordCloudChart(data) {
-    const disqualifiedData = data.filter(r => r.is_disqualified === 1 && r.specific_problem && r.specific_problem.trim() !== '无');
+    const disqualifiedData = data.filter(r => r.is_qualified === 0 && r.specific_problem && r.specific_problem.trim() !== '无');
     const text = disqualifiedData.map(r => r.specific_problem).join(' ');
 
     const wordCounts = {};
@@ -283,12 +287,9 @@ document.addEventListener('DOMContentLoaded', function () {
             gridSize: 8,
             drawOutOfBound: false,
             textStyle: {
-                color: function () {
-                    return 'rgb(' + [
-                        Math.round(Math.random() * 160),
-                        Math.round(Math.random() * 160),
-                        Math.round(Math.random() * 160)
-                    ].join(',') + ')';
+                color: function (params) {
+                    const palette = window.enterpriseChartPalette || ['#2b5de6', '#0ea5e9', '#22c55e', '#f59e0b'];
+                    return palette[params.dataIndex % palette.length];
                 }
             },
             emphasis: {

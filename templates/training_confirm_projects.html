@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set is_top_manager = session.get('role') == 'admin' or (session.get('role') == 'manager' and session.get('dept_level') == 1) %}
 
 {% block content %}
 <div class="mb-4">
@@ -22,7 +23,11 @@
     {% if not categories %}
     <div class="alert alert-danger">
       <i class="bi bi-exclamation-triangle me-2"></i>
+      {% if is_top_manager %}
       <strong>错误：</strong>系统中尚未创建任何项目分类。请先前往<a href="{{ url_for('training.project_categories') }}" class="alert-link">项目分类管理</a>创建分类，然后再导入培训数据。
+      {% else %}
+      <strong>错误：</strong>系统中尚未创建任何项目分类。请联系上级管理员创建分类后再导入培训数据。
+      {% endif %}
     </div>
     <div class="d-flex gap-3 mt-4">
       <a href="{{ url_for('training.upload_daily_report') }}" class="btn btn-outline-secondary">
@@ -74,7 +79,11 @@
           <li>选择分类后，系统将为每个项目自动创建记录并设置为"启用"状态</li>
           <li>创建的项目将立即可用于后续的培训数据导入</li>
           <li>如果不确定分类，建议先取消导入，完善项目库后再操作</li>
+          {% if is_top_manager %}
           <li>项目创建后可在<a href="{{ url_for('training.projects') }}" class="alert-link">项目管理</a>中修改</li>
+          {% else %}
+          <li>项目创建后如需调整，请联系上级管理员处理</li>
+          {% endif %}
         </ul>
       </div>
 
@@ -100,9 +109,17 @@
   </div>
   <div class="card-body">
     <ol class="mb-0">
+      {% if is_top_manager %}
       <li><strong>提前创建项目：</strong>在导入数据前，先在<a href="{{ url_for('training.projects') }}">项目管理</a>中创建好所有培训项目</li>
+      {% else %}
+      <li><strong>提前创建项目：</strong>请联系上级管理员提前创建培训项目</li>
+      {% endif %}
       <li><strong>规范项目命名：</strong>确保Excel中的项目名称与系统中的项目名称完全一致</li>
+      {% if is_top_manager %}
       <li><strong>使用批量导入：</strong>可使用项目管理页面的"批量添加"功能快速创建多个项目</li>
+      {% else %}
+      <li><strong>使用批量导入：</strong>可由上级管理员通过批量导入快速创建项目</li>
+      {% endif %}
       <li><strong>定期核查：</strong>定期核查项目库，确保所有常用项目都已创建</li>
     </ol>
   </div>

@@ -202,6 +202,7 @@
 <!-- 引入 ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js"></script>
+<script src="{{ url_for('static', filename='js/echarts-theme.js') }}"></script>
 
 <!-- 引入日期筛选器库 -->
 <script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
@@ -729,12 +730,9 @@
           gridSize: 8,
           drawOutOfBound: false,
           textStyle: {
-            color: function () {
-              return 'rgb(' + [
-                Math.round(Math.random() * 160),
-                Math.round(Math.random() * 160),
-                Math.round(Math.random() * 160)
-              ].join(',') + ')';
+            color: function (params) {
+              const palette = window.enterpriseChartPalette || ['#2b5de6', '#0ea5e9', '#22c55e', '#f59e0b'];
+              return palette[params.dataIndex % palette.length];
             }
           },
           emphasis: {
