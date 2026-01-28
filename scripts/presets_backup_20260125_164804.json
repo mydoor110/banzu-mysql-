@@ -1,0 +1,596 @@
+{
+  "strict": {
+    "preset_name": "严格",
+    "config_data": {
+      "performance": {
+        "grade_coefficients": {
+          "D": 0.0,
+          "C": 0.6,
+          "B": 0.9,
+          "B+": 1.0,
+          "A": 1.1
+        },
+        "grade_ranges": {
+          "D": {
+            "min": 0,
+            "max": 79.9,
+            "radar_override": 50
+          },
+          "C": {
+            "min": 80,
+            "max": 89.9
+          },
+          "B": {
+            "min": 90,
+            "max": 94.9
+          },
+          "B+": {
+            "min": 95,
+            "max": 99.9
+          },
+          "A": {
+            "min": 100,
+            "max": 110
+          }
+        },
+        "contamination_rules": {
+          "d_count_threshold": 1,
+          "c_count_threshold": 2,
+          "d_cap_score": 90,
+          "c_cap_score": 94.9
+        }
+      },
+      "safety": {
+        "behavior_track": {
+          "freq_thresholds": [
+            2,
+            5,
+            6
+          ],
+          "freq_multipliers": [
+            2,
+            5,
+            10
+          ]
+        },
+        "severity_track": {
+          "score_ranges": [
+            {
+              "max": 3,
+              "multiplier": 1.0
+            },
+            {
+              "min": 3,
+              "max": 5,
+              "multiplier": 2.5
+            },
+            {
+              "min": 5,
+              "multiplier": 5.0
+            }
+          ],
+          "critical_threshold": 12
+        },
+        "dual_track_weights": {
+          "behavior": 0.4,
+          "severity": 0.6
+        },
+        "thresholds": {
+          "red_score": 60,
+          "red_freq": 6,
+          "orange_score": 80,
+          "orange_freq": 3,
+          "fail_score": 60,
+          "warning_score": 80
+        }
+      },
+      "training": {
+        "penalty_rules": {
+          "absolute_disqualification": 50,
+          "small_sample_penalty": 0.85,
+          "afr_threshold": 0.2,
+          "absolute_threshold": {
+            "fail_count": 3,
+            "coefficient": 0.5
+          },
+          "small_sample": {
+            "sample_size": 5,
+            "coefficient": 0.85
+          },
+          "afr_thresholds": [
+            {
+              "threshold": 12,
+              "coefficient": 0.6,
+              "level": "CRITICAL"
+            },
+            {
+              "threshold": 6,
+              "coefficient": 0.75,
+              "level": "HIGH_RISK"
+            },
+            {
+              "threshold": 3,
+              "coefficient": 0.9,
+              "level": "WARNING"
+            }
+          ],
+          "afr_thresholds_new_employee": [
+            {
+              "threshold": 15,
+              "coefficient": 0.7,
+              "level": "CRITICAL"
+            },
+            {
+              "threshold": 8,
+              "coefficient": 0.8,
+              "level": "HIGH_RISK"
+            },
+            {
+              "threshold": 4,
+              "coefficient": 0.9,
+              "level": "WARNING"
+            }
+          ],
+          "afr_thresholds_experienced": [
+            {
+              "threshold": 10,
+              "coefficient": 0.6,
+              "level": "CRITICAL"
+            },
+            {
+              "threshold": 5,
+              "coefficient": 0.75,
+              "level": "HIGH_RISK"
+            },
+            {
+              "threshold": 2,
+              "coefficient": 0.9,
+              "level": "WARNING"
+            }
+          ]
+        },
+        "duration_thresholds": {
+          "short_term_days": 90,
+          "mid_term_days": 180,
+          "long_term_years": 1,
+          "default_scores": {
+            "short": 85,
+            "mid": 75,
+            "long": 60
+          }
+        }
+      },
+      "comprehensive": {
+        "score_weights": {
+          "performance": 0.35,
+          "safety": 0.3,
+          "training": 0.2,
+          "learning": 0.1,
+          "stability": 0.05
+        }
+      },
+      "learning_new": {
+        "trend_ceiling_floor": 4,
+        "trend_warning_ratio": 1.2,
+        "trend_warning_floor": 1,
+        "trend_critical_ratio": 3.0,
+        "trend_critical_floor": 5,
+        "historical_baseline": 3,
+        "factor_reward": 1.2,
+        "factor_stable": 1.0,
+        "factor_safe_fluctuation": 0.9,
+        "factor_mitigation": 0.8,
+        "factor_warning": 0.6,
+        "factor_solidification": 0.3,
+        "factor_deterioration": 0.2,
+        "factor_improvement": 1.2,
+        "factor_high_improvement": 0.8,
+        "factor_deterioration_mild": 0.3,
+        "inertia_start_months": 2,
+        "inertia_step": 0.2,
+        "inertia_max_penalty": 0.8,
+        "time_decay_rate": 0.2
+      },
+      "key_personnel": {
+        "comprehensive_threshold": 75,
+        "monthly_violation_threshold": 3
+      }
+    }
+  },
+  "standard": {
+    "preset_name": "标准",
+    "config_data": {
+      "performance": {
+        "grade_coefficients": {
+          "D": 0.0,
+          "C": 0.6,
+          "B": 0.9,
+          "B+": 1.0,
+          "A": 1.1
+        },
+        "grade_ranges": {
+          "D": {
+            "min": 0,
+            "max": 79.9,
+            "radar_override": 50
+          },
+          "C": {
+            "min": 80,
+            "max": 89.9
+          },
+          "B": {
+            "min": 90,
+            "max": 94.9
+          },
+          "B+": {
+            "min": 95,
+            "max": 99.9
+          },
+          "A": {
+            "min": 100,
+            "max": 110
+          }
+        },
+        "contamination_rules": {
+          "d_count_threshold": 1,
+          "c_count_threshold": 2,
+          "d_cap_score": 90,
+          "c_cap_score": 94.9
+        }
+      },
+      "safety": {
+        "behavior_track": {
+          "freq_thresholds": [
+            2,
+            5,
+            6
+          ],
+          "freq_multipliers": [
+            2,
+            5,
+            10
+          ]
+        },
+        "severity_track": {
+          "score_ranges": [
+            {
+              "max": 3,
+              "multiplier": 1.0
+            },
+            {
+              "min": 3,
+              "max": 5,
+              "multiplier": 2.5
+            },
+            {
+              "min": 5,
+              "multiplier": 5.0
+            }
+          ],
+          "critical_threshold": 12
+        },
+        "dual_track_weights": {
+          "behavior": 0.4,
+          "severity": 0.6
+        },
+        "thresholds": {
+          "red_score": 60,
+          "red_freq": 6,
+          "orange_score": 80,
+          "orange_freq": 3,
+          "fail_score": 60,
+          "warning_score": 80
+        }
+      },
+      "training": {
+        "penalty_rules": {
+          "absolute_disqualification": 50,
+          "small_sample_penalty": 0.85,
+          "afr_threshold": 0.2,
+          "absolute_threshold": {
+            "fail_count": 3,
+            "coefficient": 0.5
+          },
+          "small_sample": {
+            "sample_size": 5,
+            "coefficient": 0.85
+          },
+          "afr_thresholds": [
+            {
+              "threshold": 12,
+              "coefficient": 0.6,
+              "level": "CRITICAL"
+            },
+            {
+              "threshold": 6,
+              "coefficient": 0.75,
+              "level": "HIGH_RISK"
+            },
+            {
+              "threshold": 3,
+              "coefficient": 0.9,
+              "level": "WARNING"
+            }
+          ],
+          "afr_thresholds_new_employee": [
+            {
+              "threshold": 15,
+              "coefficient": 0.7,
+              "level": "CRITICAL"
+            },
+            {
+              "threshold": 8,
+              "coefficient": 0.8,
+              "level": "HIGH_RISK"
+            },
+            {
+              "threshold": 4,
+              "coefficient": 0.9,
+              "level": "WARNING"
+            }
+          ],
+          "afr_thresholds_experienced": [
+            {
+              "threshold": 10,
+              "coefficient": 0.6,
+              "level": "CRITICAL"
+            },
+            {
+              "threshold": 5,
+              "coefficient": 0.75,
+              "level": "HIGH_RISK"
+            },
+            {
+              "threshold": 2,
+              "coefficient": 0.9,
+              "level": "WARNING"
+            }
+          ]
+        },
+        "duration_thresholds": {
+          "short_term_days": 90,
+          "mid_term_days": 180,
+          "long_term_years": 1,
+          "default_scores": {
+            "short": 85,
+            "mid": 75,
+            "long": 60
+          }
+        }
+      },
+      "comprehensive": {
+        "score_weights": {
+          "performance": 0.35,
+          "safety": 0.3,
+          "training": 0.2,
+          "learning": 0.1,
+          "stability": 0.05
+        }
+      },
+      "learning_new": {
+        "trend_ceiling_floor": 5,
+        "trend_warning_ratio": 1.5,
+        "trend_warning_floor": 2,
+        "trend_critical_ratio": 3.0,
+        "trend_critical_floor": 5,
+        "historical_baseline": 3,
+        "factor_reward": 1.2,
+        "factor_stable": 1.0,
+        "factor_safe_fluctuation": 0.9,
+        "factor_mitigation": 0.8,
+        "factor_warning": 0.6,
+        "factor_solidification": 0.4,
+        "factor_deterioration": 0.3,
+        "factor_improvement": 1.2,
+        "factor_high_improvement": 0.8,
+        "factor_deterioration_mild": 0.3,
+        "inertia_start_months": 2,
+        "inertia_step": 0.15,
+        "inertia_max_penalty": 0.6,
+        "time_decay_rate": 0.2
+      },
+      "key_personnel": {
+        "comprehensive_threshold": 75,
+        "monthly_violation_threshold": 3
+      }
+    }
+  },
+  "lenient": {
+    "preset_name": "宽松",
+    "config_data": {
+      "performance": {
+        "grade_coefficients": {
+          "D": 0.0,
+          "C": 0.6,
+          "B": 0.9,
+          "B+": 1.0,
+          "A": 1.1
+        },
+        "grade_ranges": {
+          "D": {
+            "min": 0,
+            "max": 79.9,
+            "radar_override": 50
+          },
+          "C": {
+            "min": 80,
+            "max": 89.9
+          },
+          "B": {
+            "min": 90,
+            "max": 94.9
+          },
+          "B+": {
+            "min": 95,
+            "max": 99.9
+          },
+          "A": {
+            "min": 100,
+            "max": 110
+          }
+        },
+        "contamination_rules": {
+          "d_count_threshold": 1,
+          "c_count_threshold": 2,
+          "d_cap_score": 90,
+          "c_cap_score": 94.9
+        }
+      },
+      "safety": {
+        "behavior_track": {
+          "freq_thresholds": [
+            2,
+            5,
+            6
+          ],
+          "freq_multipliers": [
+            2,
+            5,
+            10
+          ]
+        },
+        "severity_track": {
+          "score_ranges": [
+            {
+              "max": 3,
+              "multiplier": 1.0
+            },
+            {
+              "min": 3,
+              "max": 5,
+              "multiplier": 2.5
+            },
+            {
+              "min": 5,
+              "multiplier": 5.0
+            }
+          ],
+          "critical_threshold": 12
+        },
+        "dual_track_weights": {
+          "behavior": 0.4,
+          "severity": 0.6
+        },
+        "thresholds": {
+          "red_score": 60,
+          "red_freq": 6,
+          "orange_score": 80,
+          "orange_freq": 3,
+          "fail_score": 60,
+          "warning_score": 80
+        }
+      },
+      "training": {
+        "penalty_rules": {
+          "absolute_disqualification": 50,
+          "small_sample_penalty": 0.85,
+          "afr_threshold": 0.2,
+          "absolute_threshold": {
+            "fail_count": 3,
+            "coefficient": 0.5
+          },
+          "small_sample": {
+            "sample_size": 5,
+            "coefficient": 0.85
+          },
+          "afr_thresholds": [
+            {
+              "threshold": 12,
+              "coefficient": 0.6,
+              "level": "CRITICAL"
+            },
+            {
+              "threshold": 6,
+              "coefficient": 0.75,
+              "level": "HIGH_RISK"
+            },
+            {
+              "threshold": 3,
+              "coefficient": 0.9,
+              "level": "WARNING"
+            }
+          ],
+          "afr_thresholds_new_employee": [
+            {
+              "threshold": 15,
+              "coefficient": 0.7,
+              "level": "CRITICAL"
+            },
+            {
+              "threshold": 8,
+              "coefficient": 0.8,
+              "level": "HIGH_RISK"
+            },
+            {
+              "threshold": 4,
+              "coefficient": 0.9,
+              "level": "WARNING"
+            }
+          ],
+          "afr_thresholds_experienced": [
+            {
+              "threshold": 10,
+              "coefficient": 0.6,
+              "level": "CRITICAL"
+            },
+            {
+              "threshold": 5,
+              "coefficient": 0.75,
+              "level": "HIGH_RISK"
+            },
+            {
+              "threshold": 2,
+              "coefficient": 0.9,
+              "level": "WARNING"
+            }
+          ]
+        },
+        "duration_thresholds": {
+          "short_term_days": 90,
+          "mid_term_days": 180,
+          "long_term_years": 1,
+          "default_scores": {
+            "short": 85,
+            "mid": 75,
+            "long": 60
+          }
+        }
+      },
+      "comprehensive": {
+        "score_weights": {
+          "performance": 0.35,
+          "safety": 0.3,
+          "training": 0.2,
+          "learning": 0.1,
+          "stability": 0.05
+        }
+      },
+      "learning_new": {
+        "trend_ceiling_floor": 6,
+        "trend_warning_ratio": 2.0,
+        "trend_warning_floor": 3,
+        "trend_critical_ratio": 3.0,
+        "trend_critical_floor": 5,
+        "historical_baseline": 3,
+        "factor_reward": 1.2,
+        "factor_stable": 1.0,
+        "factor_safe_fluctuation": 0.9,
+        "factor_mitigation": 0.8,
+        "factor_warning": 0.6,
+        "factor_solidification": 0.5,
+        "factor_deterioration": 0.4,
+        "factor_improvement": 1.2,
+        "factor_high_improvement": 0.8,
+        "factor_deterioration_mild": 0.3,
+        "inertia_start_months": 3,
+        "inertia_step": 0.1,
+        "inertia_max_penalty": 0.5,
+        "time_decay_rate": 0.2
+      },
+      "key_personnel": {
+        "comprehensive_threshold": 75,
+        "monthly_violation_threshold": 3
+      }
+    }
+  }
+}
