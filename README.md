@@ -4,7 +4,7 @@
 
 班组管理系统是一个全功能的企业级管理平台，为基层班组提供绩效管理、培训管理、安全管理、人员管理和部门管理等核心功能。基于 Flask Blueprint 架构开发，使用 Bootstrap 5 构建现代化响应式界面。
 
-项目遵循"轻量、易部署、易维护"的设计理念，当前仅支持 **MySQL** 数据库，支持多部门层级管理和权限控制。
+项目遵循"轻量、易部署、易维护"的设计理念，支持多部门层级管理、自动化的数据库维护和灵活的算法配置。
 
 ## 系统功能
 
@@ -25,20 +25,20 @@
 - **培训工作台**: 集中管理培训记录、数据分析、计划制定等功能
 - **培训记录**: 详细的培训档案管理，支持多种培训类型
 - **培训项目**: 培训项目分类管理
-- **数据分析**: ECharts 可视化培训效果分析
+- **智能分析**: 结合"培训失格"与"违章记录"，自动分析实操弱项
 - **不合格管理**: 专门的不合格人员跟踪和管理
 
 ### 👥 人员管理系统
 - **档案管理**: 完整的员工档案信息维护
 - **数据统计**: 年龄结构、学历分布、司龄分析等
-- **能力画像**: 员工综合能力评估和画像
+- **能力画像**: 员工综合能力评估和画像，包含**学习能力**与**稳定性**分析
 - **风险挖掘**: 基于数据的风险预警分析
 - **批量操作**: Excel 批量导入导出功能
 
 ### 🛡️ 安全管理系统
 - **安全检查**: 安全检查记录和隐患管理
 - **整改跟踪**: 安全隐患整改进度跟踪
-- **统计报表**: 安全数据统计和趋势分析
+- **双轨制评分**: 结合"行为频率"与"严重程度"的双轨制评分模型
 - **分类管理**: 多维度安全检查分类
 
 ### 🤖 AI 智能分析
@@ -51,258 +51,137 @@
 - **用户管理**: 用户账号创建、角色分配、部门设置
 - **部门管理**: 部门结构维护、权限配置
 - **导入日志**: 完整的数据导入审计日志
-- **算法配置**: 综合评分算法参数配置
+- **算法配置**: 综合评分算法参数配置，可视化预览效果
 - **备份管理**: 数据备份和恢复功能
 
-## 技术架构
+---
 
-### 后端技术栈
-- **框架**: Flask 2.x + Blueprint 模块化架构
-- **数据库**: MySQL
-- **ORM**: 原生 SQL + 数据库抽象层
-- **认证**: Session + werkzeug.security 密码哈希
-- **文件处理**: pandas + openpyxl + pdfplumber
+## 核心算法逻辑
 
-### 前端技术栈
-- **UI 框架**: Bootstrap 5
-- **图表库**: ECharts
-- **交互**: 原生 JavaScript + Fetch API
+系统内置了高度可配置的算法模型，用于评估员工的综合素质。所有参数均可在系统后台进行调整或一键切换预设（严格/标准/宽松）。
+
+### 1. 稳定度算法 (Stability)
+衡量员工在安全表现上的稳定性，识别"忽高忽低"的潜在风险。
+- **时间窗口**: 支持 6/9/12 个月滚动窗口分析。
+- **波动指标**: 计算月度分数的平均变化幅度 (Mean |Δ|)。
+- **评分逻辑**:
+  - **稳定**: 波动小，成绩持续平稳（>= 75分）。
+  - **波动偏大**: 存在一定起伏，需关注（60-75分）。
+  - **波动较大/异常**: 忽好忽坏，安全隐患大（< 60分）。
+- **特殊机制**:
+  - **样本不足**: 有效数据不足6个月时标记为低置信度。
+  - **低水平提示**: 即使稳定，如果分数一直很低，依然会发出预警。
+
+### 2. 学习能力算法 (Learning Potential)
+基于历史趋势预测未来的安全风险，引入"风险惯性"概念。
+- **动态水位**: 动态计算 关注线 (Warning) 和 熔断线 (Critical)。
+- **风险惯性**: 识别连续处于"危险区"的员工，随着时间推移累积"惯性惩罚"，防止短期洗白。
+- **状态判定**:
+  - **事故前兆**: 惯性惩罚极高，极易发生事故。
+  - **高危**: 综合评分不及格。
+  - **重点关注**: 处于危险边缘。
+  - **安全**: 表现良好。
+
+### 3. 三档算法预设
+- **严格档 (Strict)**: 适用于高要求场景，惩罚力度大（如：波动容忍度低，惯性惩罚启动快）。
+- **标准档 (Standard)**: 平衡公平与激励（默认配置）。
+- **宽松档 (Lenient)**: 适用于培养阶段或新员工，容忍度较高。
+
+---
+
+## 快速开始
+
+### 1. 环境准备
+确保已安装 Python 3.8+ 和 MySQL 8.0+。
+
+```bash
+# 安装系统依赖 (MySQL 客户端)
+# Ubuntu/Debian
+sudo apt-get install -y mysql-client
+# CentOS/RHEL
+sudo yum install -y mysql
+```
+
+### 2. 安装项目依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. 配置环境
+
+复制环境变量示例文件并修改配置：
+
+```bash
+cp .env.example .env
+vim .env
+```
+
+配置重点：
+- `DB_TYPE=mysql`
+- `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
+
+### 4. 自动数据库初始化
+**无需手动执行 SQL 脚本**。项目集成了自动化的数据库版本管理 (`DBVersionManager`)。
+首次启动或升级时，系统会自动：
+1. 检测当前数据库版本。
+2. 创建缺失的表。
+3. 执行增量更新（添加新字段、索引）。
+4. 初始化基础数据（管理员账号、默认部门、算法预设）。
+
+### 5. 启动服务
+
+```bash
+python app.py
+```
+访问 `http://localhost:5001`，默认管理员账号请查看 `.env` 配置（默认为 `admin` / `admin123`）。
+
+---
 
 ## 项目结构
 
 ```
 .
 ├── app.py                      # Flask 主应用入口
-├── config/
-│   ├── __init__.py
-│   └── settings.py             # 配置管理（数据库、路径等）
-├── models/
-│   ├── __init__.py
-│   └── database.py             # 数据库连接和初始化（MySQL）
-├── blueprints/                 # 功能模块（Blueprint 架构）
-│   ├── auth.py                 # 认证模块
-│   ├── admin.py                # 管理员模块
-│   ├── departments.py          # 部门管理
-│   ├── personnel.py            # 人员管理
+├── config/                     # 配置文件
+├── models/                     # 数据模型
+│   ├── database.py             # 数据库连接
+│   ├── db_mgmt.py              # 数据库版本与迁移管理（核心）
+│   └── schema_defs.py          # 表结构定义
+├── blueprints/                 # 功能模块 (Blueprint)
 │   ├── performance.py          # 绩效管理
-│   ├── training.py             # 培训管理
-│   ├── safety.py               # 安全管理
-│   ├── system_config.py        # 系统配置
-│   ├── decorators.py           # 权限装饰器
-│   └── helpers.py              # 辅助函数
-├── services/                   # 业务服务层
+│   ├── safety.py               # 安全管理 (含双轨制算法)
+│   └── ...
+├── services/                   # 业务逻辑层
 ├── utils/                      # 工具函数
-├── templates/                  # Jinja2 模板
+├── templates/                  # 前端模板
 ├── static/                     # 静态资源
-├── uploads/                    # 上传文件目录
-├── exports/                    # 导出文件目录
-├── logs/                       # 日志目录
-├── backups/                    # 备份目录
-├── requirements.txt            # Python 依赖
-├── .env.example                # 环境变量示例
-└── README.md                   # 项目说明
+└── requirements.txt            # Python 依赖
 ```
 
-## 数据模型
+## 技术架构
 
-### 核心表（20 个）
-
-| 表名 | 用途 |
-|------|------|
-| `users` | 用户账号 |
-| `departments` | 部门管理（支持层级结构） |
-| `employees` | 员工档案 |
-| `performance_records` | 绩效记录 |
-| `grade_map` | 绩效等级映射 |
-| `quarter_overrides` | 季度绩效覆盖 |
-| `quarter_grade_options` | 季度等级选项 |
-| `training_records` | 培训记录 |
-| `training_projects` | 培训项目 |
-| `training_project_categories` | 培训项目分类 |
-| `safety_inspection_records` | 安全检查记录 |
-| `import_logs` | 导入日志审计 |
-| `algorithm_presets` | 算法预设 |
-| `algorithm_active_config` | 算法激活配置 |
-| `algorithm_config_logs` | 算法配置变更日志 |
-| `stopwords` | NLP 停用词 |
-| `ai_providers` | AI 提供商配置 |
-| `ai_usage_logs` | AI 使用日志 |
-| `ai_analysis_history` | AI 分析缓存 |
-| `ai_prompt_configs` | AI 提示词配置 |
-
-## 快速开始
-
-### 1. 安装系统依赖（MySQL 备份必需）
-
-系统备份依赖 `mysqldump`（MySQL 客户端工具）。
-
-```bash
-# Ubuntu / Debian
-sudo apt-get update && sudo apt-get install -y mysql-client
-
-# CentOS / RHEL
-sudo yum install -y mysql
-
-# Fedora
-sudo dnf install -y mysql
-
-# Alpine
-sudo apk add mysql-client
-```
-
-或使用脚本：
-
-```bash
-bash scripts/install_system_deps.sh
-```
-
-### 2. 安装 Python 依赖
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. 环境配置
-
-复制环境变量示例文件：
-
-```bash
-cp .env.example .env
-```
-
-编辑 `.env` 文件：
-
-```bash
-# 管理员账户
-APP_USER=admin
-APP_PASS=your_secure_password
-
-# Flask 密钥
-SECRET_KEY=your_secret_key_here
-
-# 应用端口
-PORT=5001
-
-# Session 过期时间（秒）
-SESSION_TIMEOUT=86400
-
-# 上传文件大小限制（字节，默认 50MB）
-MAX_CONTENT_LENGTH=52428800
-
-# 数据库配置（MySQL）
-DB_TYPE=mysql
-MYSQL_HOST=localhost
-MYSQL_PORT=3306
-MYSQL_USER=root
-MYSQL_PASSWORD=your_mysql_password
-MYSQL_DATABASE=team_management
-MYSQL_CHARSET=utf8mb4
-
-# 钉钉免登配置（企业内部应用）
-DINGTALK_APP_KEY=your_dingtalk_app_key
-DINGTALK_APP_SECRET=your_dingtalk_app_secret
-DINGTALK_CORP_ID=your_dingtalk_corp_id
-```
-
-### 4. 启动服务
-
-```bash
-python app.py
-```
-
-或使用 Flask CLI：
-
-```bash
-flask --app app.py run --host=0.0.0.0 --port=5001
-```
-
-### 5. 访问系统
-
-打开浏览器访问 `http://localhost:5001`，使用配置的管理员账号登录。
-
-## MySQL 配置说明
-
-### 创建数据库
-
-```sql
-CREATE DATABASE team_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-### 切换到 MySQL
-
-1. 修改 `.env` 文件中的 `DB_TYPE=mysql`
-2. 配置 MySQL 连接信息
-3. 确保已安装 `mysqldump`（用于备份）
-4. 首次启动时会自动创建所有表和索引
-
-## 权限体系
-
-| 角色 | 权限范围 |
-|------|---------|
-| `admin` | 系统管理员，可访问所有数据和功能 |
-| `manager` | 部门管理员，可管理本部门及下级部门数据 |
-| `user` | 普通用户，只能查看本部门数据 |
+- **后端**: Flask 2.x + Blueprint
+- **数据库**: MySQL (pymysql + 原生 SQL 优化)
+- **数据处理**: Pandas + NumPy
+- **前端**: Bootstrap 5 + ECharts
+- **部署**: 原生支持，集成自动迁移与备份
 
 ## 版本历史
 
+### v3.3.0 - 2026年2月 (当前版本)
+- ✅ **数据库自动化**: 引入 `DBVersionManager`，实现数据库自动初始化与无感升级。
+- ✅ **算法文档整合**: 统一核心算法逻辑说明至主文档。
+
 ### v3.2.0 - 2026年1月
-- ✅ **钉钉集成**:
-  - 新增钉钉企业内部应用免登功能
-  - 支持钉钉用户信息自动同步
-- ✅ **算法优化**:
-  - 重构稳定性算法，引入时间切片加权机制
-  - 解决长期累积扣分导致的低分问题
-- ✅ **权限管理**:
-  - 优化多管理员设置逻辑
-- ✅ **依赖更新**:
-  - 新增 httpx 依赖
+- ✅ **钉钉集成**: 支持钉钉免登与通讯录同步。
+- ✅ **算法重构**: 引入时间和波动加权的稳定性算法。
 
 ### v3.1.0 - 2026年1月
-- ✅ **性能优化**: 解决"综合档案"页面加载缓慢问题，对核心数据库表添加复合索引
-- ✅ **备份增强**: 优化系统备份与恢复流程，提升稳定性
-- ✅ **自动化工具**:
-  - Git 仓库自动清洗（排除非代码文件）
-  - 项目名称自动规范化处理（去除序号和标点）
-- ✅ **Bug 修复**:
-  - 修复 AI 诊断格式字符串错误
-  - 修复培训分数计算逻辑
-  - 修复日期显示下标错误
-
-### v3.0.0 (上一版本) - 2025年1月
-- ✅ **MySQL 数据库支持**: 已默认启用 MySQL 单一数据库模式
-- ✅ **Blueprint 架构重构**: 模块化代码组织
-- ✅ **AI 智能分析**: 多 AI 提供商支持
-- ✅ **算法配置系统**: 三档算法预设（严格/标准/宽松）
-- ✅ **导入日志审计**: 完整的数据导入追踪
-- ✅ **人员能力画像**: 综合能力评估
-- ✅ **风险挖掘分析**: 数据驱动的风险预警
-
-### v2.0.0 - 2024年12月
-- ✅ 完整的培训管理系统
-- ✅ 部门层级管理和权限控制
-- ✅ 多模块工作台架构
-- ✅ 用户角色和权限体系
-
-### v1.0.0 - 2024年初
-- ✅ 绩效管理核心功能
-- ✅ 人员档案管理
-- ✅ 基础用户认证
-
-## 后续规划
-
-### 短期计划
-- 🔄 数据导出格式扩展（PDF 报表）
-- 🔄 移动端适配优化
-- 🔄 批量操作性能优化
-
-### 长期计划
-- 📋 RESTful API 接口
-- 📋 消息通知系统
-- 📋 工作流引擎
-- 📋 数据大屏展示
+- ✅ **性能优化**: 针对百万级数据表添加复合索引。
+- ✅ **备份增强**: 优化 MySQL `mysqldump` 备份流程。
 
 ---
 
-**文档版本**: v3.2.0
-**最后更新**: 2026年1月31日
-**维护者**: 系统管理员
+**文档维护**: 系统管理员
+**最后更新**: 2026年2月
