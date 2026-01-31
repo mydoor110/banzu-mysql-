@@ -10,21 +10,24 @@ load_dotenv()
 
 import json
 
-from flask import Flask, redirect, url_for, session
+from flask import Flask, redirect, url_for, session, request, flash, jsonify
 from werkzeug.security import generate_password_hash
+from werkzeug.exceptions import RequestEntityTooLarge
 
 try:
     from flask_wtf.csrf import CSRFProtect, generate_csrf
     CSRF_AVAILABLE = True
 except ImportError:
     CSRF_AVAILABLE = False
+    CSRFProtect = None
     def generate_csrf():
         return ""
 
 # 导入配置
 from config.settings import (
-    APP_TITLE, SECRET_KEY,
-    UPLOAD_DIR, EXPORT_DIR
+    APP_TITLE,
+    UPLOAD_DIR, EXPORT_DIR,
+    get_config
 )
 
 # 导入数据库工具
@@ -36,24 +39,30 @@ from utils.logger import setup_logging
 # ==================== Flask 应用初始化 ====================
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = SECRET_KEY
+app_config = get_config()
+app.config.from_object(app_config)
+
+if not app.config.get("DEBUG") and app.config.get("SECRET_KEY") in (None, "", "dev-secret-change-in-production"):
+    raise ValueError("SECRET_KEY must be set for production")
 
 # Initialize logging
 setup_logging(app)
 
-# Security configurations
-app.config["WTF_CSRF_TIME_LIMIT"] = None
-app.config["WTF_CSRF_SSL_STRICT"] = False
-app.config["SESSION_COOKIE_SECURE"] = False
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["PERMANENT_SESSION_LIFETIME"] = 3600 * 8
-
 # Initialize CSRF protection
-if CSRF_AVAILABLE:
+if CSRF_AVAILABLE and CSRFProtect and app.config.get("WTF_CSRF_ENABLED", True):
     csrf = CSRFProtect(app)
+elif app.config.get("WTF_CSRF_ENABLED", True):
+    raise RuntimeError("flask-wtf is required for CSRF protection")
 else:
     csrf = None
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(error):
+    if request.is_json or request.path.startswith('/api/'):
+        return jsonify({'error': '上传文件过大', 'status': 413}), 413
+    flash('上传文件过大，请压缩后重试。', 'danger')
+    return redirect(request.referrer or url_for('index'))
 
 
 # ==================== 数据库连接管理 ====================
@@ -558,4 +567,8 @@ if __name__ == "__main__":
     init_db()
 
     # 启动应用
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5001)), debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5001)),
+        debug=app.config.get("DEBUG", False)
+    )
