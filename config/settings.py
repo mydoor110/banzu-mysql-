@@ -9,13 +9,16 @@ from datetime import timedelta
 
 # Base configuration
 BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "app.db")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 EXPORT_DIR = os.path.join(BASE_DIR, "exports")
 
 # Application settings
 APP_TITLE = "班组管理系统"
-SECRET_KEY = os.environ.get("APP_SECRET_KEY", "dev-secret-change-in-production")
+SECRET_KEY = (
+    os.environ.get("SECRET_KEY")
+    or os.environ.get("APP_SECRET_KEY")
+    or "dev-secret-change-in-production"
+)
 ALLOWED_EXTENSIONS = {"pdf", "xlsx", "xls"}
 
 # Security configuration
@@ -23,12 +26,15 @@ class SecurityConfig:
     # CSRF Protection
     WTF_CSRF_TIME_LIMIT = None  # No time limit for CSRF tokens
     WTF_CSRF_SSL_STRICT = False  # Set to True in production with HTTPS
+    WTF_CSRF_ENABLED = os.environ.get("WTF_CSRF_ENABLED", "True").lower() == "true"
 
     # Session Security
     SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     PERMANENT_SESSION_LIFETIME = int(os.environ.get("SESSION_TIMEOUT", 3600 * 8))  # 8 hours default
+
+    MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", str(50 * 1024 * 1024)))
 
     # Security Headers
     X_FRAME_OPTIONS = "DENY"

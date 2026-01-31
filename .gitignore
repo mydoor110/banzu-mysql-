@@ -37,6 +37,7 @@ venv/
 *.backup.*
 *_backup.*
 *_backup.html
+scripts/*backup*.json
 
 # 3. 必须保留的根目录文件 (白名单)
 !/.gitignore
@@ -44,7 +45,6 @@ venv/
 !/requirements.txt
 !/.env.example
 !/app.py
-
 
 
 
