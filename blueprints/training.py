@@ -8,7 +8,7 @@ import os
 import re
 from datetime import datetime
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, jsonify, current_app
 from openpyxl import Workbook, load_workbook
 import xlrd
 from werkzeug.utils import secure_filename
@@ -19,7 +19,7 @@ from config.settings import (
 
 from config.settings import APP_TITLE, EXPORT_DIR
 from models.database import get_db
-from .decorators import login_required, role_required, top_level_manager_required
+from .decorators import login_required, role_required, top_level_manager_required, admin_required
 from .helpers import require_user_id, get_accessible_department_ids, validate_employee_access, build_department_filter, parse_date_filters, build_date_filter_sql, log_import_operation
 from utils.training_utils import normalize_project_name
 
@@ -107,6 +107,10 @@ def upload():
 def upload_daily_report():
     """上传并导入培训日报Excel文件（支持批量.xls文件）"""
     if request.method == 'POST':
+        max_size = current_app.config.get('MAX_CONTENT_LENGTH')
+        if max_size and request.content_length and request.content_length > max_size:
+            flash('上传文件过大，请压缩后重试。', 'warning')
+            return redirect(url_for("training.upload_daily_report"))
         files = request.files.getlist("files")
         if not files or all(f.filename == "" for f in files):
             flash("请选择要上传的培训日报文件。", "warning")
@@ -1240,8 +1244,11 @@ def test_api():
 
 @training_bp.route('/debug')
 @login_required
+@admin_required
 def debug_page():
     """调试页面"""
+    if not current_app.config.get('DEBUG'):
+        return "Not Found", 404
     from flask import send_file
     import os
     debug_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'debug_page.html')

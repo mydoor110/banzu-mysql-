@@ -10,7 +10,7 @@ import pymysql
 from datetime import datetime
 from typing import Dict, List, Tuple
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, current_app
 from openpyxl import Workbook
 from werkzeug.utils import secure_filename
 
@@ -498,6 +498,10 @@ def upload():
         selected_month = now.month
 
     if request.method == "POST":
+        max_size = current_app.config.get('MAX_CONTENT_LENGTH')
+        if max_size and request.content_length and request.content_length > max_size:
+            flash('上传文件过大，请压缩后重试。', 'warning')
+            return redirect(url_for("performance.upload"))
         year_raw = (request.form.get("target_year") or "").strip()
         month_raw = (request.form.get("target_month") or "").strip()
         try:
