@@ -4,7 +4,7 @@
 
 班组管理系统是一个全功能的企业级管理平台，为基层班组提供绩效管理、培训管理、安全管理、人员管理和部门管理等核心功能。基于 Flask Blueprint 架构开发，使用 Bootstrap 5 构建现代化响应式界面。
 
-项目遵循"轻量、易部署、易维护"的设计理念，支持 **SQLite** 和 **MySQL** 双数据库模式，支持多部门层级管理和权限控制。
+项目遵循"轻量、易部署、易维护"的设计理念，当前仅支持 **MySQL** 数据库，支持多部门层级管理和权限控制。
 
 ## 系统功能
 
@@ -58,7 +58,7 @@
 
 ### 后端技术栈
 - **框架**: Flask 2.x + Blueprint 模块化架构
-- **数据库**: SQLite / MySQL 双模式支持
+- **数据库**: MySQL
 - **ORM**: 原生 SQL + 数据库抽象层
 - **认证**: Session + werkzeug.security 密码哈希
 - **文件处理**: pandas + openpyxl + pdfplumber
@@ -78,7 +78,7 @@
 │   └── settings.py             # 配置管理（数据库、路径等）
 ├── models/
 │   ├── __init__.py
-│   └── database.py             # 数据库连接和初始化（支持 SQLite/MySQL）
+│   └── database.py             # 数据库连接和初始化（MySQL）
 ├── blueprints/                 # 功能模块（Blueprint 架构）
 │   ├── auth.py                 # 认证模块
 │   ├── admin.py                # 管理员模块
@@ -132,13 +132,37 @@
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 安装系统依赖（MySQL 备份必需）
+
+系统备份依赖 `mysqldump`（MySQL 客户端工具）。
+
+```bash
+# Ubuntu / Debian
+sudo apt-get update && sudo apt-get install -y mysql-client
+
+# CentOS / RHEL
+sudo yum install -y mysql
+
+# Fedora
+sudo dnf install -y mysql
+
+# Alpine
+sudo apk add mysql-client
+```
+
+或使用脚本：
+
+```bash
+bash scripts/install_system_deps.sh
+```
+
+### 2. 安装 Python 依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. 环境配置
+### 3. 环境配置
 
 复制环境变量示例文件：
 
@@ -159,12 +183,10 @@ SECRET_KEY=your_secret_key_here
 # 应用端口
 PORT=5001
 
-# 数据库配置（二选一）
-# 方式一：使用 SQLite（默认）
-DB_TYPE=sqlite
-DB_PATH=app.db
+# 上传文件大小限制（字节，默认 50MB）
+MAX_CONTENT_LENGTH=52428800
 
-# 方式二：使用 MySQL
+# 数据库配置（MySQL）
 DB_TYPE=mysql
 MYSQL_HOST=localhost
 MYSQL_PORT=3306
@@ -174,7 +196,7 @@ MYSQL_DATABASE=team_management
 MYSQL_CHARSET=utf8mb4
 ```
 
-### 3. 启动服务
+### 4. 启动服务
 
 ```bash
 python app.py
@@ -186,7 +208,7 @@ python app.py
 flask --app app.py run --host=0.0.0.0 --port=5001
 ```
 
-### 4. 访问系统
+### 5. 访问系统
 
 打开浏览器访问 `http://localhost:5001`，使用配置的管理员账号登录。
 
@@ -202,7 +224,8 @@ CREATE DATABASE team_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
 
 1. 修改 `.env` 文件中的 `DB_TYPE=mysql`
 2. 配置 MySQL 连接信息
-3. 首次启动时会自动创建所有表和索引
+3. 确保已安装 `mysqldump`（用于备份）
+4. 首次启动时会自动创建所有表和索引
 
 ## 权限体系
 
@@ -226,7 +249,7 @@ CREATE DATABASE team_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
   - 修复日期显示下标错误
 
 ### v3.0.0 (上一版本) - 2025年1月
-- ✅ **MySQL 数据库支持**: 支持 SQLite/MySQL 双模式
+- ✅ **MySQL 数据库支持**: 已默认启用 MySQL 单一数据库模式
 - ✅ **Blueprint 架构重构**: 模块化代码组织
 - ✅ **AI 智能分析**: 多 AI 提供商支持
 - ✅ **算法配置系统**: 三档算法预设（严格/标准/宽松）
