@@ -183,6 +183,9 @@ SECRET_KEY=your_secret_key_here
 # 应用端口
 PORT=5001
 
+# Session 过期时间（秒）
+SESSION_TIMEOUT=86400
+
 # 上传文件大小限制（字节，默认 50MB）
 MAX_CONTENT_LENGTH=52428800
 
@@ -194,6 +197,11 @@ MYSQL_USER=root
 MYSQL_PASSWORD=your_mysql_password
 MYSQL_DATABASE=team_management
 MYSQL_CHARSET=utf8mb4
+
+# 钉钉免登配置（企业内部应用）
+DINGTALK_APP_KEY=your_dingtalk_app_key
+DINGTALK_APP_SECRET=your_dingtalk_app_secret
+DINGTALK_CORP_ID=your_dingtalk_corp_id
 ```
 
 ### 4. 启动服务

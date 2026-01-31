@@ -1487,6 +1487,31 @@ def api_analytics_severity_drilldown():
                 "score": int(record_score) if record_score == int(record_score) else round(record_score, 1)
             })
 
+
+
+    # 下钻逻辑判断
+    problem_count = len(problem_records)
+
+    # 1分以下且问题过多（超过30条）不支持下钻
+    if score <= 1 and problem_count > 30:
+        return jsonify({
+            "canDrilldown": False,
+            "message": f"该分数段问题过多（{problem_count}条），不支持下钻查看",
+            "problemCount": problem_count
+        })
+
+    # 2分以上必须支持下钻
+    # 或者1分以下但问题不多的情况也支持下钻
+    return jsonify({
+        "canDrilldown": True,
+        "score": score,
+        "scoreLabel": score_str,
+        "problemCount": problem_count,
+        "problems": problem_records,
+        "message": f"找到 {problem_count} 条问题记录"
+    })
+
+
 @safety_bp.route('/debug_check/<emp_no>')
 @login_required
 @admin_required
@@ -1540,24 +1565,3 @@ def debug_check_user(emp_no):
     
     return "<br>".join(output)
 
-    # 下钻逻辑判断
-    problem_count = len(problem_records)
-
-    # 1分以下且问题过多（超过30条）不支持下钻
-    if score <= 1 and problem_count > 30:
-        return jsonify({
-            "canDrilldown": False,
-            "message": f"该分数段问题过多（{problem_count}条），不支持下钻查看",
-            "problemCount": problem_count
-        })
-
-    # 2分以上必须支持下钻
-    # 或者1分以下但问题不多的情况也支持下钻
-    return jsonify({
-        "canDrilldown": True,
-        "score": score,
-        "scoreLabel": score_str,
-        "problemCount": problem_count,
-        "problems": problem_records,
-        "message": f"找到 {problem_count} 条问题记录"
-    })

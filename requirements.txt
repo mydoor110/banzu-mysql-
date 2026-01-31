@@ -12,3 +12,7 @@ requests
 xlsxwriter
 xlrd
 pandas
+scikit-learn
+jieba
+lifelines
+httpx

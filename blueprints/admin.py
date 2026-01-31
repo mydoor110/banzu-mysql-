@@ -37,6 +37,9 @@ def users():
         password = request.form.get('password', '').strip()
         department_id = request.form.get('department_id')
         role = request.form.get('role', 'user')
+        display_name = request.form.get('display_name', '').strip()
+        dingtalk_userid = request.form.get('dingtalk_userid', '').strip()
+        dingtalk_unionid = request.form.get('dingtalk_unionid', '').strip()
 
         if not username or not password:
             flash('请输入用户名和密码', 'warning')
@@ -44,8 +47,21 @@ def users():
             try:
                 department_id = int(department_id) if department_id else None
                 cur.execute(
-                    "INSERT INTO users(username, password_hash, department_id, role) VALUES (%s, %s, %s, %s)",
-                    (username, generate_password_hash(password), department_id, role)
+                    """
+                    INSERT INTO users(
+                        username, password_hash, department_id, role,
+                        display_name, dingtalk_userid, dingtalk_unionid
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        username,
+                        generate_password_hash(password),
+                        department_id,
+                        role,
+                        display_name or None,
+                        dingtalk_userid or None,
+                        dingtalk_unionid or None
+                    )
                 )
                 new_user_id = cur.lastrowid
 
@@ -59,7 +75,7 @@ def users():
                 conn.commit()
                 flash('用户已创建', 'success')
             except pymysql.err.IntegrityError:
-                flash('用户名已存在', 'danger')
+                flash('用户名或钉钉UserId已存在', 'danger')
             except Exception as e:
                 flash(f'创建失败: {e}', 'danger')
 
@@ -69,6 +85,9 @@ def users():
         username = request.form.get('username', '').strip()
         department_id = request.form.get('department_id')
         role = request.form.get('role', 'user')
+        display_name = request.form.get('display_name', '').strip()
+        dingtalk_userid = request.form.get('dingtalk_userid', '').strip()
+        dingtalk_unionid = request.form.get('dingtalk_unionid', '').strip()
         if username:
             try:
                 # 获取用户的旧信息
@@ -78,8 +97,23 @@ def users():
                 old_role = old_info['role'] if old_info else None
 
                 department_id = int(department_id) if department_id else None
-                cur.execute("UPDATE users SET username=%s,department_id=%s, role=%s WHERE id=%s",
-                          (username, department_id, role, user_id))
+                cur.execute(
+                    """
+                    UPDATE users
+                    SET username=%s, department_id=%s, role=%s,
+                        display_name=%s, dingtalk_userid=%s, dingtalk_unionid=%s
+                    WHERE id=%s
+                    """,
+                    (
+                        username,
+                        department_id,
+                        role,
+                        display_name or None,
+                        dingtalk_userid or None,
+                        dingtalk_unionid or None,
+                        user_id
+                    )
+                )
 
                 # 双向同步部门负责人
                 # 1. 如果从manager变为非manager,清除原部门的负责人设置
@@ -106,7 +140,7 @@ def users():
                 conn.commit()
                 flash('用户信息更新成功', 'success')
             except pymysql.err.IntegrityError:
-                flash('用户名已存在', 'danger')
+                flash('用户名或钉钉UserId已存在', 'danger')
         return redirect(url_for('admin.users'))
 
     elif action == 'reset':
@@ -132,7 +166,7 @@ def users():
     # 获取用户列表
     cur.execute("""
         SELECT u.id, u.username, u.created_at, u.role,
-               u.department_id,
+               u.department_id, u.display_name, u.dingtalk_userid, u.dingtalk_unionid,
                d.name as department_name
         FROM users u
         LEFT JOIN departments d ON u.department_id = d.id

@@ -68,10 +68,26 @@ def _init_mysql_tables(cur):
             id INT AUTO_INCREMENT PRIMARY KEY,
             username VARCHAR(255) NOT NULL UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
+            dingtalk_userid VARCHAR(128),
+            dingtalk_unionid VARCHAR(128),
+            display_name VARCHAR(255),
             department_id INT,
             role VARCHAR(50) DEFAULT 'user',
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_dingtalk_userid (dingtalk_userid),
             FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+
+        # DingTalk access token cache
+        """
+        CREATE TABLE IF NOT EXISTS dingtalk_token_cache (
+            id INT PRIMARY KEY,
+            access_token VARCHAR(512) NOT NULL,
+            expires_at DATETIME NOT NULL,
+            jsapi_ticket VARCHAR(512),
+            ticket_expires_at DATETIME,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """,
 
@@ -445,6 +461,9 @@ def _init_mysql_tables(cur):
     # Re-enable foreign key checks
     cur.execute("SET FOREIGN_KEY_CHECKS = 1")
 
+    # Ensure schema updates for existing tables
+    _ensure_schema_updates(cur)
+
     # Create view for recent imports (MySQL version)
     try:
         cur.execute("DROP VIEW IF EXISTS v_recent_imports")
@@ -526,6 +545,30 @@ def _create_indexes(cur):
                 cur.execute(f"CREATE INDEX {index_name} ON {table_name}({columns})")
         except Exception as e:
             print(f"Warning: Could not create index: {e}")
+
+
+def _ensure_schema_updates(cur):
+    """Apply non-destructive schema updates for existing tables"""
+    _ensure_column(cur, "users", "dingtalk_userid", "VARCHAR(128)")
+    _ensure_column(cur, "users", "dingtalk_unionid", "VARCHAR(128)")
+    _ensure_column(cur, "users", "display_name", "VARCHAR(255)")
+    _ensure_unique_index(cur, "users", "uk_dingtalk_userid", "dingtalk_userid")
+
+    # DingTalk token cache updates
+    _ensure_column(cur, "dingtalk_token_cache", "jsapi_ticket", "VARCHAR(512)")
+    _ensure_column(cur, "dingtalk_token_cache", "ticket_expires_at", "DATETIME")
+
+
+def _ensure_column(cur, table_name, column_name, column_def):
+    cur.execute(f"SHOW COLUMNS FROM {table_name} LIKE %s", (column_name,))
+    if cur.fetchone() is None:
+        cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}")
+
+
+def _ensure_unique_index(cur, table_name, index_name, columns):
+    cur.execute(f"SHOW INDEX FROM {table_name} WHERE Key_name = %s", (index_name,))
+    if cur.fetchone() is None:
+        cur.execute(f"CREATE UNIQUE INDEX {index_name} ON {table_name}({columns})")
 
 
 def bootstrap_data():

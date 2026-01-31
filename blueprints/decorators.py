@@ -5,7 +5,25 @@
 提供认证、授权等通用装饰器
 """
 from functools import wraps
+from datetime import datetime, timedelta
 from flask import session, redirect, url_for, flash, request
+
+
+def _is_dingtalk_session_valid():
+    """Check whether DingTalk login session is within 24 hours"""
+    if session.get('login_source') != 'dingtalk':
+        return True
+
+    login_at = session.get('login_at')
+    if not login_at:
+        return False
+
+    try:
+        login_time = datetime.fromisoformat(login_at)
+    except (TypeError, ValueError):
+        return False
+
+    return datetime.now() - login_time <= timedelta(hours=24)
 
 
 def login_required(f):
@@ -21,6 +39,10 @@ def login_required(f):
             # 保存原始请求路径,登录后跳转回来
             next_url = request.path
             return redirect(url_for('auth.login', next=next_url))
+        if not _is_dingtalk_session_valid():
+            session.clear()
+            flash('登录已过期，请重新登录', 'warning')
+            return redirect(url_for('auth.login', next=request.path))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -36,6 +58,11 @@ def admin_required(f):
         # 先检查是否登录
         if not session.get('logged_in'):
             flash('请先登录', 'warning')
+            return redirect(url_for('auth.login', next=request.path))
+
+        if not _is_dingtalk_session_valid():
+            session.clear()
+            flash('登录已过期，请重新登录', 'warning')
             return redirect(url_for('auth.login', next=request.path))
 
         # 检查管理员权限
@@ -68,6 +95,11 @@ def manager_required(f):
         # 先检查是否登录
         if not session.get('logged_in'):
             flash('请先登录', 'warning')
+            return redirect(url_for('auth.login', next=request.path))
+
+        if not _is_dingtalk_session_valid():
+            session.clear()
+            flash('登录已过期，请重新登录', 'warning')
             return redirect(url_for('auth.login', next=request.path))
 
         # 检查管理员权限
@@ -103,6 +135,11 @@ def role_required(required_role):
             # 检查是否登录
             if not session.get('logged_in'):
                 flash('请先登录', 'warning')
+                return redirect(url_for('auth.login', next=request.path))
+
+            if not _is_dingtalk_session_valid():
+                session.clear()
+                flash('登录已过期，请重新登录', 'warning')
                 return redirect(url_for('auth.login', next=request.path))
 
             # 检查角色权限
@@ -151,7 +188,12 @@ def top_level_manager_required(f):
         if not session.get('logged_in'):
             flash('请先登录', 'warning')
             return redirect(url_for('auth.login', next=request.path))
-        
+
+        if not _is_dingtalk_session_valid():
+            session.clear()
+            flash('登录已过期，请重新登录', 'warning')
+            return redirect(url_for('auth.login', next=request.path))
+
         from models.database import get_db
         
         user_id = session.get('user_id')

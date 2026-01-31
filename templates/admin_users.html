@@ -22,8 +22,20 @@
             <input class="form-control" name="username" required>
           </div>
           <div class="mb-3">
+            <label class="form-label">姓名</label>
+            <input class="form-control" name="display_name" placeholder="可选">
+          </div>
+          <div class="mb-3">
             <label class="form-label">初始密码</label>
             <input class="form-control" type="password" name="password" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">钉钉UserId</label>
+            <input class="form-control" name="dingtalk_userid" placeholder="可选">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">钉钉UnionId</label>
+            <input class="form-control" name="dingtalk_unionid" placeholder="可选">
           </div>
           <div class="mb-3">
             <label class="form-label">所属部门</label>
@@ -58,8 +70,10 @@
               <tr>
                 <th>ID</th>
                 <th>用户名</th>
+                <th>姓名</th>
                 <th>部门</th>
                 <th>角色</th>
+                <th>钉钉UserId</th>
                 <th>创建时间</th>
                 <th style="width:200px">操作</th>
               </tr>
@@ -70,6 +84,13 @@
                 <td>{{ u['id'] }}</td>
                 <td>
                   <strong>{{ u['username'] }}</strong>
+                </td>
+                <td>
+                  {% if u['display_name'] %}
+                    <span class="text-truncate d-inline-block" style="max-width: 140px;">{{ u['display_name'] }}</span>
+                  {% else %}
+                    <small class="text-muted">未设置</small>
+                  {% endif %}
                 </td>
                 <td>
                   {% if u['department_name'] %}
@@ -88,27 +109,41 @@
                   {% endif %}
                 </td>
                 <td>
+                  {% if u['dingtalk_userid'] %}
+                    <span class="text-truncate d-inline-block" style="max-width: 140px;">{{ u['dingtalk_userid'] }}</span>
+                  {% else %}
+                    <small class="text-muted">未绑定</small>
+                  {% endif %}
+                </td>
+                <td>
                   <small>{{ u['created_at'] }}</small>
                 </td>
                 <td>
-                  <div class="btn-group btn-group-sm">
+                  <div class="btn-group btn-group-sm" role="group" aria-label="用户操作">
                     <a class="btn btn-outline-secondary"
                        href="{{ url_for('admin.users', action='reset', id=u['id'], newpw='123456') }}"
                        onclick="return confirm('重置密码为 123456?')"
                        title="重置密码">
-                      <i class="fas fa-key"></i>
+                      <i class="fas fa-key me-1"></i>重置
                     </a>
                     {% if u['id'] != 1 %}
                     <button class="btn btn-outline-primary"
-                            onclick="editUser({{ u['id'] }}, '{{ u['username'] }}', '{{ u['department_id'] or '' }}', '{{ u['role'] }}')"
+                            data-user-id="{{ u['id'] }}"
+                            data-username="{{ u['username'] }}"
+                            data-display-name="{{ u['display_name'] or '' }}"
+                            data-department-id="{{ u['department_id'] or '' }}"
+                            data-role="{{ u['role'] }}"
+                            data-dingtalk-userid="{{ u['dingtalk_userid'] or '' }}"
+                            data-dingtalk-unionid="{{ u['dingtalk_unionid'] or '' }}"
+                            onclick="editUser(this)"
                             title="编辑用户">
-                      <i class="fas fa-edit"></i>
+                      <i class="fas fa-edit me-1"></i>编辑
                     </button>
                     <a class="btn btn-outline-danger"
                        href="{{ url_for('admin.users', action='delete', id=u['id']) }}"
                        onclick="return confirm('删除用户会清空其所有数据，确认删除？')"
                        title="删除用户">
-                      <i class="fas fa-trash"></i>
+                      <i class="fas fa-trash me-1"></i>删除
                     </a>
                     {% endif %}
                   </div>
@@ -140,6 +175,10 @@
             <input type="text" name="username" id="editUsername" class="form-control" required>
           </div>
           <div class="mb-3">
+            <label class="form-label">姓名</label>
+            <input type="text" name="display_name" id="editDisplayName" class="form-control">
+          </div>
+          <div class="mb-3">
             <label class="form-label">所属部门</label>
             <select name="department_id" id="editDepartment" class="form-select">
               <option value="">请选择部门</option>
@@ -156,6 +195,14 @@
               <option value="admin">系统管理员</option>
             </select>
           </div>
+          <div class="mb-3">
+            <label class="form-label">钉钉UserId</label>
+            <input type="text" name="dingtalk_userid" id="editDingtalkUserId" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">钉钉UnionId</label>
+            <input type="text" name="dingtalk_unionid" id="editDingtalkUnionId" class="form-control">
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
@@ -167,11 +214,18 @@
 </div>
 
 <script>
-function editUser(userId, username, departmentId, role) {
-  document.getElementById('editUserId').value = userId;
-  document.getElementById('editUsername').value = username;
-  document.getElementById('editDepartment').value = departmentId;
-  document.getElementById('editRole').value = role;
+function editUser(button) {
+  if (!button || !button.dataset) {
+    return;
+  }
+
+  document.getElementById('editUserId').value = button.dataset.userId || '';
+  document.getElementById('editUsername').value = button.dataset.username || '';
+  document.getElementById('editDisplayName').value = button.dataset.displayName || '';
+  document.getElementById('editDepartment').value = button.dataset.departmentId || '';
+  document.getElementById('editRole').value = button.dataset.role || 'user';
+  document.getElementById('editDingtalkUserId').value = button.dataset.dingtalkUserid || '';
+  document.getElementById('editDingtalkUnionId').value = button.dataset.dingtalkUnionid || '';
 
   const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
   modal.show();

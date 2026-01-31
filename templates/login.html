@@ -5,6 +5,7 @@
     <div class="card shadow auth-card">
       <div class="card-body p-4">
         <h5 class="card-title mb-3">登录</h5>
+        <div class="alert alert-warning py-2 small mb-3" id="dingtalk-env-tip" style="display:none;"></div>
         <form method="post">
           <div class="mb-3">
             <label class="form-label">账号</label>
@@ -15,9 +16,206 @@
             <input class="form-control" type="password" name="password" required>
           </div>
           <button class="btn btn-primary w-100" type="submit">登录</button>
+          <button class="btn btn-outline-primary w-100 mt-2" type="button" id="dingtalk-login-btn">钉钉免登</button>
         </form>
       </div>
     </div>
   </div>
 </div>
+<script>window.__m = window.module; window.__e = window.exports; window.module = undefined; window.exports = undefined;</script>
+<script src="https://g.alicdn.com/dingding/dingtalk-jsapi/2.13.0/dingtalk.open.js"></script>
+<script>if (window.__m !== undefined) window.module = window.__m; if (window.__e !== undefined) window.exports = window.__e;</script>
+<script>
+  (function () {
+    var btn = document.getElementById('dingtalk-login-btn');
+    var tip = document.getElementById('dingtalk-env-tip');
+    if (!btn) return;
+
+    var corpId = "{{ dingtalk_corp_id }}";
+    var ua = navigator.userAgent || '';
+    var inDingTalk = ua.indexOf('DingTalk') !== -1;
+    var ddConfigured = false;
+
+    function showTip(text, success) {
+      if (!tip) return;
+      tip.textContent = text;
+      tip.style.display = 'block';
+      tip.classList.toggle('alert-success', !!success);
+      tip.classList.toggle('alert-warning', !success);
+      tip.classList.toggle('alert-danger', success === false && text.indexOf('失败') !== -1);
+    }
+
+    // 配置钉钉 JSAPI
+    function configureDingTalkJSAPI(callback) {
+      if (ddConfigured) {
+        callback();
+        return;
+      }
+
+      var currentUrl = location.href.split('#')[0];
+      fetch('/dingtalk/jsapi_config?url=' + encodeURIComponent(currentUrl))
+        .then(function (response) { return response.json(); })
+        .then(function (config) {
+          if (config.error) {
+            throw new Error(config.error + (config.detail ? ': ' + config.detail : ''));
+          }
+
+          console.log('JSAPI 配置:', config);
+
+          dd.config({
+            agentId: config.agentId,
+            corpId: config.corpId,
+            timeStamp: config.timeStamp,
+            nonceStr: config.nonceStr,
+            signature: config.signature,
+            type: 0,
+            jsApiList: [
+              'runtime.info',
+              'biz.contact.choose',
+              'device.notification.confirm',
+              'device.notification.alert',
+              'device.notification.prompt',
+              'biz.ding.post',
+              'biz.util.openLink'
+            ]
+          });
+
+          dd.ready(function () {
+            console.log('dd.config 鉴权成功');
+            ddConfigured = true;
+            callback();
+          });
+
+          dd.error(function (err) {
+            console.error('dd.config 鉴权失败:', err);
+            showTip('钉钉 JSAPI 鉴权失败：' + (err.errorMessage || JSON.stringify(err)), false);
+          });
+        })
+        .catch(function (err) {
+          console.error('获取 JSAPI 配置失败:', err);
+          showTip('获取钉钉配置失败：' + err.message, false);
+        });
+    }
+
+    function doRequestAuthCode(onSuccess, onFail) {
+      var d = window.dd;
+      if (!d) {
+        onFail('钉钉 SDK 未加载 (dd=undefined)，请刷新页面重试');
+        return;
+      }
+
+      // 优先使用新版 API
+      if (d.runtime && d.runtime.permission && d.runtime.permission.requestAuthCode) {
+        console.log('使用 dd.runtime.permission.requestAuthCode');
+        d.runtime.permission.requestAuthCode({
+          corpId: corpId,
+          onSuccess: onSuccess,
+          onFail: onFail
+        });
+      } else if (typeof d.requestAuthCode === 'function') {
+        console.log('使用 dd.requestAuthCode');
+        d.requestAuthCode({
+          corpId: corpId,
+          onSuccess: onSuccess,
+          onFail: onFail
+        });
+      } else {
+        console.error('钉钉 SDK 对象:', d);
+        onFail('requestAuthCode API 不可用，请确保在钉钉客户端中打开');
+      }
+    }
+
+    function onAuthSuccess(result) {
+      console.log('授权成功:', result);
+      var code = result.code || result.authCode;
+      if (!code) {
+        showTip('未获取到authCode，请重试', false);
+        sessionStorage.removeItem('dingtalkLoginAttempted');
+        return;
+      }
+      showTip('授权码已获取，正在登录…', true);
+      var nextUrl = new URLSearchParams(window.location.search).get('next') || '';
+      var href = '/dingtalk/login?authCode=' + encodeURIComponent(code);
+      if (nextUrl) href += '&next=' + encodeURIComponent(nextUrl);
+      window.location.href = href;
+    }
+
+    function onAuthFail(err) {
+      console.error('authCode获取失败:', err);
+      sessionStorage.removeItem('dingtalkLoginAttempted');
+      var errorText = '获取authCode失败';
+      if (err && (err.errorCode || err.errorMessage)) {
+        errorText += '：' + (err.errorCode || '') + ' ' + (err.errorMessage || '');
+      } else if (typeof err === 'string') {
+        errorText += '：' + err;
+      }
+      showTip(errorText, false);
+    }
+
+    function startDingTalkLogin() {
+      if (!corpId) {
+        showTip('CorpId未配置，无法免登', false);
+        return;
+      }
+      if (!window.dd) {
+        showTip('钉钉 SDK 未加载，请刷新页面重试', false);
+        return;
+      }
+
+      // 免登接口不需要 dd.config 鉴权，直接获取授权码
+      showTip('正在获取免登授权码…', true);
+      doRequestAuthCode(onAuthSuccess, onAuthFail);
+    }
+
+    btn.addEventListener('click', function () {
+      if (!inDingTalk) {
+        alert('请在钉钉客户端中打开');
+        return;
+      }
+      sessionStorage.removeItem('dingtalkLoginAttempted');
+      startDingTalkLogin();
+    });
+
+    /* 自动免登 */
+    function autoLogin() {
+      if (sessionStorage.getItem('dingtalkLoginAttempted') === '1') return;
+      if (!window.dd) {
+        console.warn('自动登录跳过：钉钉 SDK 未加载');
+        return;
+      }
+      sessionStorage.setItem('dingtalkLoginAttempted', '1');
+      startDingTalkLogin();
+    }
+
+    if (inDingTalk) {
+      // 等待 SDK 加载完成
+      var checkSDK = setInterval(function () {
+        if (window.dd) {
+          clearInterval(checkSDK);
+          setTimeout(autoLogin, 500);
+        }
+      }, 100);
+
+      // 10秒后停止检测
+      setTimeout(function () {
+        clearInterval(checkSDK);
+        if (!window.dd) {
+          showTip('钉钉 SDK 加载超时，请刷新页面重试', false);
+        }
+      }, 10000);
+    }
+
+    // 初始提示
+    if (tip) {
+      setTimeout(function () {
+        var tipText = inDingTalk ? '钉钉环境已识别' : '未识别到钉钉环境';
+        if (inDingTalk) {
+          tipText += '（SDK状态: ' + (window.dd ? '已加载' : '加载中...') + '）';
+        }
+        if (!corpId) tipText += '，CorpId未配置';
+        showTip(tipText, inDingTalk && !!corpId && !!window.dd);
+      }, 100);
+    }
+  })();
+</script>
 {% endblock %}

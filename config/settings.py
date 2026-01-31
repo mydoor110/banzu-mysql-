@@ -20,6 +20,7 @@ SECRET_KEY = (
     or "dev-secret-change-in-production"
 )
 ALLOWED_EXTENSIONS = {"pdf", "xlsx", "xls"}
+DINGTALK_CORP_ID = os.environ.get("DINGTALK_CORP_ID", "").strip()
 
 # Security configuration
 class SecurityConfig:
@@ -32,7 +33,7 @@ class SecurityConfig:
     SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    PERMANENT_SESSION_LIFETIME = int(os.environ.get("SESSION_TIMEOUT", 3600 * 8))  # 8 hours default
+    PERMANENT_SESSION_LIFETIME = int(os.environ.get("SESSION_TIMEOUT", 3600 * 24))  # 24 hours default
 
     MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", str(50 * 1024 * 1024)))
 
@@ -45,7 +46,7 @@ class SecurityConfig:
     # Content Security Policy
     CSP = {
         "default-src": "'self'",
-        "script-src": "'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+        "script-src": "'self' 'unsafe-inline' https://cdn.jsdelivr.net https://g.alicdn.com",
         "style-src": "'self' 'unsafe-inline' https://cdn.jsdelivr.net",
         "font-src": "'self' https://cdn.jsdelivr.net",
         "img-src": "'self' data:",
@@ -69,6 +70,7 @@ class Config:
     def __init__(self):
         self.SECRET_KEY = SECRET_KEY
         self.SQLALCHEMY_TRACK_MODIFICATIONS = False
+        self.DINGTALK_CORP_ID = DINGTALK_CORP_ID
 
         # Security settings
         for key, value in vars(SecurityConfig).items():
