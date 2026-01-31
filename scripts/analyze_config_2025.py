@@ -26,12 +26,12 @@ from blueprints.personnel import (
 # Mock Flask app and DB connection if needed, or just use pymysql directly
 def connect_db():
     return pymysql.connect(
-        host='192.168.1.99',
-        port=3306,
-        user='Banzu',
-        password='MbWwMipDK88hQtHX',
-        database='Banzu',
-        charset='utf8mb4',
+        host=DatabaseConfig.MYSQL_HOST,
+        port=DatabaseConfig.MYSQL_PORT,
+        user=DatabaseConfig.MYSQL_USER,
+        password=DatabaseConfig.MYSQL_PASSWORD,
+        database=DatabaseConfig.MYSQL_DATABASE,
+        charset=DatabaseConfig.MYSQL_CHARSET,
         cursorclass=pymysql.cursors.DictCursor
     )
 
