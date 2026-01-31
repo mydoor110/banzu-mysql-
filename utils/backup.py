@@ -439,6 +439,15 @@ class BackupManager:
             restore_info['safety_backup'] = safety_backup['name']
 
             with zipfile.ZipFile(backup_path, 'r') as backup_zip:
+                base_dir = Path(BackupConfig.BACKUP_DIR).resolve()
+
+                def safe_extract(member):
+                    target_path = (base_dir / member).resolve()
+                    if not str(target_path).startswith(str(base_dir) + os.sep):
+                        raise ValueError(f"Unsafe path in backup: {member}")
+                    backup_zip.extract(member, base_dir)
+                    return str(target_path)
+
                 # Restore database
                 if restore_database:
                     if task_tracker:
@@ -447,8 +456,7 @@ class BackupManager:
                         
                     sql_files = [f for f in backup_zip.namelist() if f.endswith('.sql')]
                     for sql_file in sql_files:
-                        backup_zip.extract(sql_file, BackupConfig.BACKUP_DIR)
-                        extracted_path = os.path.join(BackupConfig.BACKUP_DIR, sql_file)
+                        extracted_path = safe_extract(sql_file)
 
                         # Restore database using mysql command
                         success = self._restore_database(extracted_path)
@@ -471,8 +479,7 @@ class BackupManager:
                         
                     config_files = [f for f in backup_zip.namelist() if f.startswith('config/')]
                     for config_file in config_files:
-                        backup_zip.extract(config_file, BackupConfig.BACKUP_DIR)
-                        extracted_path = os.path.join(BackupConfig.BACKUP_DIR, config_file)
+                        extracted_path = safe_extract(config_file)
 
                         target_path = os.path.join(os.path.dirname(BackupConfig.CONFIG_DIR), config_file)
                         os.makedirs(os.path.dirname(target_path), exist_ok=True)
@@ -495,8 +502,7 @@ class BackupManager:
                     
                     upload_files = [f for f in backup_zip.namelist() if f.startswith('uploads/')]
                     for upload_file in upload_files:
-                        backup_zip.extract(upload_file, BackupConfig.BACKUP_DIR)
-                        extracted_path = os.path.join(BackupConfig.BACKUP_DIR, upload_file)
+                        extracted_path = safe_extract(upload_file)
 
                         target_path = os.path.join(os.path.dirname(BackupConfig.UPLOAD_DIR), upload_file)
                         os.makedirs(os.path.dirname(target_path), exist_ok=True)
