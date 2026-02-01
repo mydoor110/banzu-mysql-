@@ -1,21 +1,49 @@
 # ==================== 全局忽略规则 ====================
 # 这些规则应用于所有目录
+
+# Python 编译文件
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# 操作系统文件
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# 日志文件
 *.log
+logs/
+
+# 数据库文件
 *.sqlite
 *.db
 *.db-journal
+
+# 环境配置
 .env
 .env.*.local
+
+# 虚拟环境
 .venv/
 venv/
+env/
+ENV/
+
+# IDE 配置
 .vscode/
 .idea/
 .claude/
+*.sublime-project
+*.sublime-workspace
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
 
 # ==================== 根目录白名单策略 ====================
 # 1. 默认忽略根目录下的一切
@@ -45,6 +73,33 @@ scripts/*backup*.json
 !/requirements.txt
 !/.env.example
 !/app.py
+
+# ==================== 特定目录和文件模式 ====================
+# 运行时生成的目录和文件
+/uploads/
+/exports/
+/backups/
+/logs/
+/docs/
+
+# 临时文档和脚本（根目录下）
+/*.md
+!/README.md
+/*.sh
+/*.pdf
+/test_*.py
+!/test_db_mgmt.py
+/migrate_*.py
+
+# 开发和调试文件
+/SYNC_HISTORY.md
+/AGENTS.md
+/*.backup
+/*.backup.*
+/app.py.backup*
+
+# 系统和Claude相关
+/.sisyphus/
 
 
 

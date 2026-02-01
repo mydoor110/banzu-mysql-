@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS departments (
     level INT DEFAULT 1,
     path VARCHAR(500),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (parent_id) REFERENCES departments(id) ON DELETE SET NULL,
-    FOREIGN KEY (manager_user_id) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (parent_id) REFERENCES departments(id) ON DELETE SET NULL
+    -- manager_user_id 外键约束将在迁移中添加，避免与 users 表的循环依赖
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """
 
@@ -401,9 +401,9 @@ LIMIT 100
 # List of all table creation statements in dependency order
 ALL_TABLES = [
     SYSTEM_METADATA_TABLE,
+    DEPARTMENTS_TABLE,  # 先创建 departments，因为 users 依赖它
     USERS_TABLE,
     DINGTALK_TOKEN_TABLE,
-    DEPARTMENTS_TABLE,
     EMPLOYEES_TABLE,
     TRAINING_PROJECT_CATEGORIES_TABLE, # Depends on nothing
     TRAINING_PROJECTS_TABLE, # Depends on categories

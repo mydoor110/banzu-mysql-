@@ -559,14 +559,28 @@ def ensure_algorithm_config_initialized():
 # ==================== 应用入口 ====================
 
 if __name__ == "__main__":
+    # 检查系统依赖
+    print("\n" + "=" * 70)
+    print("🚀 启动班组管理系统")
+    print("=" * 70 + "\n")
+
+    from utils.system_check import check_system_dependencies
+    check_system_dependencies(silent=False, interactive=False)
+
     # 确保必要的目录存在
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(EXPORT_DIR, exist_ok=True)
 
     # 初始化数据库（使用 IF NOT EXISTS，安全地创建缺失的表）
+    print()  # 空行分隔
     init_db()
 
     # 启动应用
+    print("\n" + "=" * 70)
+    print("✓ 系统启动成功")
+    print(f"访问地址: http://0.0.0.0:{int(os.environ.get('PORT', 5001))}")
+    print("=" * 70 + "\n")
+
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", 5001)),

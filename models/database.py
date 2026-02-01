@@ -53,14 +53,23 @@ def init_database():
     """Initialize database with all tables and indexes using Version Manager"""
     conn = get_db()
     cur = conn.cursor()
-    
-    # Use the new Database Management System
-    from models.db_mgmt import DBVersionManager
-    manager = DBVersionManager(cur)
-    manager.initialize()
-    
-    conn.commit()
-    return conn
+
+    try:
+        # Use the new Database Management System
+        from models.db_mgmt import DBVersionManager
+        manager = DBVersionManager(cur)
+        manager.initialize()
+
+        # 提交所有更改（主要是版本信息等 DML 操作）
+        conn.commit()
+        print("[+] Database changes committed successfully")
+        return conn
+
+    except Exception as e:
+        print(f"\n[!] Fatal Error: Database initialization failed!")
+        print(f"[!] Error: {e}")
+        conn.rollback()
+        raise  # 重新抛出，让应用层处理
 
 
 def _create_indexes(cur):
