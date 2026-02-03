@@ -966,6 +966,25 @@ function toggleAIDetail(id, btn) {
 async function triggerAIDiagnosis(btn) {
     const emp = JSON.parse(decodeURIComponent(btn.dataset.emp));
 
+    // 隐私保护提示：告知用户敏感信息已脱敏
+    const confirmed = confirm(
+        '🔒 隐私保护提示\n\n' +
+        'AI诊断将发送该员工数据进行分析。为保护隐私，系统已自动进行以下脱敏处理：\n\n' +
+        '✓ 员工姓名：完全匿名化\n' +
+        '✓ 员工工号：完全匿名化\n' +
+        '✓ 城市/省份：替换为通用标识符\n' +
+        '✓ 行政区域：替换为通用标识符\n\n' +
+        '保留信息（便于AI分析）：\n' +
+        '• 站点名称（如紫荆山站、火车站）\n' +
+        '• 线路编号（如1号线、2号线）\n' +
+        '• 违章类型和培训问题描述\n\n' +
+        '是否继续进行AI诊断？'
+    );
+
+    if (!confirmed) {
+        return; // 用户取消操作
+    }
+
     // 获取当前选择的日期范围（关键：确保AI诊断使用与用户筛选一致的数据）
     const startDate = document.getElementById('start-date').value;
     const endDate = document.getElementById('end-date').value;
@@ -1001,6 +1020,22 @@ async function triggerAIDiagnosis(btn) {
                 }
             })
         });
+
+        // 检查HTTP状态码
+        if (!resp.ok) {
+            let errorMsg = `HTTP ${resp.status}`;
+            try {
+                const errorData = await resp.json();
+                errorMsg = errorData.error || errorMsg;
+            } catch (e) {
+                // 无法解析JSON，使用状态文本
+                errorMsg = `${errorMsg}: ${resp.statusText}`;
+            }
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            alert('AI诊断失败: ' + errorMsg);
+            return;
+        }
 
         const data = await resp.json();
 
