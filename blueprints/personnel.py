@@ -2664,37 +2664,103 @@ def employees_legacy_redirect():
 @login_required
 def dashboard():
     """人员工作台首页"""
+    # 先获取部门权限（内部会使用自己的数据库连接）
+    accessible_dept_ids = get_accessible_department_ids()
+
+    # 再获取新的数据库连接用于统计查询
+    conn = get_db()
+    cur = conn.cursor()
+
+    # ===== 统计数据查询 =====
+    # 1. 员工总数
+    if accessible_dept_ids:
+        placeholders = ','.join(['%s'] * len(accessible_dept_ids))
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM employees WHERE department_id IN ({placeholders})", accessible_dept_ids)
+    else:
+        cur.execute("SELECT COUNT(*) AS cnt FROM employees")
+    employee_count = cur.fetchone()['cnt']
+
+    # 2. 部门/班组数量
+    if accessible_dept_ids:
+        placeholders = ','.join(['%s'] * len(accessible_dept_ids))
+        cur.execute(f"SELECT COUNT(*) AS cnt FROM departments WHERE id IN ({placeholders})", accessible_dept_ids)
+    else:
+        cur.execute("SELECT COUNT(*) AS cnt FROM departments")
+    dept_count = cur.fetchone()['cnt']
+
+    # 3. 培训覆盖率（有培训记录的员工 / 总员工数）
+    try:
+        if accessible_dept_ids:
+            placeholders = ','.join(['%s'] * len(accessible_dept_ids))
+            cur.execute(f"""
+                SELECT COUNT(DISTINCT tr.emp_no) AS trained
+                FROM training_records tr
+                JOIN employees e ON tr.emp_no = e.emp_no
+                WHERE e.department_id IN ({placeholders})
+            """, accessible_dept_ids)
+        else:
+            cur.execute("SELECT COUNT(DISTINCT emp_no) AS trained FROM training_records")
+        trained_count = cur.fetchone()['trained']
+        training_coverage = round(trained_count / max(employee_count, 1) * 100, 1)
+    except Exception:
+        training_coverage = 0
+
+    # 4. 风险预警数量（安全检查中未整改的记录）
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS cnt FROM safety_inspection_records
+            WHERE rectification_status IS NULL
+               OR rectification_status = ''
+               OR rectification_status = '未整改'
+        """)
+        risk_count = cur.fetchone()['cnt']
+    except Exception:
+        risk_count = 0
+
+    dashboard_stats = {
+        'employee_count': f"{employee_count:,}",
+        'dept_count': dept_count,
+        'training_coverage': f"{training_coverage}%",
+        'risk_count': risk_count,
+    }
+
     feature_cards = [
         {
             "title": "人员管理",
-            "description": "查看和管理员工档案信息，支持批量导入导出",
-            "endpoint": "personnel.index"
+            "description": "管理员工基础档案信息，支持增删改查。",
+            "endpoint": "personnel.index",
+            "icon": "fas fa-users",
         },
         {
             "title": "数据分析",
-            "description": "可视化分析人员结构、班组战力、经验分布等关键指标",
-            "endpoint": "personnel.analytics"
+            "description": "多维度的员工数据交叉分析。",
+            "endpoint": "personnel.analytics",
+            "icon": "fas fa-chart-pie",
         },
         {
             "title": "能力画像",
-            "description": "整合人员、培训、安全、绩效数据的五维能力评估（按权限分级）",
-            "endpoint": "personnel.capability_profile"
+            "description": "查看员工个人综合能力雷达图。",
+            "endpoint": "personnel.capability_profile",
+            "icon": "fas fa-user-circle",
         },
         {
             "title": "人才九宫格",
-            "description": "基于三维综合分和稳定度+学习能力的人才分布矩阵视图",
-            "endpoint": "personnel.page_nine_grid"
+            "description": "基于绩效和潜力的九宫格人才分布。",
+            "endpoint": "personnel.page_nine_grid",
+            "icon": "fas fa-th",
         },
         {
             "title": "风险挖掘",
-            "description": "基于机器学习的高风险人员识别、异常检测、生存分析和AI诊断",
-            "endpoint": "personnel.risk_mining_page"
+            "description": "挖掘潜在的人员风险因素。",
+            "endpoint": "personnel.risk_mining_page",
+            "icon": "fas fa-search",
         },
     ]
     return render_template(
         "personnel_dashboard.html",
         title=f"人员工作台 | {APP_TITLE}",
-        feature_cards=feature_cards
+        feature_cards=feature_cards,
+        stats=dashboard_stats,
     )
 
 

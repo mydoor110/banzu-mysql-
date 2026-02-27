@@ -1,192 +1,388 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
-    <title>{{ title or "班组管理" }}</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
-    {% block extra_css %}{% endblock %}
-    {% block extra_head %}{% endblock %}
-  </head>
-  <body class="app-body">
-    <nav class="navbar navbar-expand-lg app-navbar">
-      <div class="container-fluid">
-        <a class="navbar-brand" href="{{ url_for('performance.index') }}">班组管理</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="切换导航">
-          <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="mainNav">
-          {% if session.get("logged_in") %}
-          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-            <li class="nav-item">
-              <a class="nav-link {% if request.endpoint == 'performance.index' %}active{% endif %}" href="{{ url_for('performance.index') }}">绩效</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link {% if request.endpoint == 'training.index' %}active{% endif %}" href="{{ url_for('training.index') }}">培训</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link {% if request.endpoint == 'safety.index' %}active{% endif %}" href="{{ url_for('safety.index') }}">安全管理</a>
-            </li>
-            <li class="nav-item">
-              {% set personnel_active = request.endpoint and request.endpoint.startswith('personnel.') %}
-              <a class="nav-link {% if personnel_active %}active{% endif %}" href="{{ url_for('personnel.dashboard') }}">人员管理</a>
-            </li>
-            {% if session.get("role") == "admin" %}
-            <li class="nav-item dropdown">
-              {% set admin_endpoints = ["admin_users", "departments", "department_detail", "backup_management"] %}
-              <a class="nav-link dropdown-toggle {% if request.endpoint in admin_endpoints %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                系统管理
-              </a>
-              <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('admin.users') }}">用户管理</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('departments.index') }}">部门管理</a></li>
-                <li><hr class="dropdown-divider"></li>
-                <li><a class="dropdown-item" href="{{ url_for('admin.import_logs') }}"><i class="fas fa-file-import me-1"></i>导入日志审查</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('system_config.algorithm_config_page') }}">算法参数配置</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('system_config.stopwords_page') }}">停用词管理</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('system_config.ai_config_page') }}">AI模型配置</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('system_config.ai_prompts_page') }}">AI提示语配置</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('admin.backups') }}"><i class="fas fa-database me-1"></i>备份管理</a></li>
-              </ul>
-            </li>
-            {% endif %}
-          </ul>
-          <div class="d-flex flex-column flex-lg-row align-items-lg-center ms-lg-auto">
-            {% if session.get("username") %}
-            <span class="navbar-text text-white-50 me-lg-3 mb-2 mb-lg-0">你好，{{ session['username'] }}</span>
-            {% endif %}
-            <div class="d-flex flex-column flex-lg-row">
-              <a class="btn btn-outline-secondary btn-sm mb-2 mb-lg-0 me-lg-2" href="{{ url_for('auth.change_password') }}">修改密码</a>
-              <a class="btn btn-outline-light btn-sm" href="{{ url_for('auth.logout') }}">退出</a>
-            </div>
-          </div>
-          {% endif %}
-        </div>
-      </div>
-    </nav>
-    <div class="container py-4 app-container">
-      {% with messages = get_flashed_messages(with_categories=True) %}
-        {% if messages %}
-          {% for category, msg in messages %}
-            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-              {{ msg }}
-              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-      {% block content %}{% endblock %}
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-      // ========== 响应式优化脚本 ==========
 
-      // 添加触摸滚动提示
-      document.addEventListener('DOMContentLoaded', function() {
-        const tableContainers = document.querySelectorAll('.table-responsive');
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
+  <title>{{ title or "班组管理" }}</title>
+  <!-- Google Fonts Mirror or removal for China access -->
+  <!-- <link rel="preconnect" href="https://fonts.googleapis.com"> -->
+  <!-- <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> -->
+  <!-- <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"> -->
 
-        tableContainers.forEach(container => {
-          // 检测是否可以滚动
-          function checkScroll() {
-            if (container.scrollWidth > container.clientWidth) {
-              container.classList.add('has-scroll');
-              // 添加滚动提示
-              if (!container.querySelector('.scroll-hint')) {
-                const hint = document.createElement('div');
-                hint.className = 'scroll-hint';
-                hint.style.cssText = 'position: absolute; right: 0; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.5); color: white; padding: 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; pointer-events: none; opacity: 0; transition: opacity 0.3s;';
-                hint.textContent = '← 滑动查看更多 →';
-                container.style.position = 'relative';
-                container.appendChild(hint);
+  <!-- Bootstrap 5 (Local) -->
+  <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+  <!-- Font Awesome (Local) -->
+  <link href="{{ url_for('static', filename='fontawesome/css/all.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+  <style>
+    /* Page transition */
+    .app-body {
+      opacity: 1;
+      transition: opacity 0.2s ease;
+    }
 
-                // 3秒后隐藏提示
-                setTimeout(() => {
-                  hint.style.opacity = '1';
-                  setTimeout(() => {
-                    hint.style.opacity = '0';
-                    setTimeout(() => hint.remove(), 300);
-                  }, 2000);
-                }, 500);
-              }
-            }
-          }
+    .page-transition {
+      opacity: 0;
+    }
 
-          checkScroll();
-          window.addEventListener('resize', checkScroll);
-        });
+    /* Nav link icon spacing */
+    .nav-link i {
+      margin-right: 6px;
+    }
 
-        // 移动端表格触摸优化
-        if ('ontouchstart' in window) {
-          tableContainers.forEach(container => {
-            let isScrolling = false;
+    /* Breadcrumb */
+    .breadcrumb-container {
+      background-color: #f8fafc;
+      padding: 0.625rem 0;
+      border-bottom: 1px solid #e2e8f0;
+    }
 
-            container.addEventListener('touchstart', () => {
-              isScrolling = true;
-            });
+    .breadcrumb {
+      background: transparent;
+      padding: 0;
+      margin: 0;
+    }
 
-            container.addEventListener('touchend', () => {
-              setTimeout(() => {
-                isScrolling = false;
-              }, 100);
-            });
-          });
-        }
-      });
+    .breadcrumb-item {
+      font-size: 0.8125rem;
+    }
 
-      // CSRF protection for AJAX requests
-      window.csrf_token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    /* Footer - Flat dark slate */
+    .app-footer {
+      background-color: #1e293b;
+      color: #e2e8f0;
+      padding: 1.5rem 0;
+      margin-top: 2rem;
+      font-size: 0.8125rem;
+    }
 
-      // Add CSRF token to all AJAX requests
-      if (window.csrf_token) {
-        // For jQuery AJAX (if used)
-        if (typeof $ !== 'undefined') {
-          $.ajaxSetup({
-            beforeSend: function(xhr, settings) {
-              if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
-                xhr.setRequestHeader("X-CSRFToken", window.csrf_token);
-              }
-            }
-          });
-        }
+    .app-footer h5 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
 
-        // For fetch API
-        const originalFetch = window.fetch;
-        window.fetch = function(input, init) {
-          init = init || {};
-          if (init.method && !/^(GET|HEAD|OPTIONS|TRACE)$/i.test(init.method)) {
-            init.headers = init.headers || {};
-            if (typeof init.headers.set === 'function') {
-              init.headers.set('X-CSRFToken', window.csrf_token);
-            } else {
-              init.headers['X-CSRFToken'] = window.csrf_token;
-            }
-          }
-          return originalFetch.apply(this, arguments);
-        };
+    .footer-links a {
+      color: #94a3b8;
+      text-decoration: none;
+      margin: 0 0.5rem;
+      transition: color 0.15s ease;
+    }
+
+    .footer-links a:hover {
+      color: #f1f5f9;
+    }
+
+    /* User info text in navbar */
+    .navbar-text {
+      color: #64748b !important;
+      font-size: 0.8125rem;
+    }
+
+    /* Container entrance */
+    .app-container {
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
       }
 
-      // Add hidden CSRF input to all forms
-      document.addEventListener('DOMContentLoaded', function() {
-        if (window.csrf_token) {
-          const forms = document.querySelectorAll('form[method="post"], form[method="POST"]');
-          forms.forEach(function(form) {
-            // Check if CSRF token already exists
-            if (!form.querySelector('input[name="csrf_token"]')) {
-              const csrfInput = document.createElement('input');
-              csrfInput.type = 'hidden';
-              csrfInput.name = 'csrf_token';
-              csrfInput.value = window.csrf_token;
-              form.appendChild(csrfInput);
-            }
-          });
-        }
+      to {
+        opacity: 1;
+      }
+    }
+  </style>
+  {% block extra_css %}{% endblock %}
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body class="app-body">
+  <nav class="navbar navbar-expand-lg app-navbar">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="{{ url_for('performance.index') }}">
+        <i class="fas fa-users-cog me-2"></i>班组管理
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+        aria-controls="mainNav" aria-expanded="false" aria-label="切换导航">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="mainNav">
+        {% if session.get("logged_in") %}
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint == 'performance.index' %}active{% endif %}"
+              href="{{ url_for('performance.index') }}">
+              <i class="fas fa-chart-line"></i>绩效
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint == 'training.index' %}active{% endif %}"
+              href="{{ url_for('training.index') }}">
+              <i class="fas fa-graduation-cap"></i>培训
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint == 'safety.index' %}active{% endif %}"
+              href="{{ url_for('safety.index') }}">
+              <i class="fas fa-shield-alt"></i>安全管理
+            </a>
+          </li>
+          <li class="nav-item">
+            {% set personnel_active = request.endpoint and request.endpoint.startswith('personnel.') %}
+            <a class="nav-link {% if personnel_active %}active{% endif %}" href="{{ url_for('personnel.dashboard') }}">
+              <i class="fas fa-users"></i>人员管理
+            </a>
+          </li>
+          {% if session.get("role") == "admin" %}
+          <li class="nav-item dropdown">
+            {% set admin_endpoints = ["admin_users", "departments", "department_detail", "backup_management"] %}
+            <a class="nav-link dropdown-toggle {% if request.endpoint in admin_endpoints %}active{% endif %}" href="#"
+              role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-cogs"></i>系统管理
+            </a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{{ url_for('admin.users') }}"><i
+                    class="fas fa-user-shield me-2"></i>用户管理</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('departments.index') }}"><i
+                    class="fas fa-building me-2"></i>部门管理</a></li>
+              <li>
+                <hr class="dropdown-divider">
+              </li>
+              <li><a class="dropdown-item" href="{{ url_for('admin.import_logs') }}"><i
+                    class="fas fa-file-import me-2"></i>导入日志审查</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('system_config.algorithm_config_page') }}"><i
+                    class="fas fa-sliders-h me-2"></i>算法参数配置</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('system_config.stopwords_page') }}"><i
+                    class="fas fa-ban me-2"></i>停用词管理</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('system_config.ai_config_page') }}"><i
+                    class="fas fa-robot me-2"></i>AI模型配置</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('system_config.ai_prompts_page') }}"><i
+                    class="fas fa-comment-dots me-2"></i>AI提示语配置</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('admin.backups') }}"><i
+                    class="fas fa-database me-2"></i>备份管理</a></li>
+            </ul>
+          </li>
+          {% endif %}
+        </ul>
+        <div class="d-flex flex-column flex-lg-row align-items-lg-center ms-lg-auto">
+          {% if session.get("username") %}
+          <span class="navbar-text me-lg-3 mb-2 mb-lg-0">
+            <i class="fas fa-user-circle me-1"></i>你好，{{ session['username'] }}
+          </span>
+          {% endif %}
+          <div class="d-flex flex-column flex-lg-row">
+            <a class="btn btn-outline-secondary btn-sm mb-2 mb-lg-0 me-lg-2"
+              href="{{ url_for('auth.change_password') }}">
+              <i class="fas fa-key me-1"></i>修改密码
+            </a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('auth.logout') }}">
+              <i class="fas fa-sign-out-alt me-1"></i>退出
+            </a>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <!-- Breadcrumb Section -->
+  <div class="breadcrumb-container">
+    <div class="container">
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item">
+            <a href="{{ url_for('performance.index') }}"><i class="fas fa-home me-1"></i>首页</a>
+          </li>
+          {% block breadcrumb %}
+          {% endblock %}
+        </ol>
+      </nav>
+    </div>
+  </div>
+
+  <div class="container py-4 app-container">
+    {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+    {% for category, msg in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+      {{ msg }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- Footer Section -->
+  <footer class="app-footer">
+    <div class="container">
+      <div class="row">
+        <div class="col-md-4">
+          <h5><i class="fas fa-info-circle me-2"></i>关于系统</h5>
+          <p class="text-muted">班组管理系统 v1.0</p>
+          <p class="small text-muted">© 2026 班组管理系统 版权所有</p>
+        </div>
+        <div class="col-md-4">
+          <h5><i class="fas fa-link me-2"></i>快速链接</h5>
+          <div class="footer-links">
+            <a href="{{ url_for('performance.index') }}"><i class="fas fa-chart-line me-1"></i>绩效</a>
+            <a href="{{ url_for('training.index') }}"><i class="fas fa-graduation-cap me-1"></i>培训</a>
+            <a href="{{ url_for('safety.index') }}"><i class="fas fa-shield-alt me-1"></i>安全</a>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <h5><i class="fas fa-phone-alt me-2"></i>联系信息</h5>
+          <p class="text-muted">
+            <i class="fas fa-envelope me-1"></i>admin@example.com<br>
+            <i class="fas fa-building me-1"></i>信息技术部门
+          </p>
+        </div>
+      </div>
+      <hr class="bg-secondary">
+      <div class="text-center text-muted">
+        <small>
+          <i class="fas fa-copyright me-1"></i>2026 班组管理系统 |
+          <i class="fas fa-shield-alt me-1"></i>安全 |
+          <i class="fas fa-user-shield me-1"></i>隐私政策
+        </small>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // ========== 页面过渡效果 ==========
+    document.addEventListener('DOMContentLoaded', function () {
+      // Page transition effect
+      const body = document.querySelector('.app-body');
+      setTimeout(() => {
+        body.classList.remove('page-transition');
+      }, 100);
+
+      // Add transition to navigation links
+      const navLinks = document.querySelectorAll('.nav-link:not(.dropdown-toggle)');
+      navLinks.forEach(link => {
+        link.addEventListener('click', function (e) {
+          if (this.href && this.href !== '#' && !this.hasAttribute('data-bs-toggle')) {
+            e.preventDefault();
+            body.classList.add('page-transition');
+            setTimeout(() => {
+              window.location.href = this.href;
+            }, 300);
+          }
+        });
       });
-    </script>
-    {% block extra_js %}{% endblock %}
-  </body>
+    });
+
+    // ========== 响应式优化脚本 ==========
+
+    // 添加触摸滚动提示
+    document.addEventListener('DOMContentLoaded', function () {
+      const tableContainers = document.querySelectorAll('.table-responsive');
+
+      tableContainers.forEach(container => {
+        // 检测是否可以滚动
+        function checkScroll() {
+          if (container.scrollWidth > container.clientWidth) {
+            container.classList.add('has-scroll');
+            // 添加滚动提示
+            if (!container.querySelector('.scroll-hint')) {
+              const hint = document.createElement('div');
+              hint.className = 'scroll-hint';
+              hint.style.cssText = 'position: absolute; right: 0; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.5); color: white; padding: 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; pointer-events: none; opacity: 0; transition: opacity 0.3s;';
+              hint.textContent = '← 滑动查看更多 →';
+              container.style.position = 'relative';
+              container.appendChild(hint);
+
+              // 3秒后隐藏提示
+              setTimeout(() => {
+                hint.style.opacity = '1';
+                setTimeout(() => {
+                  hint.style.opacity = '0';
+                  setTimeout(() => hint.remove(), 300);
+                }, 2000);
+              }, 500);
+            }
+          }
+        }
+
+        checkScroll();
+        window.addEventListener('resize', checkScroll);
+      });
+
+      // 移动端表格触摸优化
+      if ('ontouchstart' in window) {
+        tableContainers.forEach(container => {
+          let isScrolling = false;
+
+          container.addEventListener('touchstart', () => {
+            isScrolling = true;
+          });
+
+          container.addEventListener('touchend', () => {
+            setTimeout(() => {
+              isScrolling = false;
+            }, 100);
+          });
+        });
+      }
+    });
+
+    // CSRF protection for AJAX requests
+    window.csrf_token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+
+    // Add CSRF token to all AJAX requests
+    if (window.csrf_token) {
+      // For jQuery AJAX (if used)
+      if (typeof $ !== 'undefined') {
+        $.ajaxSetup({
+          beforeSend: function (xhr, settings) {
+            if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+              xhr.setRequestHeader("X-CSRFToken", window.csrf_token);
+            }
+          }
+        });
+      }
+
+      // For fetch API
+      const originalFetch = window.fetch;
+      window.fetch = function (input, init) {
+        init = init || {};
+        if (init.method && !/^(GET|HEAD|OPTIONS|TRACE)$/i.test(init.method)) {
+          init.headers = init.headers || {};
+          if (typeof init.headers.set === 'function') {
+            init.headers.set('X-CSRFToken', window.csrf_token);
+          } else {
+            init.headers['X-CSRFToken'] = window.csrf_token;
+          }
+        }
+        return originalFetch.apply(this, arguments);
+      };
+    }
+
+    // Add hidden CSRF input to all forms
+    document.addEventListener('DOMContentLoaded', function () {
+      if (window.csrf_token) {
+        const forms = document.querySelectorAll('form[method="post"], form[method="POST"]');
+        forms.forEach(function (form) {
+          // Check if CSRF token already exists
+          if (!form.querySelector('input[name="csrf_token"]')) {
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrf_token';
+            csrfInput.value = window.csrf_token;
+            form.appendChild(csrfInput);
+          }
+        });
+      }
+    });
+  </script>
+  {% block extra_js %}{% endblock %}
+</body>
+
 </html>

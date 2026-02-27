@@ -31,16 +31,19 @@ def index():
             "title": "安全总览",
             "description": "查看安全检查记录情况并导出数据。",
             "endpoint": "safety.records",
+            "icon": "fas fa-shield-alt",
         },
         {
             "title": "上传Excel",
             "description": "导入安全检查Excel，自动解析检查记录并保存。",
             "endpoint": "safety.upload",
+            "icon": "fas fa-file-upload",
         },
         {
             "title": "安全统计",
             "description": "查看安全统计分析，包含图表可视化。",
             "endpoint": "safety.analytics",
+            "icon": "fas fa-chart-bar",
         },
     ]
     return render_template(

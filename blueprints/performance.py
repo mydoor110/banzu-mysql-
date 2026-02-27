@@ -418,26 +418,31 @@ def index():
             "title": "年度总览",
             "description": "查看年度绩效情况并导出数据。",
             "endpoint": "performance.records",
+            "icon": "fas fa-chart-line",
         },
         {
             "title": "上传PDF",
             "description": "导入月度绩效PDF，自动解析成绩并保存。",
             "endpoint": "performance.upload",
+            "icon": "fas fa-file-pdf",
         },
         {
             "title": "区间统计",
             "description": "选择自定义时间区间，对比不同员工的绩效表现。",
             "endpoint": "performance.range_view",
+            "icon": "fas fa-arrows-alt-h",
         },
         {
             "title": "绩效计算器",
             "description": "使用自定义档位快速计算绩效分值。",
             "endpoint": "performance.calculator",
+            "icon": "fas fa-calculator",
         },
         {
             "title": "季度绩效",
             "description": "配置季度档位，并对个人季度结果做人工修正。",
             "endpoint": "performance.quarters",
+            "icon": "fas fa-calendar-check",
         },
     ]
     return render_template(

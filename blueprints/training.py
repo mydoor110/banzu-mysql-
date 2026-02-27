@@ -38,21 +38,25 @@ def index():
             "title": "培训总览",
             "description": "查看培训记录情况并导出数据。",
             "endpoint": "training.records",
+            "icon": "fas fa-graduation-cap",
         },
         {
             "title": "上传Excel",
             "description": "导入月度培训Excel，自动解析培训记录并保存。",
             "endpoint": "training.upload",
+            "icon": "fas fa-file-upload",
         },
         {
             "title": "培训统计",
             "description": "查看培训统计分析，包含图表可视化。",
             "endpoint": "training.analytics",
+            "icon": "fas fa-chart-area",
         },
         {
             "title": "不合格管理",
             "description": "查看和管理培训不合格记录，跟踪整改情况。",
             "endpoint": "training.disqualified",
+            "icon": "fas fa-user-times",
         },
     ]
 
@@ -83,6 +87,7 @@ def index():
             "title": "项目管理",
             "description": "管理培训项目和项目分类，规范项目命名。",
             "endpoint": "training.projects",
+            "icon": "fas fa-tasks",
         })
 
     return render_template(

@@ -5,15 +5,16 @@
 
   const theme = {
     color: [
-      '#2b5de6',
-      '#0ea5e9',
-      '#22c55e',
-      '#f59e0b',
-      '#ef4444',
-      '#a855f7',
-      '#14b8a6',
-      '#f97316',
-      '#64748b'
+      '#0ea5e9',  // Primary blue
+      '#38bdf8',  // Light blue
+      '#22c55e',  // Green
+      '#f59e0b',  // Amber
+      '#ef4444',  // Red
+      '#8b5cf6',  // Purple
+      '#14b8a6',  // Teal
+      '#f97316',  // Orange
+      '#06b6d4',  // Cyan
+      '#6366f1'   // Indigo
     ],
     backgroundColor: 'transparent',
     textStyle: {
@@ -35,12 +36,15 @@
       }
     },
     tooltip: {
-      backgroundColor: 'rgba(15, 23, 42, 0.92)',
-      borderColor: 'rgba(148, 163, 184, 0.4)',
+      backgroundColor: 'rgba(15, 23, 42, 0.95)',
+      borderColor: 'rgba(14, 165, 233, 0.3)',
+      borderWidth: 1,
+      borderRadius: 8,
       textStyle: {
-        color: '#f8fafc'
+        color: '#f8fafc',
+        fontSize: 13
       },
-      extraCssText: 'box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);'
+      extraCssText: 'box-shadow: 0 16px 40px rgba(14, 165, 233, 0.3); backdrop-filter: blur(12px);'
     },
     grid: {
       left: 48,
