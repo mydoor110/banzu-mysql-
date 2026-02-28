@@ -11,7 +11,7 @@
     .chart-card {
         background: white;
         border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         margin-bottom: 20px;
         overflow: hidden;
     }
@@ -29,7 +29,7 @@
         padding: 20px;
         background: white;
         border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         transition: transform 0.2s;
     }
 
@@ -251,6 +251,7 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script src="{{ url_for('static', filename='js/echarts-theme.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chart-registry.js') }}"></script>
 <script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
 
 <script>
@@ -357,7 +358,7 @@
         chart.setOption(option);
 
         // 添加点击事件 - 下钻查看人员详情
-        chart.on('click', function(params) {
+        chart.on('click', function (params) {
             if (params.data && params.data.name) {
                 handleSeverityDrilldown(params.data.name);
             }
@@ -683,7 +684,7 @@
                 data: data.items,
                 axisLabel: {
                     fontSize: 11,
-                    formatter: function(value) {
+                    formatter: function (value) {
                         return value.length > 20 ? value.substring(0, 20) + '...' : value;
                     }
                 }
@@ -739,11 +740,11 @@
         const option = {
             tooltip: {
                 trigger: 'item',
-                formatter: function(params) {
+                formatter: function (params) {
                     return `${params.data.name}<br/>` +
-                           `所属车队: ${params.data.team}<br/>` +
-                           `违规次数: ${params.value[0]} 次<br/>` +
-                           `累计扣分: ${params.value[1]} 分`;
+                        `所属车队: ${params.data.team}<br/>` +
+                        `违规次数: ${params.value[0]} 次<br/>` +
+                        `累计扣分: ${params.value[1]} 分`;
                 }
             },
             grid: {
@@ -788,14 +789,14 @@
             series: [{
                 name: '人员风险',
                 type: 'scatter',
-                symbolSize: function(val) {
+                symbolSize: function (val) {
                     return Math.max(10, val[0] * 3 + val[1] / 2);
                 },
                 data: data,
                 emphasis: {
                     label: {
                         show: true,
-                        formatter: function(param) {
+                        formatter: function (param) {
                             return param.data.name;
                         },
                         position: 'top'
@@ -935,7 +936,7 @@
 
     // 标签页切换时调整图表大小
     document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
-        tab.addEventListener('shown.bs.tab', function() {
+        tab.addEventListener('shown.bs.tab', function () {
             setTimeout(() => {
                 Object.values(charts).forEach(chart => {
                     if (chart && typeof chart.resize === 'function') {
@@ -971,7 +972,7 @@
     }
 
     // 页面加载完成后初始化
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         // 清理可能残留的backdrop
         cleanupModalBackdrop();
 
@@ -987,19 +988,19 @@
         initCharts();
 
         // 表单提交事件
-        document.getElementById('filterForm').addEventListener('submit', function(e) {
+        document.getElementById('filterForm').addEventListener('submit', function (e) {
             e.preventDefault();
             initCharts();
         });
 
         // 重置按钮事件
-        document.getElementById('resetBtn').addEventListener('click', function() {
+        document.getElementById('resetBtn').addEventListener('click', function () {
             dateFilter.reset();
             initCharts();
         });
 
         // 监听模态框隐藏事件，确保backdrop被清理
-        document.getElementById('problemDrilldownModal').addEventListener('hidden.bs.modal', function() {
+        document.getElementById('problemDrilldownModal').addEventListener('hidden.bs.modal', function () {
             cleanupModalBackdrop();
         });
     });

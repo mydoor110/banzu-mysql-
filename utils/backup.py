@@ -493,7 +493,7 @@ class BackupManager:
                     if 'backup_metadata.json' in backup_zip.namelist():
                         metadata_content = backup_zip.read('backup_metadata.json').decode('utf-8')
                         metadata = json.loads(metadata_content)
-            except:
+            except Exception:
                 pass
 
             return {
@@ -761,7 +761,7 @@ class BackupManager:
             self.logger.error(f"Python restore failed: {e}", exc_info=True)
             try:
                 conn.rollback()
-            except:
+            except Exception:
                 pass
             return False
 

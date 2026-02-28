@@ -8,7 +8,7 @@ from models.schema_defs import ALL_TABLES, VIEW_RECENT_IMPORTS
 
 # Current Database Schema Version
 # Increment this when making schema changes
-CURRENT_DB_VERSION = 2
+CURRENT_DB_VERSION = 4
 
 class DBVersionManager:
     def __init__(self, cursor=None):
@@ -140,6 +140,16 @@ class DBVersionManager:
             print("[-] Running Migration v2 (Schema Updates)...")
             self._migration_v2_updates()
 
+        # Migration from 2 -> 3 (PPT Export Cache)
+        if start_ver < 3 and target_ver >= 3:
+            print("[-] Running Migration v3 (PPT Export Cache)...")
+            self._migration_v3_ppt_cache()
+
+        # Migration from 3 -> 4 (Data Model Governance)
+        if start_ver < 4 and target_ver >= 4:
+            print("[-] Running Migration v4 (Data Model Governance)...")
+            self._migration_v4_data_model()
+
     def _migration_v1_baseline(self):
         """
         Baseline adjustments for v1 schema.
@@ -214,3 +224,114 @@ class DBVersionManager:
         except Exception as e:
             print(f"[!] Error ensuring foreign key {constraint_name}: {e}")
             # 外键约束失败不是致命错误，记录但继续
+
+    def _ensure_table(self, table_name, create_sql):
+        """幂等建表：若不存在则创建，完全安全可重复运行"""
+        try:
+            self.cur.execute(create_sql)
+            print(f"    + Table {table_name} ensured")
+        except Exception as e:
+            print(f"[!] Error ensuring table {table_name}: {e}")
+
+    def _migration_v3_ppt_cache(self):
+        """Add PPT export AI summary cache table"""
+        from models.schema_defs import PPT_EXPORT_CACHE_TABLE
+        self._ensure_table("ppt_export_cache", PPT_EXPORT_CACHE_TABLE)
+        # 同时添加performance index（若表已存在也安全）
+        try:
+            self.cur.execute(
+                "SHOW INDEX FROM ppt_export_cache WHERE Key_name = 'idx_ppt_cache_expires'"
+            )
+            if not self.cur.fetchone():
+                self.cur.execute(
+                    "ALTER TABLE ppt_export_cache ADD INDEX idx_ppt_cache_expires (expires_at)"
+                )
+        except Exception:
+            pass  # 索引已存在或建表包含则忽略
+
+    def _migration_v4_data_model(self):
+        """数据模型治理：employee_id 外键 + 日期字段结构化"""
+        # === 1. 为业务表添加 employee_id 列 ===
+        for table in ['performance_records', 'training_records', 'safety_inspection_records']:
+            self._ensure_column(table, 'employee_id', 'INT DEFAULT NULL')
+            self._ensure_foreign_key(
+                table_name=table,
+                constraint_name=f'fk_{table}_employee_id',
+                foreign_key='employee_id',
+                references='employees(id)',
+                on_delete='SET NULL'
+            )
+
+        # === 2. 回填 employee_id（基于 emp_no / name 匹配）===
+        print("    + Backfilling employee_id...")
+        try:
+            # performance_records / training_records 通过 emp_no 匹配
+            for table in ['performance_records', 'training_records']:
+                self.cur.execute(f"""
+                    UPDATE {table} t
+                    INNER JOIN employees e ON t.emp_no = e.emp_no
+                    SET t.employee_id = e.id
+                    WHERE t.employee_id IS NULL
+                """)
+                print(f"      {table}: {self.cur.rowcount} rows backfilled")
+
+            # safety_inspection_records 通过 inspected_person (name) 匹配
+            self.cur.execute("""
+                UPDATE safety_inspection_records t
+                INNER JOIN employees e ON t.inspected_person = e.name
+                SET t.employee_id = e.id
+                WHERE t.employee_id IS NULL
+            """)
+            print(f"      safety_inspection_records: {self.cur.rowcount} rows backfilled")
+        except Exception as e:
+            print(f"    [!] Backfill warning: {e}")
+
+        # === 3. 日期字段结构化 ===
+        date_migrations = [
+            ('employees', 'birth_date'),
+            ('employees', 'certification_date'),
+            ('employees', 'work_start_date'),
+            ('employees', 'entry_date'),
+            ('employees', 'solo_driving_date'),
+            ('training_records', 'training_date'),
+            ('safety_inspection_records', 'inspection_date'),
+            ('safety_inspection_records', 'deadline_date'),
+        ]
+
+        for table, field in date_migrations:
+            try:
+                # 检查当前类型
+                self.cur.execute("""
+                    SELECT DATA_TYPE FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = %s AND COLUMN_NAME = %s
+                """, (table, field))
+                row = self.cur.fetchone()
+                if row and row['DATA_TYPE'] == 'date':
+                    continue  # 已是 DATE，跳过
+
+                # 先清洗：标准化日期格式
+                # 处理 yyyy年mm月dd日 → yyyy-mm-dd
+                self.cur.execute(f"""
+                    UPDATE {table}
+                    SET {field} = NULL
+                    WHERE {field} IS NOT NULL
+                    AND {field} != ''
+                    AND {field} NOT REGEXP '^[0-9]{{4}}-[0-9]{{1,2}}-[0-9]{{1,2}}$'
+                    AND {field} NOT REGEXP '^[0-9]{{4}}/[0-9]{{1,2}}/[0-9]{{1,2}}$'
+                """)
+                nulled = self.cur.rowcount
+
+                # 将 yyyy/mm/dd 格式统一为 yyyy-mm-dd
+                self.cur.execute(f"""
+                    UPDATE {table}
+                    SET {field} = REPLACE({field}, '/', '-')
+                    WHERE {field} LIKE '%%/%%'
+                """)
+
+                # 执行 ALTER TABLE
+                not_null = ' NOT NULL' if field == 'training_date' or field == 'inspection_date' else ''
+                self.cur.execute(f"ALTER TABLE {table} MODIFY COLUMN {field} DATE{not_null}")
+                print(f"    + {table}.{field}: VARCHAR → DATE (cleared {nulled} unparseable)")
+            except Exception as e:
+                print(f"    [!] {table}.{field} migration failed: {e}")

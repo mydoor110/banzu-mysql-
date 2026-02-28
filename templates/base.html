@@ -98,12 +98,13 @@
   </style>
   {% block extra_css %}{% endblock %}
   {% block extra_head %}{% endblock %}
+  <script src="{{ url_for('static', filename='js/echarts-theme.js') }}"></script>
 </head>
 
 <body class="app-body">
   <nav class="navbar navbar-expand-lg app-navbar">
     <div class="container-fluid">
-      <a class="navbar-brand" href="{{ url_for('performance.index') }}">
+      <a class="navbar-brand" href="{{ url_for('personnel.dashboard') }}">
         <i class="fas fa-users-cog me-2"></i>班组管理
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
@@ -114,15 +115,9 @@
         {% if session.get("logged_in") %}
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'performance.index' %}active{% endif %}"
-              href="{{ url_for('performance.index') }}">
-              <i class="fas fa-chart-line"></i>绩效
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'training.index' %}active{% endif %}"
-              href="{{ url_for('training.index') }}">
-              <i class="fas fa-graduation-cap"></i>培训
+            {% set personnel_active = request.endpoint and request.endpoint.startswith('personnel.') %}
+            <a class="nav-link {% if personnel_active %}active{% endif %}" href="{{ url_for('personnel.dashboard') }}">
+              <i class="fas fa-users"></i>人员管理
             </a>
           </li>
           <li class="nav-item">
@@ -132,12 +127,18 @@
             </a>
           </li>
           <li class="nav-item">
-            {% set personnel_active = request.endpoint and request.endpoint.startswith('personnel.') %}
-            <a class="nav-link {% if personnel_active %}active{% endif %}" href="{{ url_for('personnel.dashboard') }}">
-              <i class="fas fa-users"></i>人员管理
+            <a class="nav-link {% if request.endpoint == 'training.index' %}active{% endif %}"
+              href="{{ url_for('training.index') }}">
+              <i class="fas fa-graduation-cap"></i>培训管理
             </a>
           </li>
-          {% if session.get("role") == "admin" %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint == 'performance.index' %}active{% endif %}"
+              href="{{ url_for('performance.index') }}">
+              <i class="fas fa-chart-line"></i>绩效管理
+            </a>
+          </li>
+          {% if g.get('user_ctx', {}).get('role') == 'admin' %}
           <li class="nav-item dropdown">
             {% set admin_endpoints = ["admin_users", "departments", "department_detail", "backup_management"] %}
             <a class="nav-link dropdown-toggle {% if request.endpoint in admin_endpoints %}active{% endif %}" href="#"
@@ -195,7 +196,7 @@
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
           <li class="breadcrumb-item">
-            <a href="{{ url_for('performance.index') }}"><i class="fas fa-home me-1"></i>首页</a>
+            <a href="{{ url_for('personnel.dashboard') }}"><i class="fas fa-home me-1"></i>首页</a>
           </li>
           {% block breadcrumb %}
           {% endblock %}
@@ -230,9 +231,10 @@
         <div class="col-md-4">
           <h5><i class="fas fa-link me-2"></i>快速链接</h5>
           <div class="footer-links">
-            <a href="{{ url_for('performance.index') }}"><i class="fas fa-chart-line me-1"></i>绩效</a>
-            <a href="{{ url_for('training.index') }}"><i class="fas fa-graduation-cap me-1"></i>培训</a>
-            <a href="{{ url_for('safety.index') }}"><i class="fas fa-shield-alt me-1"></i>安全</a>
+            <a href="{{ url_for('personnel.dashboard') }}"><i class="fas fa-users me-1"></i>人员管理</a>
+            <a href="{{ url_for('safety.index') }}"><i class="fas fa-shield-alt me-1"></i>安全管理</a>
+            <a href="{{ url_for('training.index') }}"><i class="fas fa-graduation-cap me-1"></i>培训管理</a>
+            <a href="{{ url_for('performance.index') }}"><i class="fas fa-chart-line me-1"></i>绩效管理</a>
           </div>
         </div>
         <div class="col-md-4">

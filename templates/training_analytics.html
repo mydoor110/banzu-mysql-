@@ -203,6 +203,7 @@
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2.1.0/dist/echarts-wordcloud.min.js"></script>
 <script src="{{ url_for('static', filename='js/echarts-theme.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chart-registry.js') }}"></script>
 
 <!-- 引入日期筛选器库 -->
 <script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
@@ -400,7 +401,7 @@
       const disqualifiedCounts = sortedData.map(item => item[1].disqualified);
 
       const option = {
-        title: { text: '人员实操次数统计（点击红色条查看失格详情）', left: 'center' },
+        title: { text: '人员实操次数统计（点击红色条查看失格详情）', left: 'center', textStyle: { fontSize: 14 } },
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'shadow' },
@@ -434,7 +435,7 @@
             type: 'bar',
             stack: 'total',
             data: disqualifiedCounts,
-            itemStyle: { color: '#dc3545' }, // Red (Bootstrap Danger)
+            itemStyle: { color: '#F53F3F' }, // Red (Bootstrap Danger)
             barWidth: '60%',
             label: { show: disqualifiedCounts.some(v => v > 0), position: 'inside' }
           }
@@ -520,7 +521,7 @@
       });
 
       const option = {
-        title: { text: '问题类型分布（全部记录）', left: 'center' },
+        title: { text: '问题类型分布（全部记录）', left: 'center', textStyle: { fontSize: 14 } },
         tooltip: {
           trigger: 'item',
           formatter: function (params) {
@@ -559,7 +560,7 @@
       const counts = sortedData.map(item => item[1]);
 
       const option = {
-        title: { text: '各个实操项目失格次数统计', left: 'center' },
+        title: { text: '各个实操项目失格次数统计', left: 'center', textStyle: { fontSize: 14 } },
         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
         grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
         xAxis: { type: 'value', boundaryGap: [0, 0.01] },
@@ -617,7 +618,8 @@
         title: {
           text: '各实操项目总次数统计 (Top 20)',
           subtext: 'Top 10 蓝色高亮 | 降序排列',
-          left: 'center'
+          left: 'center',
+          textStyle: { fontSize: 14 }
         },
         tooltip: {
           trigger: 'axis',
@@ -904,7 +906,7 @@
 
       if (bottom5.length === 0) {
         const option = {
-          title: { text: '重点人员成绩趋势（平均分最低Top 5）', left: 'center' },
+          title: { text: '重点人员成绩趋势（平均分最低Top 5）', left: 'center', textStyle: { fontSize: 14 } },
           graphic: {
             type: 'text',
             left: 'center',
@@ -972,7 +974,8 @@
         title: {
           text: '重点人员成绩趋势（平均分最低Top 5）',
           subtext: '追踪后进人员进步情况',
-          left: 'center'
+          left: 'center',
+          textStyle: { fontSize: 14 }
         },
         tooltip: {
           trigger: 'axis',

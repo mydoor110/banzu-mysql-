@@ -6,8 +6,33 @@
 """
 from flask import session, request
 from models.database import get_db
-from datetime import datetime
+from datetime import datetime, timedelta
 import calendar
+
+
+def is_dingtalk_session_valid():
+    """统一的钉钉 session 有效性校验函数
+    
+    判断逻辑:
+    - 非钉钉登录源: 始终有效
+    - 钉钉登录源: 判断是否在 24 小时内
+    
+    Returns:
+        bool: session 是否有效
+    """
+    if session.get('login_source') != 'dingtalk':
+        return True
+
+    login_at = session.get('login_at')
+    if not login_at:
+        return False
+
+    try:
+        login_time = datetime.fromisoformat(login_at)
+    except (TypeError, ValueError):
+        return False
+
+    return datetime.now() - login_time <= timedelta(hours=24)
 
 
 def current_user_id():
@@ -33,10 +58,15 @@ def current_username():
 def current_user_role():
     """
     获取当前登录用户的角色
+    优先从 g.user_ctx 读取（请求级缓存），回退到 session
 
     Returns:
         str: 用户角色 ('admin', 'manager', 'user'),未登录返回None
     """
+    from flask import g
+    ctx = getattr(g, 'user_ctx', None)
+    if ctx:
+        return ctx.get('role')
     return session.get('role')
 
 
@@ -53,6 +83,7 @@ def is_logged_in():
 def is_admin():
     """
     检查当前用户是否为管理员
+    优先从 g.user_ctx 读取，避免重复 DB 查询
 
     Returns:
         bool: True表示是管理员,False表示不是
@@ -60,6 +91,13 @@ def is_admin():
     if not is_logged_in():
         return False
 
+    # 优先从请求级缓存读取
+    from flask import g
+    ctx = getattr(g, 'user_ctx', None)
+    if ctx:
+        return ctx.get('role') == 'admin'
+
+    # 回退：查数据库
     user_id = current_user_id()
     conn = get_db()
     cur = conn.cursor()
@@ -72,6 +110,7 @@ def is_admin():
 def get_user_role():
     """
     获取当前用户的数据库角色
+    优先从 g.user_ctx 读取，避免重复 DB 查询
 
     Returns:
         str: 用户角色,未登录或查询失败返回None
@@ -80,6 +119,13 @@ def get_user_role():
     if not user_id:
         return None
 
+    # 优先从请求级缓存读取
+    from flask import g
+    ctx = getattr(g, 'user_ctx', None)
+    if ctx:
+        return ctx.get('role')
+
+    # 回退：查数据库
     conn = get_db()
     cur = conn.cursor()
     cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))

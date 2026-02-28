@@ -13,7 +13,7 @@ from models.database import get_db
 from utils.validators import FormValidator
 from utils.logger import AuditLogger, SecurityLogger
 from .decorators import login_required
-from .helpers import current_user_id
+from .helpers import current_user_id, is_dingtalk_session_valid
 from services.dingtalk_service import get_userid_by_auth_code
 
 # 创建 Blueprint
@@ -24,22 +24,10 @@ APP_TITLE = "班组管理"
 
 
 def _is_dingtalk_session_valid():
-    """Check whether DingTalk login session is within 24 hours"""
+    """Check whether DingTalk login session is within 24 hours (含 logged_in 检查)"""
     if not session.get('logged_in'):
         return False
-    if session.get('login_source') != 'dingtalk':
-        return True
-
-    login_at = session.get('login_at')
-    if not login_at:
-        return False
-
-    try:
-        login_time = datetime.fromisoformat(login_at)
-    except (TypeError, ValueError):
-        return False
-
-    return datetime.now() - login_time <= timedelta(hours=24)
+    return is_dingtalk_session_valid()
 
 
 def _get_user_by_dingtalk_userid(userid):
@@ -106,19 +94,19 @@ def login():
             # 记录审计日志
             try:
                 AuditLogger.login(username, success=True)
-            except:
+            except Exception:
                 pass  # 日志失败不影响登录
 
             flash('登录成功', 'success')
 
             # 跳转到原始请求页面或首页
-            next_url = request.args.get('next') or url_for('performance.index')
+            next_url = request.args.get('next') or url_for('personnel.dashboard')
             return redirect(next_url)
         else:
             # 记录安全日志
             try:
                 SecurityLogger.failed_login(username, '账号或密码不正确')
-            except:
+            except Exception:
                 pass
 
             flash('账号或密码不正确', 'danger')
@@ -133,7 +121,7 @@ def login():
 @auth_bp.route('/dingtalk/login', methods=['GET'])
 def dingtalk_login():
     """钉钉免登登录入口"""
-    next_url = request.args.get('next') or url_for('performance.index')
+    next_url = request.args.get('next') or url_for('personnel.dashboard')
     if _is_dingtalk_session_valid():
         return redirect(next_url)
 
@@ -224,7 +212,7 @@ def logout():
     # 记录审计日志
     try:
         AuditLogger.logout(username)
-    except:
+    except Exception:
         pass
 
     # 清除session
@@ -269,7 +257,7 @@ def change_password():
             # 记录审计日志
             try:
                 AuditLogger.update('user', user_id, {'action': 'password_changed'})
-            except:
+            except Exception:
                 pass
 
             flash('密码修改成功，请重新登录', 'success')
@@ -304,7 +292,7 @@ CHANGE_PASSWORD_TEMPLATE = """
             <div class="form-text">密码长度至少6位</div>
           </div>
           <button class="btn btn-primary w-100" type="submit">修改</button>
-          <a class="btn btn-link w-100 mt-2" href="{{ url_for('performance.index') }}">返回</a>
+          <a class="btn btn-link w-100 mt-2" href="{{ url_for('personnel.dashboard') }}">返回</a>
         </form>
       </div>
     </div>

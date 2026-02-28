@@ -62,18 +62,18 @@ CREATE TABLE IF NOT EXISTS employees (
     created_by INT,
     class_name VARCHAR(255),
     position VARCHAR(255),
-    birth_date VARCHAR(20),
-    certification_date VARCHAR(20),
+    birth_date DATE,
+    certification_date DATE,
     marital_status VARCHAR(50),
     hometown VARCHAR(255),
     political_status VARCHAR(100),
     specialty VARCHAR(255),
     education VARCHAR(100),
     graduation_school VARCHAR(255),
-    work_start_date VARCHAR(20),
-    entry_date VARCHAR(20),
+    work_start_date DATE,
+    entry_date DATE,
     department_id INT,
-    solo_driving_date VARCHAR(20),
+    solo_driving_date DATE,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS performance_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
     emp_no VARCHAR(100) NOT NULL,
     name VARCHAR(255) NOT NULL,
+    employee_id INT DEFAULT NULL,
     year INT NOT NULL,
     month INT NOT NULL,
     score DECIMAL(10,2),
@@ -93,7 +94,8 @@ CREATE TABLE IF NOT EXISTS performance_records (
     created_by INT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_perf (emp_no, year, month),
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """
 
@@ -102,8 +104,9 @@ CREATE TABLE IF NOT EXISTS training_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
     emp_no VARCHAR(100) NOT NULL,
     name VARCHAR(255) NOT NULL,
+    employee_id INT DEFAULT NULL,
     team_name VARCHAR(255),
-    training_date VARCHAR(20) NOT NULL,
+    training_date DATE NOT NULL,
     project_id INT,
     project_name_snapshot VARCHAR(255),
     category_name_snapshot VARCHAR(255),
@@ -123,7 +126,8 @@ CREATE TABLE IF NOT EXISTS training_records (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (retake_of_record_id) REFERENCES training_records(id) ON DELETE SET NULL,
-    FOREIGN KEY (project_id) REFERENCES training_projects(id) ON DELETE SET NULL
+    FOREIGN KEY (project_id) REFERENCES training_projects(id) ON DELETE SET NULL,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """
 
@@ -131,12 +135,13 @@ SAFETY_INSPECTION_TABLE = """
 CREATE TABLE IF NOT EXISTS safety_inspection_records (
     id INT AUTO_INCREMENT PRIMARY KEY,
     category VARCHAR(255) NOT NULL,
-    inspection_date VARCHAR(20) NOT NULL,
+    inspection_date DATE NOT NULL,
     location VARCHAR(500),
     hazard_description TEXT,
     corrective_measures TEXT,
-    deadline_date VARCHAR(20),
+    deadline_date DATE,
     inspected_person VARCHAR(255),
+    employee_id INT DEFAULT NULL,
     responsible_team VARCHAR(255),
     assessment TEXT,
     rectification_status VARCHAR(100),
@@ -147,7 +152,8 @@ CREATE TABLE IF NOT EXISTS safety_inspection_records (
     created_by INT,
     source_file VARCHAR(500),
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """
 
@@ -374,6 +380,24 @@ CREATE TABLE IF NOT EXISTS async_tasks (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """
 
+PPT_EXPORT_CACHE_TABLE = """
+CREATE TABLE IF NOT EXISTS ppt_export_cache (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    cache_key VARCHAR(128) NOT NULL UNIQUE,
+    emp_no VARCHAR(100) NOT NULL,
+    start_date VARCHAR(20),
+    end_date VARCHAR(20),
+    ai_summary TEXT NOT NULL,
+    is_ai_generated TINYINT DEFAULT 0,
+    tokens_used INT DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    INDEX idx_ppt_cache_key (cache_key),
+    INDEX idx_ppt_cache_emp (emp_no),
+    INDEX idx_ppt_cache_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+"""
+
 # Recent Imports View
 VIEW_RECENT_IMPORTS = """
 CREATE VIEW v_recent_imports AS
@@ -423,5 +447,6 @@ ALL_TABLES = [
     ALGORITHM_PRESETS_TABLE,
     ALGORITHM_ACTIVE_CONFIG_TABLE,
     ALGORITHM_CONFIG_LOGS_TABLE,
-    ASYNC_TASKS_TABLE
+    ASYNC_TASKS_TABLE,
+    PPT_EXPORT_CACHE_TABLE
 ]

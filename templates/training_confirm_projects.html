@@ -1,5 +1,7 @@
 {% extends "base.html" %}
-{% set is_top_manager = session.get('role') == 'admin' or (session.get('role') == 'manager' and session.get('dept_level') == 1) %}
+{% set user_role = g.get('user_ctx', {}).get('role', '') %}
+{% set is_top_manager = user_role == 'admin' or (user_role == 'manager' and g.get('user_ctx', {}).get('dept_level') ==
+1) %}
 
 {% block content %}
 <div class="mb-4">
@@ -24,7 +26,8 @@
     <div class="alert alert-danger">
       <i class="bi bi-exclamation-triangle me-2"></i>
       {% if is_top_manager %}
-      <strong>错误：</strong>系统中尚未创建任何项目分类。请先前往<a href="{{ url_for('training.project_categories') }}" class="alert-link">项目分类管理</a>创建分类，然后再导入培训数据。
+      <strong>错误：</strong>系统中尚未创建任何项目分类。请先前往<a href="{{ url_for('training.project_categories') }}"
+        class="alert-link">项目分类管理</a>创建分类，然后再导入培训数据。
       {% else %}
       <strong>错误：</strong>系统中尚未创建任何项目分类。请联系上级管理员创建分类后再导入培训数据。
       {% endif %}
@@ -55,11 +58,7 @@
                 <strong class="text-primary">{{ project_name }}</strong>
               </td>
               <td>
-                <select
-                  class="form-select"
-                  name="category_{{ project_name }}"
-                  required
-                >
+                <select class="form-select" name="category_{{ project_name }}" required>
                   <option value="">-- 请选择分类 --</option>
                   {% for category in categories %}
                   <option value="{{ category.id }}">{{ category.name }}</option>
@@ -126,29 +125,29 @@
 </div>
 
 <script>
-document.getElementById('confirmForm')?.addEventListener('submit', function(e) {
+  document.getElementById('confirmForm')?.addEventListener('submit', function (e) {
     const action = e.submitter?.value;
     if (action === 'confirm') {
-        // 检查是否所有项目都已选择分类
-        const selects = document.querySelectorAll('select[name^="category_"]');
-        let allSelected = true;
-        selects.forEach(select => {
-            if (!select.value) {
-                allSelected = false;
-                select.classList.add('is-invalid');
-            } else {
-                select.classList.remove('is-invalid');
-            }
-        });
-
-        if (!allSelected) {
-            e.preventDefault();
-            alert('请为所有项目选择分类');
-            return false;
+      // 检查是否所有项目都已选择分类
+      const selects = document.querySelectorAll('select[name^="category_"]');
+      let allSelected = true;
+      selects.forEach(select => {
+        if (!select.value) {
+          allSelected = false;
+          select.classList.add('is-invalid');
+        } else {
+          select.classList.remove('is-invalid');
         }
+      });
 
-        return confirm(`确认要创建 ${selects.length} 个新项目并导入 {{ record_count }} 条培训记录吗？`);
+      if (!allSelected) {
+        e.preventDefault();
+        alert('请为所有项目选择分类');
+        return false;
+      }
+
+      return confirm(`确认要创建 ${selects.length} 个新项目并导入 {{ record_count }} 条培训记录吗？`);
     }
-});
+  });
 </script>
 {% endblock %}

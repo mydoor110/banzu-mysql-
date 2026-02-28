@@ -603,7 +603,7 @@ def api_import_stopwords():
             try:
                 file.seek(0)
                 content = file.read().decode('gbk')
-            except:
+            except Exception:
                 return jsonify({
                     'success': False,
                     'error': '文件编码不支持，请使用 UTF-8 或 GBK 编码'
@@ -634,7 +634,7 @@ def api_import_stopwords():
                 )
                 if cur.rowcount > 0:
                     inserted_count += 1
-            except:
+            except Exception:
                 continue
 
         conn.commit()

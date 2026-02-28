@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 from flask import current_app
 from models.database import get_db
-from blueprints.performance import extract_text_from_pdf, parse_pdf_text
+from services.domain.pdf_parser import extract_text_from_pdf, parse_pdf_text
 # Note: We need to import log_import_operation but it also depends on usage.
 # We might need to implement a custom logger or pass enough context.
 

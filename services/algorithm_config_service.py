@@ -378,7 +378,7 @@ class AlgorithmConfigService:
             dict: 模拟计算结果
         """
         # 导入算法函数（避免循环导入）
-        from blueprints.personnel import (
+        from services.domain.personnel_algo import (
             calculate_performance_score_monthly,
             calculate_safety_score_dual_track,
             calculate_training_score_with_penalty

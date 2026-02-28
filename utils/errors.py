@@ -168,7 +168,7 @@ def register_error_handlers(app):
             from models.database import get_db
             db = get_db()
             db.rollback()
-        except:
+        except Exception:
             pass
 
         if request.is_json or request.path.startswith('/api/'):
@@ -199,7 +199,7 @@ def register_error_handlers(app):
             from models.database import get_db
             db = get_db()
             db.rollback()
-        except:
+        except Exception:
             pass
 
         if request.is_json or request.path.startswith('/api/'):

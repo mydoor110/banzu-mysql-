@@ -238,7 +238,7 @@ class RiskMiningService:
                 y = np.array(scores, dtype=float)
                 coeffs = np.polyfit(x, y, 1)
                 return float(coeffs[0])
-            except:
+            except Exception:
                 return 0.0
 
     @classmethod
@@ -340,7 +340,7 @@ class RiskMiningService:
                     start_date = pd.to_datetime(date_str)
                     years = (today - start_date).days / 365.25
                     return max(0, years)
-                except:
+                except Exception:
                     return None
 
             employees_df['driving_years'] = employees_df.apply(calc_driving_years, axis=1)

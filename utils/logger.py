@@ -15,9 +15,14 @@ import json
 
 # ========== Logging Configuration ==========
 
-def setup_logging(app):
-    """Setup application logging configuration"""
 
+def setup_logging(app):
+    """Setup application logging configuration
+    
+    幂等设计：基于 handler 检查而非全局标志。
+    每次调用先清理 app.logger 已有 handler，再注册新 handler。
+    支持多 app 实例、测试场景和 debug reload。
+    """
     # Create logs directory if it doesn't exist
     log_dir = os.path.join(app.root_path, 'logs')
     os.makedirs(log_dir, exist_ok=True)
@@ -36,8 +41,10 @@ def setup_logging(app):
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
+    # ===== 清理 app.logger 旧 handler（幂等核心） =====
+    app.logger.handlers.clear()
+
     # ===== Application Log =====
-    # Rotating file handler for application logs (10MB per file, keep 10 backups)
     app_handler = RotatingFileHandler(
         os.path.join(log_dir, 'app.log'),
         maxBytes=10 * 1024 * 1024,  # 10MB
@@ -46,9 +53,9 @@ def setup_logging(app):
     )
     app_handler.setLevel(log_level)
     app_handler.setFormatter(detailed_formatter)
+    app.logger.addHandler(app_handler)
 
     # ===== Error Log =====
-    # Separate file for errors and above (5MB per file, keep 5 backups)
     error_handler = RotatingFileHandler(
         os.path.join(log_dir, 'error.log'),
         maxBytes=5 * 1024 * 1024,  # 5MB
@@ -57,30 +64,7 @@ def setup_logging(app):
     )
     error_handler.setLevel(logging.ERROR)
     error_handler.setFormatter(detailed_formatter)
-
-    # ===== Access Log =====
-    # Daily rotating access log
-    access_handler = TimedRotatingFileHandler(
-        os.path.join(log_dir, 'access.log'),
-        when='midnight',
-        interval=1,
-        backupCount=30,  # Keep 30 days
-        encoding='utf-8'
-    )
-    access_handler.setLevel(logging.INFO)
-    access_handler.setFormatter(simple_formatter)
-
-    # ===== Audit Log =====
-    # Daily rotating audit trail log
-    audit_handler = TimedRotatingFileHandler(
-        os.path.join(log_dir, 'audit.log'),
-        when='midnight',
-        interval=1,
-        backupCount=90,  # Keep 90 days for compliance
-        encoding='utf-8'
-    )
-    audit_handler.setLevel(logging.INFO)
-    audit_handler.setFormatter(simple_formatter)
+    app.logger.addHandler(error_handler)
 
     # ===== Console Handler (Development only) =====
     if app.config.get('DEBUG'):
@@ -89,18 +73,39 @@ def setup_logging(app):
         console_handler.setFormatter(simple_formatter)
         app.logger.addHandler(console_handler)
 
-    # Add handlers to app logger
-    app.logger.addHandler(app_handler)
-    app.logger.addHandler(error_handler)
     app.logger.setLevel(log_level)
 
-    # Create separate loggers for access and audit
+    # ===== Access Log =====
+    access_handler = TimedRotatingFileHandler(
+        os.path.join(log_dir, 'access.log'),
+        when='midnight',
+        interval=1,
+        backupCount=30,
+        encoding='utf-8'
+    )
+    access_handler.setLevel(logging.INFO)
+    access_handler.setFormatter(simple_formatter)
+
+    # ===== Audit Log =====
+    audit_handler = TimedRotatingFileHandler(
+        os.path.join(log_dir, 'audit.log'),
+        when='midnight',
+        interval=1,
+        backupCount=90,
+        encoding='utf-8'
+    )
+    audit_handler.setLevel(logging.INFO)
+    audit_handler.setFormatter(simple_formatter)
+
+    # Create separate loggers for access and audit（清理旧 handler 后再注册）
     access_logger = logging.getLogger('access')
+    access_logger.handlers.clear()
     access_logger.addHandler(access_handler)
     access_logger.setLevel(logging.INFO)
     access_logger.propagate = False
 
     audit_logger = logging.getLogger('audit')
+    audit_logger.handlers.clear()
     audit_logger.addHandler(audit_handler)
     audit_logger.setLevel(logging.INFO)
     audit_logger.propagate = False

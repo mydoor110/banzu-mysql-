@@ -231,7 +231,7 @@ class AIConfigService:
             if row['extra_headers']:
                 try:
                     extra_headers = json.loads(row['extra_headers'])
-                except:
+                except Exception:
                     pass
 
             providers.append({
@@ -290,7 +290,7 @@ class AIConfigService:
         if row['extra_headers']:
             try:
                 extra_headers = json.loads(row['extra_headers'])
-            except:
+            except Exception:
                 pass
 
         return {
@@ -345,7 +345,7 @@ class AIConfigService:
         if row['extra_headers']:
             try:
                 extra_headers = json.loads(row['extra_headers'])
-            except:
+            except Exception:
                 pass
 
         return {
@@ -655,7 +655,7 @@ class AIConfigService:
                 error_detail = e.response.json()
                 if 'error' in error_detail:
                     error_msg = error_detail['error'].get('message', error_msg)
-            except:
+            except Exception:
                 pass
             cls.log_usage(provider_id, provider['name'], provider['model'], 0, False, error_msg, 'test')
             return False, error_msg, None

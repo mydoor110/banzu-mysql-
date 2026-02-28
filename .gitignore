@@ -101,5 +101,8 @@ scripts/*backup*.json
 # 系统和Claude相关
 /.sisyphus/
 
-
-
+node_modules/
+dist/
+build/
+coverage/
+*.pyc

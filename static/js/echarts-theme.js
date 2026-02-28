@@ -1,131 +1,186 @@
 (function () {
-  if (!window.echarts || window.echarts.__enterpriseThemeLoaded) {
-    return;
-  }
+  function registerTheme() {
+    if (!window.echarts || window.echarts.__enterpriseThemeLoaded) {
+      return false;
+    }
 
-  const theme = {
-    color: [
-      '#0ea5e9',  // Primary blue
-      '#38bdf8',  // Light blue
-      '#22c55e',  // Green
-      '#f59e0b',  // Amber
-      '#ef4444',  // Red
-      '#8b5cf6',  // Purple
-      '#14b8a6',  // Teal
-      '#f97316',  // Orange
-      '#06b6d4',  // Cyan
-      '#6366f1'   // Indigo
-    ],
-    backgroundColor: 'transparent',
-    textStyle: {
-      color: '#0f172a',
-      fontFamily: 'IBM Plex Sans, Noto Sans SC, Microsoft YaHei, sans-serif'
-    },
-    title: {
+    // 引入大厂级可视化规范色板 (如 Arco Design / AntV)
+    const colorPalette = [
+      '#165DFF', // Primary Blue
+      '#14C9C9', // Cyan
+      '#FADC19', // Yellow
+      '#FF7D00', // Orange
+      '#F53F3F', // Red
+      '#722ED1', // Purple
+      '#00B42A', // Green
+      '#F77234', // Tangerine
+      '#3491FA', // Light Blue
+      '#D91AD9'  // Magenta
+    ];
+
+    const theme = {
+      color: colorPalette,
+      backgroundColor: 'transparent',
       textStyle: {
-        color: '#0f172a',
-        fontWeight: 600
+        fontFamily: 'Inter, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif'
       },
-      subtextStyle: {
-        color: '#64748b'
-      }
-    },
-    legend: {
-      textStyle: {
-        color: '#475569'
-      }
-    },
-    tooltip: {
-      backgroundColor: 'rgba(15, 23, 42, 0.95)',
-      borderColor: 'rgba(14, 165, 233, 0.3)',
-      borderWidth: 1,
-      borderRadius: 8,
-      textStyle: {
-        color: '#f8fafc',
-        fontSize: 13
+      title: {
+        textStyle: {
+          color: '#1D2129',
+          fontWeight: 600,
+          fontSize: 16
+        },
+        subtextStyle: {
+          color: '#4E5969',
+          fontSize: 12
+        },
+        padding: [0, 0, 16, 0]
       },
-      extraCssText: 'box-shadow: 0 16px 40px rgba(14, 165, 233, 0.3); backdrop-filter: blur(12px);'
-    },
-    grid: {
-      left: 48,
-      right: 32,
-      top: 60,
-      bottom: 44
-    },
-    categoryAxis: {
-      axisLine: {
-        lineStyle: { color: '#cbd5e1' }
+      legend: {
+        textStyle: {
+          color: '#4E5969',
+          fontSize: 12
+        },
+        itemGap: 16,
+        itemWidth: 14,
+        itemHeight: 14,
+        icon: 'circle'
       },
-      axisTick: {
-        lineStyle: { color: '#cbd5e1' }
+      tooltip: {
+        backgroundColor: 'rgba(255, 255, 255, 0.98)',
+        borderColor: '#E5E6EB',
+        borderWidth: 1,
+        padding: [8, 12],
+        textStyle: {
+          color: '#1D2129',
+          fontSize: 13,
+          fontWeight: 400
+        },
+        extraCssText: 'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); border-radius: 6px; backdrop-filter: blur(8px);'
       },
-      axisLabel: {
-        color: '#475569'
+      grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        top: 60,
+        containLabel: true
       },
-      splitLine: {
-        lineStyle: { color: '#e2e8f0' }
-      }
-    },
-    valueAxis: {
-      axisLine: {
-        lineStyle: { color: '#cbd5e1' }
+      categoryAxis: {
+        axisLine: {
+          show: true,
+          lineStyle: {
+            color: '#E5E6EB'
+          }
+        },
+        axisTick: {
+          show: false
+        },
+        axisLabel: {
+          color: '#4E5969',
+          margin: 12
+        },
+        splitLine: {
+          show: false
+        }
       },
-      axisTick: {
-        lineStyle: { color: '#cbd5e1' }
+      valueAxis: {
+        axisLine: {
+          show: false
+        },
+        axisTick: {
+          show: false
+        },
+        axisLabel: {
+          color: '#4E5969',
+          margin: 12
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            color: '#E5E6EB',
+            type: 'dashed'
+          }
+        }
       },
-      axisLabel: {
-        color: '#475569'
-      },
-      splitLine: {
-        lineStyle: { color: '#e2e8f0' }
-      }
-    },
-    line: {
-      smooth: true,
-      symbolSize: 6,
-      lineStyle: {
-        width: 3
-      },
-      areaStyle: {
-        opacity: 0.08
-      }
-    },
-    bar: {
-      barMaxWidth: 32,
-      itemStyle: {
-        borderRadius: [8, 8, 0, 0]
-      }
-    },
-    pie: {
-      label: {
-        color: '#475569'
-      },
-      labelLine: {
-        lineStyle: { color: '#cbd5e1' }
-      }
-    },
-    radar: {
-      axisName: {
-        color: '#475569'
-      },
-      splitLine: {
-        lineStyle: { color: '#e2e8f0' }
-      },
-      splitArea: {
+      line: {
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 8,
+        lineStyle: {
+          width: 3,
+          shadowColor: 'rgba(0, 0, 0, 0.15)',
+          shadowBlur: 8,
+          shadowOffsetY: 4
+        },
+        itemStyle: {
+          borderWidth: 2,
+          borderColor: '#fff'
+        },
         areaStyle: {
-          color: ['rgba(148, 163, 184, 0.06)', 'rgba(148, 163, 184, 0.12)']
+          opacity: 0.15
+        }
+      },
+      bar: {
+        barMaxWidth: 24,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0]
+        }
+      },
+      pie: {
+        emptyCircleStyle: {
+          color: '#E5E6EB'
+        },
+        itemStyle: {
+          borderWidth: 2,
+          borderColor: '#fff'
+        },
+        label: {
+          color: '#4E5969'
+        },
+        labelLine: {
+          lineStyle: { color: '#E5E6EB' }
+        }
+      },
+      radar: {
+        axisName: {
+          color: '#4E5969'
+        },
+        axisLine: {
+          lineStyle: {
+            color: '#E5E6EB'
+          }
+        },
+        splitLine: {
+          lineStyle: {
+            color: '#E5E6EB'
+          }
+        },
+        splitArea: {
+          show: false
         }
       }
+    };
+
+    echarts.registerTheme('enterprise', theme);
+    window.enterpriseChartPalette = theme.color;
+
+    const originalInit = echarts.init;
+    echarts.init = function (dom, themeName, opts) {
+      return originalInit(dom, themeName || 'enterprise', opts);
+    };
+
+    echarts.__enterpriseThemeLoaded = true;
+    return true;
+  }
+
+  if (registerTheme()) return;
+
+  const timer = setInterval(() => {
+    if (window.echarts) {
+      registerTheme();
+      clearInterval(timer);
     }
-  };
+  }, 50);
 
-  echarts.registerTheme('enterprise', theme);
-  window.enterpriseChartPalette = theme.color;
-
-  const originalInit = echarts.init;
-  echarts.init = function (dom, themeName, opts) {
-    return originalInit(dom, themeName || 'enterprise', opts);
-  };
-
-  echarts.__enterpriseThemeLoaded = true;
+  setTimeout(() => clearInterval(timer), 5000);
 })();

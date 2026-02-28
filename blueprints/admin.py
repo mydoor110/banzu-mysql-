@@ -195,7 +195,7 @@ def backups():
                              backups=backups_list, stats=stats)
     except Exception as e:
         flash(f'加载备份列表失败: {e}', 'danger')
-        return redirect(url_for('performance.index'))
+        return redirect(url_for('personnel.dashboard'))
 
 @admin_bp.route('/backups/create', methods=['POST'])
 @admin_required
@@ -373,7 +373,7 @@ def import_logs():
         if log_dict.get('import_details'):
             try:
                 log_dict['details_parsed'] = json.loads(log_dict['import_details'])
-            except:
+            except Exception:
                 log_dict['details_parsed'] = {}
         else:
             log_dict['details_parsed'] = {}
@@ -466,7 +466,7 @@ def import_log_detail(log_id):
     if log_dict.get('import_details'):
         try:
             log_dict['details_parsed'] = json.loads(log_dict['import_details'])
-        except:
+        except Exception:
             log_dict['details_parsed'] = {}
     else:
         log_dict['details_parsed'] = {}

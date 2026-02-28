@@ -818,7 +818,7 @@ class AIDiagnosisService:
                 error_detail = e.response.json()
                 if 'error' in error_detail:
                     error_msg = error_detail['error'].get('message', error_msg)
-            except:
+            except Exception:
                 pass
             cls._log_usage(provider_id, provider_name, model, 0, False, error_msg)
             return DiagnosisResult(
@@ -1050,7 +1050,7 @@ class AIDiagnosisService:
                 error_detail = e.response.json()
                 if 'error' in error_detail:
                     error_msg = error_detail['error'].get('message', error_msg)
-            except:
+            except Exception:
                 pass
             cls._log_usage(provider_id, provider_name, model, 0, False, error_msg)
             return DiagnosisResult(

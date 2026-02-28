@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Blueprint 注册中心
-负责导入和注册所有Blueprint模块
+Blueprint 注册中心（唯一注册入口）
+
+所有蓝图在此统一导入和注册。
+app.py 的 create_app() 通过调用 register_blueprints(app) 完成注册。
 """
 from flask import Flask
 
@@ -22,6 +24,8 @@ def register_blueprints(app: Flask):
         5. training - 培训管理
         6. safety - 安全管理
         7. admin - 系统管理 (依赖其他模块)
+        8. system_config - 系统配置
+        9. export_ppt - PPT 导出
     """
 
     # 导入所有 Blueprint
@@ -32,6 +36,8 @@ def register_blueprints(app: Flask):
     from .training import training_bp
     from .safety import safety_bp
     from .admin import admin_bp
+    from .system_config import system_config_bp
+    from .export_ppt import export_ppt_bp
 
     # 注册 Blueprint
     app.register_blueprint(auth_bp)
@@ -41,5 +47,7 @@ def register_blueprints(app: Flask):
     app.register_blueprint(training_bp)
     app.register_blueprint(safety_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(system_config_bp)
+    app.register_blueprint(export_ppt_bp)
 
     app.logger.info('All blueprints registered successfully')

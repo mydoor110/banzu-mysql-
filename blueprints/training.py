@@ -61,25 +61,33 @@ def index():
     ]
 
     # 判断是否显示项目管理入口（系统管理员或顶级部门管理员）
+    # 统一从 g.user_ctx 读取，避免 session 双轨和额外 DB 查询
     show_project_management = False
-    user_role = session.get('role')
-    
+    from flask import g
+    ctx = getattr(g, 'user_ctx', None)
+    user_role = ctx.get('role') if ctx else session.get('role')
+
     if user_role == 'admin':
         show_project_management = True
     elif user_role == 'manager':
         # 检查是否为顶级部门管理员
-        user_id = session.get('user_id')
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT d.level
-            FROM users u
-            JOIN departments d ON u.department_id = d.id
-            WHERE u.id = %s
-        """, (user_id,))
-        dept_info = cur.fetchone()
-        if dept_info and dept_info['level'] == 1:
-            show_project_management = True
+        dept_level = ctx.get('dept_level') if ctx else None
+        if dept_level is not None:
+            show_project_management = (dept_level == 1)
+        else:
+            # 回退：查数据库
+            user_id = session.get('user_id')
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT d.level
+                FROM users u
+                JOIN departments d ON u.department_id = d.id
+                WHERE u.id = %s
+            """, (user_id,))
+            dept_info = cur.fetchone()
+            if dept_info and dept_info['level'] == 1:
+                show_project_management = True
     
     # 管理员和顶级部门管理员可见项目管理
     if show_project_management:
