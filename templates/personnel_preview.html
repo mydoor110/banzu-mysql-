@@ -72,18 +72,24 @@
             {% if name == "emp_no" %}
             <input type="text" class="form-control" value="{{ value }}" readonly>
             {% elif input_type == "textarea" %}
-            <textarea class="form-control" rows="3" data-field="{{ name }}" data-label="{{ label }}">{{ value or "" }}</textarea>
+            <textarea class="form-control" rows="3" data-field="{{ name }}"
+              data-label="{{ label }}">{{ value or "" }}</textarea>
             {% elif input_type == "select" %}
             <select class="form-select" data-field="{{ name }}" data-label="{{ label }}">
               <option value="">未填写</option>
               {% for option in select_options.get(name, []) %}
-              <option value="{{ option }}" {% if value == option %}selected{% endif %}>{{ option }}</option>
+              <option value="{{ option }}" {% if value==option %}selected{% endif %}>{{ option }}</option>
               {% endfor %}
             </select>
             {% elif input_type == "date" %}
-            <input type="date" class="form-control" data-field="{{ name }}" data-label="{{ label }}" value="{{ value or "" }}">
+            {% set fd_field = name %}
+            {% set fd_label = label %}
+            {% set fd_value = value or "" %}
+            {% set fd_size = '' %}
+            {% include 'components/form_date_field.html' %}
             {% else %}
-            <input type="text" class="form-control" data-field="{{ name }}" data-label="{{ label }}" value="{{ value or "" }}" {% if required %}required{% endif %}>
+            <input type="text" class="form-control" data-field="{{ name }}" data-label="{{ label }}"
+              value="{{ value or "" }}" {% if required %}required{% endif %}>
             {% endif %}
           </div>
           {% endfor %}

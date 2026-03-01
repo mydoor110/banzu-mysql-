@@ -9,8 +9,10 @@
     </p>
   </div>
   <div class="d-flex gap-2 mt-3 mt-lg-0 flex-wrap">
-    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#personnelAddModal">新增人员</button>
-    <form id="personnel-import-form" action="{{ url_for('personnel.import_data') }}" method="post" enctype="multipart/form-data" class="d-inline">
+    <button type="button" class="btn btn-primary" data-bs-toggle="modal"
+      data-bs-target="#personnelAddModal">新增人员</button>
+    <form id="personnel-import-form" action="{{ url_for('personnel.import_data') }}" method="post"
+      enctype="multipart/form-data" class="d-inline">
       <input type="file" id="personnel-import-input" class="d-none" name="file" accept=".xlsx">
       <button type="button" class="btn btn-outline-primary" id="personnel-import-trigger">导入 Excel</button>
     </form>
@@ -27,7 +29,8 @@
   <div class="card-header bg-light d-flex flex-column flex-xl-row align-items-xl-center justify-content-xl-between">
     <span>人员一览（可直接编辑）</span>
     <div class="d-flex gap-2 align-items-center mt-2 mt-xl-0">
-      <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn" onclick="batchDelete()" style="display:none;">
+      <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn" onclick="batchDelete()"
+        style="display:none;">
         <i class="fas fa-trash me-1"></i>批量删除
       </button>
       <span class="text-muted small">横向滚动查看更多字段，点击"档案"可查看详细界面。</span>
@@ -56,7 +59,8 @@
           {% for row in rows %}
           <tr data-emp-no="{{ row.emp_no }}" data-update-url="{{ url_for('personnel.update', emp_no=row.emp_no) }}">
             <td>
-              <input type="checkbox" class="form-check-input personnel-checkbox" value="{{ row.emp_no }}" onchange="updateBatchDeleteBtn()">
+              <input type="checkbox" class="form-check-input personnel-checkbox" value="{{ row.emp_no }}"
+                onchange="updateBatchDeleteBtn()">
             </td>
             {% for field in field_scheme %}
             {% set name = field.name %}
@@ -67,10 +71,11 @@
               {% if name == "emp_no" %}
               <input type="text" class="form-control form-control-sm" value="{{ row.emp_no }}" readonly>
               {% elif input_type == "department_select" %}
-              <select class="form-select form-select-sm" data-field="{{ name }}" data-label="{{ label }}" {% if field.required %}required{% endif %}>
+              <select class="form-select form-select-sm" data-field="{{ name }}" data-label="{{ label }}" {% if
+                field.required %}required{% endif %}>
                 <option value="">未分配</option>
                 {% for dept in accessible_departments %}
-                <option value="{{ dept.id }}" {% if value == dept.id %}selected{% endif %}>
+                <option value="{{ dept.id }}" {% if value==dept.id %}selected{% endif %}>
                   {{ '　' * (dept.level - 1) }}{{ dept.name }}
                 </option>
                 {% endfor %}
@@ -79,15 +84,21 @@
               <select class="form-select form-select-sm" data-field="{{ name }}" data-label="{{ label }}">
                 <option value="">未填写</option>
                 {% for option in select_options.get(name, []) %}
-                <option value="{{ option }}" {% if value == option %}selected{% endif %}>{{ option }}</option>
+                <option value="{{ option }}" {% if value==option %}selected{% endif %}>{{ option }}</option>
                 {% endfor %}
               </select>
               {% elif input_type == "textarea" %}
-              <textarea class="form-control form-control-sm" rows="1" data-field="{{ name }}" data-label="{{ label }}" placeholder="请输入{{ label }}">{{ value or "" }}</textarea>
+              <textarea class="form-control form-control-sm" rows="1" data-field="{{ name }}" data-label="{{ label }}"
+                placeholder="请输入{{ label }}">{{ value or "" }}</textarea>
               {% elif input_type == "date" %}
-              <input type="date" class="form-control form-control-sm" data-field="{{ name }}" data-label="{{ label }}" value="{{ value or "" }}">
+              {% set fd_field = name %}
+              {% set fd_label = label %}
+              {% set fd_value = value or "" %}
+              {% set fd_size = 'sm' %}
+              {% include 'components/form_date_field.html' %}
               {% else %}
-              <input type="text" class="form-control form-control-sm" data-field="{{ name }}" data-label="{{ label }}" value="{{ value or "" }}" {% if field.required %}required{% endif %}>
+              <input type="text" class="form-control form-control-sm" data-field="{{ name }}" data-label="{{ label }}"
+                value="{{ value or "" }}" {% if field.required %}required{% endif %}>
               {% endif %}
             </td>
             {% endfor %}
@@ -121,7 +132,8 @@
               {% endif %}
             </td>
             <td class="text-nowrap">
-              <a class="btn btn-link btn-sm px-1" data-role="preview-link" href="{{ url_for('personnel.preview', emp_no=row.emp_no) }}">档案</a>
+              <a class="btn btn-link btn-sm px-1" data-role="preview-link"
+                href="{{ url_for('personnel.preview', emp_no=row.emp_no) }}">档案</a>
             </td>
           </tr>
           {% endfor %}
@@ -184,6 +196,9 @@
     }
 
     function handleUpdate(input) {
+      // 当 Modal 弹窗打开时，暂停底层表格的自动保存
+      if (window.__modalAutoSavePaused) return;
+
       const row = input.closest("tr");
       if (!row) return;
       const updateUrl = row.dataset.updateUrl;
@@ -311,6 +326,48 @@
   }
 </script>
 
+<script>
+  // === Bug Fix: Modal 弹窗事件隔离 + 下拉框校验同步 ===
+  (function () {
+    const modal = document.getElementById('personnelAddModal');
+    if (!modal) return;
+
+    let autoSavePaused = false;
+
+    // 暴露给外部 handleUpdate 判断是否暂停
+    window.__modalAutoSavePaused = false;
+
+    // Modal 打开时：暂停底层表格自动保存，修复下拉框校验
+    modal.addEventListener('shown.bs.modal', function () {
+      window.__modalAutoSavePaused = true;
+
+      // 修复下拉框校验状态不同步：监听 Modal 内所有 select 的 change 事件
+      modal.querySelectorAll('select[required]').forEach(function (sel) {
+        if (!sel.dataset.validityFixed) {
+          sel.addEventListener('change', function () {
+            this.setCustomValidity('');
+            this.reportValidity && this.reportValidity();
+          });
+          sel.dataset.validityFixed = 'true';
+        }
+      });
+    });
+
+    // Modal 关闭时：恢复底层表格自动保存
+    modal.addEventListener('hidden.bs.modal', function () {
+      window.__modalAutoSavePaused = false;
+    });
+
+    // 阻止 Modal 内事件冒泡到底层表格
+    modal.addEventListener('change', function (e) {
+      e.stopPropagation();
+    });
+    modal.addEventListener('blur', function (e) {
+      e.stopPropagation();
+    }, true);
+  })();
+</script>
+
 <div class="modal fade" id="personnelAddModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <form class="modal-content" method="post">
@@ -351,7 +408,12 @@
               {% endfor %}
             </select>
             {% elif input_type == "date" %}
-            <input type="date" class="form-control" name="{{ name }}">
+            {% set fd_name = name %}
+            {% set fd_value = '' %}
+            {% set fd_size = '' %}
+            {% set fd_field = '' %}
+            {% set fd_label = '' %}
+            {% include 'components/form_date_field.html' %}
             {% else %}
             <input type="text" class="form-control" name="{{ name }}" {% if required %}required{% endif %}>
             {% endif %}

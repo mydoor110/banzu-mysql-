@@ -1,0 +1,72 @@
+{#
+年份筛选器组件
+
+参数说明：
+- start_year_id: 开始年份输入框ID（默认'startYear'）
+- end_year_id: 结束年份输入框ID（默认'endYear'）
+- col_class: 列宽样式类（默认'col-md-2'）
+- start_year_value: 开始年份初始值（格式：YYYY）
+- end_year_value: 结束年份初始值（格式：YYYY）
+- show_quick_buttons: 是否显示快捷按钮（默认true）
+- labels: 是否显示标签（默认true）
+
+输出字段：start_year / end_year
+
+使用示例：
+{% set start_year_id = 'startYear' %}
+{% set end_year_id = 'endYear' %}
+{% include 'components/year_filter.html' %}
+#}
+
+{% set s_id = start_year_id|default('startYear') %}
+{% set e_id = end_year_id|default('endYear') %}
+{% set col = col_class|default('col-md-2') %}
+{% set show_labels = labels if labels is defined else true %}
+
+<div class="{{ col }}">
+    {% if show_labels %}
+    <label for="{{ s_id }}" class="form-label">开始年份</label>
+    {% endif %}
+    <input type="number" id="{{ s_id }}" name="start_year" class="form-control form-control-sm" min="2020" max="2035"
+        step="1" value="{{ start_year_value }}">
+</div>
+
+<div class="{{ col }}">
+    {% if show_labels %}
+    <label for="{{ e_id }}" class="form-label">结束年份</label>
+    {% endif %}
+    <input type="number" id="{{ e_id }}" name="end_year" class="form-control form-control-sm" min="2020" max="2035"
+        step="1" value="{{ end_year_value }}">
+</div>
+
+{% if show_quick_buttons|default(true) %}
+<div class="{{ col }}">
+    {% if show_labels %}
+    <label class="form-label">&nbsp;</label>
+    {% endif %}
+    <div class="btn-group btn-group-sm" role="group">
+        <button type="button" class="btn btn-outline-secondary" data-year-range="current">本年</button>
+        <button type="button" class="btn btn-outline-secondary" data-year-range="last">上年</button>
+        <button type="button" class="btn btn-outline-secondary" data-year-range="3">近3年</button>
+        <button type="button" class="btn btn-outline-secondary" data-year-range="5">近5年</button>
+    </div>
+</div>
+<script>
+    (function () {
+        const startEl = document.getElementById('{{ s_id }}');
+        const endEl = document.getElementById('{{ e_id }}');
+        if (!startEl || !endEl) return;
+
+        const now = new Date().getFullYear();
+        document.querySelectorAll('[data-year-range]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const r = btn.getAttribute('data-year-range');
+                if (r === 'current') { startEl.value = now; endEl.value = now; }
+                else if (r === 'last') { startEl.value = now - 1; endEl.value = now - 1; }
+                else { startEl.value = now - parseInt(r) + 1; endEl.value = now; }
+                startEl.dispatchEvent(new Event('change'));
+            });
+        });
+    })();
+</script>
+{% endif %}

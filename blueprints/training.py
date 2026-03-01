@@ -20,7 +20,7 @@ from config.settings import (
 from config.settings import APP_TITLE, EXPORT_DIR
 from models.database import get_db
 from .decorators import login_required, role_required, top_level_manager_required, admin_required
-from .helpers import require_user_id, get_accessible_department_ids, validate_employee_access, build_department_filter, parse_date_filters, build_date_filter_sql, log_import_operation
+from .helpers import require_user_id, get_accessible_department_ids, validate_employee_access, build_department_filter, parse_time_range, build_date_filter_sql, log_import_operation
 from utils.training_utils import normalize_project_name
 
 # 创建 Blueprint
@@ -60,34 +60,9 @@ def index():
         },
     ]
 
-    # 判断是否显示项目管理入口（系统管理员或顶级部门管理员）
-    # 统一从 g.user_ctx 读取，避免 session 双轨和额外 DB 查询
-    show_project_management = False
-    from flask import g
-    ctx = getattr(g, 'user_ctx', None)
-    user_role = ctx.get('role') if ctx else session.get('role')
-
-    if user_role == 'admin':
-        show_project_management = True
-    elif user_role == 'manager':
-        # 检查是否为顶级部门管理员
-        dept_level = ctx.get('dept_level') if ctx else None
-        if dept_level is not None:
-            show_project_management = (dept_level == 1)
-        else:
-            # 回退：查数据库
-            user_id = session.get('user_id')
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT d.level
-                FROM users u
-                JOIN departments d ON u.department_id = d.id
-                WHERE u.id = %s
-            """, (user_id,))
-            dept_info = cur.fetchone()
-            if dept_info and dept_info['level'] == 1:
-                show_project_management = True
+    # 判断是否显示项目管理入口（P1 统一出口）
+    from services.access_control_service import AccessControlService
+    show_project_management = AccessControlService.is_top_level_manager()
     
     # 管理员和顶级部门管理员可见项目管理
     if show_project_management:
@@ -133,10 +108,9 @@ def upload_daily_report():
         conn = get_db()
         cur = conn.cursor()
 
-        # 获取当前用户可访问的部门ID列表（用于权限验证）
-        from flask import session
-        user_role = session.get('role', 'user')
-        accessible_dept_ids = get_accessible_department_ids() if user_role != 'admin' else None
+        # 获取当前用户可访问的部门ID列表（P1 统一出口）
+        from services.access_control_service import AccessControlService
+        accessible_dept_ids = get_accessible_department_ids() if not AccessControlService.is_admin() else None
 
         # ====== 第一阶段：收集所有数据和项目名称 ======
         all_records_data = []  # 存储所有待导入的记录
@@ -418,9 +392,11 @@ def upload_daily_report():
             )
 
         # ====== 第四阶段：直接导入（所有项目都存在） ======
-        total_imported, total_skipped = _import_training_records(
-            all_records_data, existing_projects, uid, conn
-        )
+        from models.db_transaction import db_transaction
+        with db_transaction() as txn_conn:
+            total_imported, total_skipped = _import_training_records(
+                all_records_data, existing_projects, uid, txn_conn
+            )
 
         # 记录导入操作日志
         total_rows = len(all_records_data)
@@ -561,7 +537,7 @@ def _import_training_records(all_records_data, existing_projects, uid, conn):
         ))
         total_imported += 1
 
-    conn.commit()
+    # 不在此处 commit，事务边界由调用方 db_transaction() 管理
     return total_imported, total_skipped
 
 
@@ -661,11 +637,10 @@ def confirm_projects():
                         new_project_id = cur.lastrowid
                         existing_projects[project_name] = (new_project_id, category_id)
                     except Exception as e:
-                        conn.rollback()
                         flash(f'创建项目"{project_name}"失败: {str(e)}', "danger")
                         return redirect(url_for("training.confirm_projects"))
 
-            # 导入所有记录
+            # 导入所有记录（和上面的项目创建在同一个事务内）
             total_imported, total_skipped = _import_training_records(
                 pending_data, existing_projects, uid, conn
             )
@@ -742,7 +717,8 @@ def records():
     from flask import session
 
     # 使用统一的日期筛选器
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     name_filter = request.args.get("name", "").strip()
     qualified_filter = request.args.get("qualified")
@@ -754,11 +730,9 @@ def records():
     conn = get_db()
     cur = conn.cursor()
 
-    # 获取当前用户角色
-    user_id = session.get('user_id')
-    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
-    row = cur.fetchone()
-    user_role = row['role'] if row else 'user'
+    # 获取当前用户角色（P1 统一出口）
+    from services.access_control_service import AccessControlService
+    user_role = AccessControlService.get_current_role() or 'user'
 
     # 使用新的部门过滤机制
     where_clause, join_clause, dept_params = build_department_filter('tr')
@@ -888,9 +862,9 @@ def analytics():
 @login_required
 def disqualified():
     """不合格培训记录管理"""
-    # 获取筛选参数
-    start_date = request.args.get("start_date", "").strip()
-    end_date = request.args.get("end_date", "").strip()
+    # 使用统一的日期筛选器
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range=None)
+    start_date, end_date = tr['start_date'], tr['end_date']
     team_filter = request.args.get("team", "").strip()
     name_filter = request.args.get("name", "").strip()
     project_filter = request.args.get("project", "").strip()
@@ -902,7 +876,6 @@ def disqualified():
     # 使用新的部门过滤机制
     where_clause, join_clause, dept_params = build_department_filter('tr')
 
-    # 构建查询，加入 training_projects 表以获取项目名称和分类
     base_query = f"""
         SELECT tr.*, tp.name as project_name, tpc.name as category_name
         FROM training_records tr
@@ -913,13 +886,11 @@ def disqualified():
     """
     params = dept_params.copy()
 
-    # 添加筛选条件
-    if start_date:
-        base_query += " AND tr.training_date >= %s"
-        params.append(start_date)
-    if end_date:
-        base_query += " AND tr.training_date <= %s"
-        params.append(end_date)
+    # 应用日期筛选
+    date_conditions, date_params = build_date_filter_sql('tr.training_date', start_date, end_date)
+    if date_conditions:
+        base_query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
     if team_filter:
         base_query += " AND tr.team_name LIKE %s"
         params.append(f"%{team_filter}%")
@@ -1019,7 +990,8 @@ def get_record_detail(record_id):
 def export():
     """导出培训记录到Excel"""
     # 使用统一的日期筛选器
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     name_filter = request.args.get("name", "").strip()
     qualified_filter = request.args.get("qualified")
@@ -1123,7 +1095,8 @@ def api_data():
     params = dept_params.copy()
 
     # 使用统一的日期筛选器
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
     date_conditions, date_params = build_date_filter_sql('tr.training_date', start_date, end_date)
     if date_conditions:
         base_query += " AND " + " AND ".join(date_conditions)
@@ -1183,21 +1156,21 @@ def edit_record(record_id):
         if project_row:
             project_id = project_row['id']
 
+    from models.db_transaction import db_transaction
     try:
-        # 更新记录
-        cur.execute("""
-            UPDATE training_records
-            SET emp_no = %s, name = %s, team_name = %s, training_date = %s,
-                project_id = %s, problem_type = %s, specific_problem = %s,
-                corrective_measures = %s, time_spent = %s, score = %s,
-                assessor = %s, remarks = %s, is_qualified = %s
-            WHERE id = %s
-        """, (emp_no, name, team_name, training_date,
-              project_id, problem_type, specific_problem, corrective_measures,
-              time_spent, int(score) if score else None,
-              assessor, remarks, is_qualified, record_id))
-
-        conn.commit()
+        with db_transaction() as txn_conn:
+            txn_cur = txn_conn.cursor()
+            txn_cur.execute("""
+                UPDATE training_records
+                SET emp_no = %s, name = %s, team_name = %s, training_date = %s,
+                    project_id = %s, problem_type = %s, specific_problem = %s,
+                    corrective_measures = %s, time_spent = %s, score = %s,
+                    assessor = %s, remarks = %s, is_qualified = %s
+                WHERE id = %s
+            """, (emp_no, name, team_name, training_date,
+                  project_id, problem_type, specific_problem, corrective_measures,
+                  time_spent, int(score) if score else None,
+                  assessor, remarks, is_qualified, record_id))
         flash('培训记录已更新', 'success')
     except Exception as e:
         flash(f'更新失败: {e}', 'danger')
@@ -1209,13 +1182,11 @@ def edit_record(record_id):
 @role_required('manager')
 def delete_record(record_id):
     """删除培训记录（仅限部门管理员及以上权限）"""
-    conn = get_db()
-    cur = conn.cursor()
-
+    from models.db_transaction import db_transaction
     try:
-        # 删除记录
-        cur.execute("DELETE FROM training_records WHERE id = %s", (record_id,))
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM training_records WHERE id = %s", (record_id,))
         flash('培训记录已删除', 'success')
     except Exception as e:
         flash(f'删除失败: {e}', 'danger')
@@ -1227,8 +1198,7 @@ def delete_record(record_id):
 @role_required('manager')
 def batch_delete_records():
     """批量删除培训记录（仅限部门管理员及以上权限）"""
-    conn = get_db()
-    cur = conn.cursor()
+    from models.db_transaction import db_transaction
 
     record_ids = request.form.getlist('record_ids')
 
@@ -1237,10 +1207,10 @@ def batch_delete_records():
         return redirect(url_for('training.records'))
 
     try:
-        # 批量删除记录
-        placeholders = ','.join(['%s'] * len(record_ids))
-        cur.execute(f"DELETE FROM training_records WHERE id IN ({placeholders})", record_ids)
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            placeholders = ','.join(['%s'] * len(record_ids))
+            cur.execute(f"DELETE FROM training_records WHERE id IN ({placeholders})", record_ids)
         flash(f'成功删除 {len(record_ids)} 条培训记录', 'success')
     except Exception as e:
         flash(f'批量删除失败: {e}', 'danger')
@@ -1327,19 +1297,17 @@ def add_project_category():
         flash('分类名称不能为空', 'danger')
         return redirect(url_for('training.project_categories'))
 
-    conn = get_db()
-    cur = conn.cursor()
-
+    from models.db_transaction import db_transaction
     try:
-        cur.execute("""
-            INSERT INTO training_project_categories
-            (name, description, display_order)
-            VALUES (%s, %s, %s)
-        """, (name, description, display_order))
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO training_project_categories
+                (name, description, display_order)
+                VALUES (%s, %s, %s)
+            """, (name, description, display_order))
         flash(f'项目分类"{name}"添加成功', 'success')
     except Exception as e:
-        conn.rollback()
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('training.project_categories'))
@@ -1359,19 +1327,17 @@ def edit_project_category():
         flash('参数错误', 'danger')
         return redirect(url_for('training.project_categories'))
 
-    conn = get_db()
-    cur = conn.cursor()
-
+    from models.db_transaction import db_transaction
     try:
-        cur.execute("""
-            UPDATE training_project_categories
-            SET name = %s, description = %s, display_order = %s
-            WHERE id = %s
-        """, (name, description, display_order, category_id))
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE training_project_categories
+                SET name = %s, description = %s, display_order = %s
+                WHERE id = %s
+            """, (name, description, display_order, category_id))
         flash(f'项目分类"{name}"更新成功', 'success')
     except Exception as e:
-        conn.rollback()
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('training.project_categories'))
@@ -1388,10 +1354,11 @@ def delete_project_category():
         flash('参数错误', 'danger')
         return redirect(url_for('training.project_categories'))
 
+    from models.db_transaction import db_transaction
     conn = get_db()
     cur = conn.cursor()
 
-    # 检查是否有关联的项目
+    # 检查是否有关联的项目（读操作，不需事务）
     cur.execute("""
         SELECT COUNT(*) AS cnt FROM training_projects WHERE category_id = %s
     """, (category_id,))
@@ -1402,11 +1369,11 @@ def delete_project_category():
         return redirect(url_for('training.project_categories'))
 
     try:
-        cur.execute("DELETE FROM training_project_categories WHERE id = %s", (category_id,))
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM training_project_categories WHERE id = %s", (category_id,))
         flash('项目分类删除成功', 'success')
     except Exception as e:
-        conn.rollback()
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('training.project_categories'))
@@ -1508,19 +1475,17 @@ def add_project():
         flash('项目名称和分类不能为空', 'danger')
         return redirect(url_for('training.projects'))
 
-    conn = get_db()
-    cur = conn.cursor()
-
+    from models.db_transaction import db_transaction
     try:
-        cur.execute("""
-            INSERT INTO training_projects
-            (name, category_id, description, is_active)
-            VALUES (%s, %s, %s, %s)
-        """, (name, category_id, description, is_active))
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO training_projects
+                (name, category_id, description, is_active)
+                VALUES (%s, %s, %s, %s)
+            """, (name, category_id, description, is_active))
         flash(f'培训项目"{name}"添加成功', 'success')
     except Exception as e:
-        conn.rollback()
         flash(f'添加失败: {str(e)}', 'danger')
 
     return redirect(url_for('training.projects'))
@@ -1541,19 +1506,17 @@ def edit_project():
         flash('参数错误', 'danger')
         return redirect(url_for('training.projects'))
 
-    conn = get_db()
-    cur = conn.cursor()
-
+    from models.db_transaction import db_transaction
     try:
-        cur.execute("""
-            UPDATE training_projects
-            SET name = %s, category_id = %s, description = %s, is_active = %s
-            WHERE id = %s
-        """, (name, category_id, description, is_active, project_id))
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE training_projects
+                SET name = %s, category_id = %s, description = %s, is_active = %s
+                WHERE id = %s
+            """, (name, category_id, description, is_active, project_id))
         flash(f'培训项目"{name}"更新成功', 'success')
     except Exception as e:
-        conn.rollback()
         flash(f'更新失败: {str(e)}', 'danger')
 
     return redirect(url_for('training.projects'))
@@ -1570,10 +1533,11 @@ def delete_project():
         flash('参数错误', 'danger')
         return redirect(url_for('training.projects'))
 
+    from models.db_transaction import db_transaction
     conn = get_db()
     cur = conn.cursor()
 
-    # 检查是否有关联的培训记录
+    # 检查是否有关联的培训记录（读操作，不需事务）
     cur.execute("SELECT COUNT(*) AS cnt FROM training_records WHERE project_id = %s", (project_id,))
     record_count = cur.fetchone()['cnt']
 
@@ -1582,11 +1546,11 @@ def delete_project():
         return redirect(url_for('training.projects'))
 
     try:
-        cur.execute("DELETE FROM training_projects WHERE id = %s", (project_id,))
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM training_projects WHERE id = %s", (project_id,))
         flash('培训项目删除成功', 'success')
     except Exception as e:
-        conn.rollback()
         flash(f'删除失败: {str(e)}', 'danger')
 
     return redirect(url_for('training.projects'))
@@ -1603,37 +1567,38 @@ def batch_delete_projects():
         flash('未选择要删除的项目', 'warning')
         return redirect(url_for('training.projects'))
 
-    conn = get_db()
-    cur = conn.cursor()
+    from models.db_transaction import db_transaction
 
     deleted_count = 0
     skipped_count = 0
     errors = []
 
-    for project_id in project_ids:
-        try:
-            # 检查是否有关联的培训记录
-            cur.execute("SELECT COUNT(*) AS cnt FROM training_records WHERE project_id = %s", (project_id,))
-            record_count = cur.fetchone()['cnt']
+    try:
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            for project_id in project_ids:
+                try:
+                    # 检查是否有关联的培训记录
+                    cur.execute("SELECT COUNT(*) AS cnt FROM training_records WHERE project_id = %s", (project_id,))
+                    record_count = cur.fetchone()['cnt']
 
-            if record_count > 0:
-                # 获取项目名称用于提示
-                cur.execute("SELECT name FROM training_projects WHERE id = %s", (project_id,))
-                row = cur.fetchone()
-                if row:
-                    errors.append(f'"{row["name"]}"有{record_count}条记录')
-                skipped_count += 1
-                continue
+                    if record_count > 0:
+                        cur.execute("SELECT name FROM training_projects WHERE id = %s", (project_id,))
+                        row = cur.fetchone()
+                        if row:
+                            errors.append(f'"{row["name"]}"有{record_count}条记录')
+                        skipped_count += 1
+                        continue
 
-            # 删除项目
-            cur.execute("DELETE FROM training_projects WHERE id = %s", (project_id,))
-            deleted_count += 1
+                    cur.execute("DELETE FROM training_projects WHERE id = %s", (project_id,))
+                    deleted_count += 1
 
-        except Exception as e:
-            errors.append(f'ID {project_id}: {str(e)}')
-            skipped_count += 1
-
-    conn.commit()
+                except Exception as e:
+                    errors.append(f'ID {project_id}: {str(e)}')
+                    skipped_count += 1
+    except Exception as e:
+        flash(f'批量删除失败: {str(e)}', 'danger')
+        return redirect(url_for('training.projects'))
 
     # 显示结果
     if deleted_count > 0:
@@ -1744,7 +1709,7 @@ def batch_add_projects():
             errors.append(f'第{line_no}行：添加项目"{project_name}"失败 - {str(e)}')
             skipped_count += 1
 
-    conn.commit()
+    conn.commit()  # batch_add_projects: 多行插入，逐条try-except，此处整批提交
 
     # 显示结果
     if added_count > 0:
@@ -1783,19 +1748,20 @@ def archive_project(project_id):
         return redirect(url_for('training.projects'))
     
     # 归档项目
+    from models.db_transaction import db_transaction
     try:
-        cur.execute("""
-            UPDATE training_projects 
-            SET is_archived = 1, 
-                is_active = 0,
-                archived_at = NOW(),
-                archived_by = %s
-            WHERE id = %s
-        """, (uid, project_id))
-        conn.commit()
+        with db_transaction() as txn_conn:
+            txn_cur = txn_conn.cursor()
+            txn_cur.execute("""
+                UPDATE training_projects 
+                SET is_archived = 1, 
+                    is_active = 0,
+                    archived_at = NOW(),
+                    archived_by = %s
+                WHERE id = %s
+            """, (uid, project_id))
         flash(f'项目"{project["name"]}"已归档', 'success')
     except Exception as e:
-        conn.rollback()
         flash(f'归档失败: {str(e)}', 'danger')
     
     return redirect(url_for('training.projects'))
@@ -1822,18 +1788,19 @@ def unarchive_project(project_id):
         return redirect(url_for('training.archived_projects'))
     
     # 恢复项目
+    from models.db_transaction import db_transaction
     try:
-        cur.execute("""
-            UPDATE training_projects 
-            SET is_archived = 0,
-                archived_at = NULL,
-                archived_by = NULL
-            WHERE id = %s
-        """, (project_id,))
-        conn.commit()
+        with db_transaction() as txn_conn:
+            txn_cur = txn_conn.cursor()
+            txn_cur.execute("""
+                UPDATE training_projects 
+                SET is_archived = 0,
+                    archived_at = NULL,
+                    archived_by = NULL
+                WHERE id = %s
+            """, (project_id,))
         flash(f'项目"{project["name"]}"已恢复', 'success')
     except Exception as e:
-        conn.rollback()
         flash(f'恢复失败: {str(e)}', 'danger')
     
     return redirect(url_for('training.archived_projects'))

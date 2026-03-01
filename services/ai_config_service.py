@@ -365,48 +365,48 @@ class AIConfigService:
     def add_provider(cls, data: Dict) -> Tuple[bool, str, Optional[int]]:
         """添加新的AI提供商"""
         try:
-            conn = get_db()
-            cur = conn.cursor()
+            from models.db_transaction import db_transaction
+            with db_transaction() as conn:
+                cur = conn.cursor()
 
-            # 验证必填字段
-            required_fields = ['name', 'provider_type', 'base_url', 'model']
-            for field in required_fields:
-                if not data.get(field):
-                    return False, f'字段 {field} 不能为空', None
+                # 验证必填字段
+                required_fields = ['name', 'provider_type', 'base_url', 'model']
+                for field in required_fields:
+                    if not data.get(field):
+                        return False, f'字段 {field} 不能为空', None
 
-            # 处理extra_headers
-            extra_headers = data.get('extra_headers', {})
-            if isinstance(extra_headers, dict):
-                extra_headers = json.dumps(extra_headers)
+                # 处理extra_headers
+                extra_headers = data.get('extra_headers', {})
+                if isinstance(extra_headers, dict):
+                    extra_headers = json.dumps(extra_headers)
 
-            # 如果设为默认，先取消其他默认
-            is_default = data.get('is_default', False)
-            if is_default:
-                cur.execute("UPDATE ai_providers SET is_default = 0")
+                # 如果设为默认，先取消其他默认
+                is_default = data.get('is_default', False)
+                if is_default:
+                    cur.execute("UPDATE ai_providers SET is_default = 0")
 
-            cur.execute("""
-                INSERT INTO ai_providers
-                (name, provider_type, api_key, base_url, model, is_active, is_default,
-                 priority, timeout, max_tokens, temperature, extra_headers, description)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                data['name'],
-                data['provider_type'],
-                data.get('api_key', ''),
-                data['base_url'],
-                data['model'],
-                1 if data.get('is_active', True) else 0,
-                1 if is_default else 0,
-                data.get('priority', 0),
-                data.get('timeout', 30),
-                data.get('max_tokens', 200),
-                data.get('temperature', 0.7),
-                extra_headers,
-                data.get('description', '')
-            ))
-            conn.commit()
+                cur.execute("""
+                    INSERT INTO ai_providers
+                    (name, provider_type, api_key, base_url, model, is_active, is_default,
+                     priority, timeout, max_tokens, temperature, extra_headers, description)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    data['name'],
+                    data['provider_type'],
+                    data.get('api_key', ''),
+                    data['base_url'],
+                    data['model'],
+                    1 if data.get('is_active', True) else 0,
+                    1 if is_default else 0,
+                    data.get('priority', 0),
+                    data.get('timeout', 30),
+                    data.get('max_tokens', 200),
+                    data.get('temperature', 0.7),
+                    extra_headers,
+                    data.get('description', '')
+                ))
 
-            return True, '添加成功', cur.lastrowid
+                return True, '添加成功', cur.lastrowid
 
         except Exception as e:
             return False, f'添加失败: {str(e)}', None
@@ -415,70 +415,70 @@ class AIConfigService:
     def update_provider(cls, provider_id: int, data: Dict) -> Tuple[bool, str]:
         """更新AI提供商配置"""
         try:
-            conn = get_db()
-            cur = conn.cursor()
+            from models.db_transaction import db_transaction
+            with db_transaction() as conn:
+                cur = conn.cursor()
 
-            # 检查是否存在
-            cur.execute("SELECT id FROM ai_providers WHERE id = %s", (provider_id,))
-            if not cur.fetchone():
-                return False, '提供商不存在'
+                # 检查是否存在
+                cur.execute("SELECT id FROM ai_providers WHERE id = %s", (provider_id,))
+                if not cur.fetchone():
+                    return False, '提供商不存在'
 
-            # 处理extra_headers
-            extra_headers = data.get('extra_headers', {})
-            if isinstance(extra_headers, dict):
-                extra_headers = json.dumps(extra_headers)
+                # 处理extra_headers
+                extra_headers = data.get('extra_headers', {})
+                if isinstance(extra_headers, dict):
+                    extra_headers = json.dumps(extra_headers)
 
-            # 如果设为默认，先取消其他默认
-            is_default = data.get('is_default', False)
-            if is_default:
-                cur.execute("UPDATE ai_providers SET is_default = 0 WHERE id != %s", (provider_id,))
+                # 如果设为默认，先取消其他默认
+                is_default = data.get('is_default', False)
+                if is_default:
+                    cur.execute("UPDATE ai_providers SET is_default = 0 WHERE id != %s", (provider_id,))
 
-            # 构建更新语句
-            update_fields = []
-            params = []
+                # 构建更新语句
+                update_fields = []
+                params = []
 
-            field_mapping = {
-                'name': 'name',
-                'provider_type': 'provider_type',
-                'base_url': 'base_url',
-                'model': 'model',
-                'is_active': 'is_active',
-                'is_default': 'is_default',
-                'priority': 'priority',
-                'timeout': 'timeout',
-                'max_tokens': 'max_tokens',
-                'temperature': 'temperature',
-                'description': 'description'
-            }
+                field_mapping = {
+                    'name': 'name',
+                    'provider_type': 'provider_type',
+                    'base_url': 'base_url',
+                    'model': 'model',
+                    'is_active': 'is_active',
+                    'is_default': 'is_default',
+                    'priority': 'priority',
+                    'timeout': 'timeout',
+                    'max_tokens': 'max_tokens',
+                    'temperature': 'temperature',
+                    'description': 'description'
+                }
 
-            for key, field in field_mapping.items():
-                if key in data:
-                    value = data[key]
-                    if key in ['is_active', 'is_default']:
-                        value = 1 if value else 0
-                    update_fields.append(f"{field} = %s")
-                    params.append(value)
+                for key, field in field_mapping.items():
+                    if key in data:
+                        value = data[key]
+                        if key in ['is_active', 'is_default']:
+                            value = 1 if value else 0
+                        update_fields.append(f"{field} = %s")
+                        params.append(value)
 
-            # API Key 单独处理（允许为空表示不更新）
-            if 'api_key' in data and data['api_key']:
-                update_fields.append("api_key = %s")
-                params.append(data['api_key'])
+                # API Key 单独处理（允许为空表示不更新）
+                if 'api_key' in data and data['api_key']:
+                    update_fields.append("api_key = %s")
+                    params.append(data['api_key'])
 
-            # extra_headers
-            if 'extra_headers' in data:
-                update_fields.append("extra_headers = %s")
-                params.append(extra_headers)
+                # extra_headers
+                if 'extra_headers' in data:
+                    update_fields.append("extra_headers = %s")
+                    params.append(extra_headers)
 
-            # 添加更新时间
-            update_fields.append("updated_at = NOW()")
+                # 添加更新时间
+                update_fields.append("updated_at = NOW()")
 
-            if update_fields:
-                params.append(provider_id)
-                cur.execute(
-                    f"UPDATE ai_providers SET {', '.join(update_fields)} WHERE id = %s",
-                    params
-                )
-                conn.commit()
+                if update_fields:
+                    params.append(provider_id)
+                    cur.execute(
+                        f"UPDATE ai_providers SET {', '.join(update_fields)} WHERE id = %s",
+                        params
+                    )
 
             return True, '更新成功'
 
@@ -489,16 +489,16 @@ class AIConfigService:
     def delete_provider(cls, provider_id: int) -> Tuple[bool, str]:
         """删除AI提供商"""
         try:
-            conn = get_db()
-            cur = conn.cursor()
+            from models.db_transaction import db_transaction
+            with db_transaction() as conn:
+                cur = conn.cursor()
 
-            cur.execute("SELECT name FROM ai_providers WHERE id = %s", (provider_id,))
-            row = cur.fetchone()
-            if not row:
-                return False, '提供商不存在'
+                cur.execute("SELECT name FROM ai_providers WHERE id = %s", (provider_id,))
+                row = cur.fetchone()
+                if not row:
+                    return False, '提供商不存在'
 
-            cur.execute("DELETE FROM ai_providers WHERE id = %s", (provider_id,))
-            conn.commit()
+                cur.execute("DELETE FROM ai_providers WHERE id = %s", (provider_id,))
 
             return True, f'已删除提供商: {row["name"]}'
 
@@ -509,19 +509,19 @@ class AIConfigService:
     def set_default_provider(cls, provider_id: int) -> Tuple[bool, str]:
         """设置默认提供商"""
         try:
-            conn = get_db()
-            cur = conn.cursor()
+            from models.db_transaction import db_transaction
+            with db_transaction() as conn:
+                cur = conn.cursor()
 
-            cur.execute("SELECT name FROM ai_providers WHERE id = %s", (provider_id,))
-            row = cur.fetchone()
-            if not row:
-                return False, '提供商不存在'
+                cur.execute("SELECT name FROM ai_providers WHERE id = %s", (provider_id,))
+                row = cur.fetchone()
+                if not row:
+                    return False, '提供商不存在'
 
-            # 取消所有默认
-            cur.execute("UPDATE ai_providers SET is_default = 0")
-            # 设置新默认
-            cur.execute("UPDATE ai_providers SET is_default = 1 WHERE id = %s", (provider_id,))
-            conn.commit()
+                # 取消所有默认
+                cur.execute("UPDATE ai_providers SET is_default = 0")
+                # 设置新默认
+                cur.execute("UPDATE ai_providers SET is_default = 1 WHERE id = %s", (provider_id,))
 
             return True, f'已设置 {row["name"]} 为默认提供商'
 
@@ -532,17 +532,17 @@ class AIConfigService:
     def toggle_provider_active(cls, provider_id: int) -> Tuple[bool, str, bool]:
         """切换提供商激活状态"""
         try:
-            conn = get_db()
-            cur = conn.cursor()
+            from models.db_transaction import db_transaction
+            with db_transaction() as conn:
+                cur = conn.cursor()
 
-            cur.execute("SELECT name, is_active FROM ai_providers WHERE id = %s", (provider_id,))
-            row = cur.fetchone()
-            if not row:
-                return False, '提供商不存在', False
+                cur.execute("SELECT name, is_active FROM ai_providers WHERE id = %s", (provider_id,))
+                row = cur.fetchone()
+                if not row:
+                    return False, '提供商不存在', False
 
-            new_status = 0 if row['is_active'] else 1
-            cur.execute("UPDATE ai_providers SET is_active = %s WHERE id = %s", (new_status, provider_id))
-            conn.commit()
+                new_status = 0 if row['is_active'] else 1
+                cur.execute("UPDATE ai_providers SET is_active = %s WHERE id = %s", (new_status, provider_id))
 
             status_text = '启用' if new_status else '禁用'
             return True, f'已{status_text} {row["name"]}', bool(new_status)
@@ -675,24 +675,22 @@ class AIConfigService:
                   tokens: int, success: bool, error_message: Optional[str], request_type: str):
         """记录AI使用日志"""
         try:
-            conn = get_db()
-            cur = conn.cursor()
-
-            cur.execute("""
-                INSERT INTO ai_usage_logs
-                (provider_id, provider_name, model, tokens_used, success, error_message, request_type)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (
-                provider_id,
-                provider_name,
-                model,
-                tokens,
-                1 if success else 0,
-                error_message,
-                request_type
-            ))
-            conn.commit()
-
+            from models.db_transaction import db_transaction
+            with db_transaction() as conn:
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO ai_usage_logs
+                    (provider_id, provider_name, model, tokens_used, success, error_message, request_type)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    provider_id,
+                    provider_name,
+                    model,
+                    tokens,
+                    1 if success else 0,
+                    error_message,
+                    request_type
+                ))
         except Exception as e:
             print(f"记录AI使用日志失败: {e}")
 

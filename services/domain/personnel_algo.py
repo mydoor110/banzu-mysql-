@@ -1229,7 +1229,8 @@ def _resolve_stability_window(start_date: Optional[str], end_date: Optional[str]
     return window_start, end_month
 
 
-def _load_monthly_safety_violations(cur, emp_name: str, start_month: str, end_month: str) -> Dict[str, List[float]]:
+def _load_monthly_safety_violations(cur, emp_id: int, emp_name: str, start_month: str, end_month: str) -> Dict[str, List[float]]:
+    """加载员工月度安全违章记录（使用 employee_id 关联，fallback 到 inspected_person）"""
     from services.domain.safety_utils import extract_score_from_assessment
 
     start_date = f"{start_month}-01"
@@ -1238,10 +1239,10 @@ def _load_monthly_safety_violations(cur, emp_name: str, start_month: str, end_mo
     cur.execute("""
         SELECT assessment, inspection_date
         FROM safety_inspection_records
-        WHERE inspected_person = %s
+        WHERE (employee_id = %s OR (employee_id IS NULL AND inspected_person = %s))
         AND inspection_date >= %s
         AND inspection_date < %s
-    """, [emp_name, start_date, end_next])
+    """, [emp_id, emp_name, start_date, end_next])
     rows = cur.fetchall()
 
     violations_by_month = {}
@@ -1274,7 +1275,8 @@ def calculate_stability_for_employee(
     config: dict,
     cur,
     safety_score_for_tip: Optional[float] = None,
-    monthly_comprehensive_scores: Optional[Dict[str, float]] = None
+    monthly_comprehensive_scores: Optional[Dict[str, float]] = None,
+    emp_id: int = None
 ) -> Dict:
     window_start, window_end = _resolve_stability_window(start_date, end_date, config)
     window_months = _month_range(window_start, window_end)
@@ -1282,7 +1284,13 @@ def calculate_stability_for_employee(
     last_12_start = _month_shift(window_end, -11)
     query_start = window_start if _month_index(window_start) <= _month_index(last_12_start) else last_12_start
 
-    violations_by_month = _load_monthly_safety_violations(cur, emp_name, query_start, window_end)
+    # 如果没有传入 emp_id，尝试从 employees 表查找
+    if emp_id is None:
+        cur.execute("SELECT id FROM employees WHERE name = %s LIMIT 1", [emp_name])
+        _row = cur.fetchone()
+        emp_id = _row['id'] if _row else None
+
+    violations_by_month = _load_monthly_safety_violations(cur, emp_id, emp_name, query_start, window_end)
     monthly_safety_scores, monthly_issue_counts = _build_monthly_safety_scores(violations_by_month, window_months, config)
 
     last_12_months = _month_range(last_12_start, window_end)
@@ -2032,3 +2040,50 @@ def _build_personnel_charts(rows: List[Dict]) -> Dict:
         "education": {"labels": education_labels, "values": education_counts},
         "tenure": {"labels": tenure_labels, "values": tenure_counts},
     }
+
+
+def calculate_years_from_date(date_val):
+    """
+    计算从指定日期到当前的年限（保留1位小数）
+
+    P1.2 下沉：原定义在 blueprints/helpers.py，现移至 service 领域层。
+    helpers.py 保留 thin wrapper 保持向后兼容。
+
+    Args:
+        date_val: 日期（支持字符串格式YYYY-MM-DD、datetime对象、date对象）
+
+    Returns:
+        float: 年限（保留1位小数），日期无效返回None
+    """
+    if not date_val:
+        return None
+
+    try:
+        # 解析日期
+        if isinstance(date_val, str):
+            for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y-%m-%d %H:%M:%S']:
+                try:
+                    start_date = datetime.strptime(date_val, fmt)
+                    break
+                except ValueError:
+                    continue
+            else:
+                return None
+        elif isinstance(date_val, datetime):
+            start_date = date_val
+        elif isinstance(date_val, date) or hasattr(date_val, 'year'):
+            # MySQL返回的date对象，转换为datetime
+            start_date = datetime(date_val.year, date_val.month, date_val.day)
+        else:
+            return None
+
+        # 计算年限
+        current_date = datetime.now()
+        days_diff = (current_date - start_date).days
+        years = days_diff / 365.25  # 考虑闰年
+
+        return round(years, 1)
+
+    except Exception:
+        return None
+

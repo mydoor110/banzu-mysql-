@@ -1,0 +1,33 @@
+{#
+表单日期字段组件
+用途：用于表单中的单个日期字段（非范围筛选），统一收口日期输入控件。
+
+参数：
+- fd_name: 字段name属性（可选）
+- fd_id: 字段id属性（可选）
+- fd_value: 初始值（YYYY-MM-DD格式）
+- fd_field: data-field属性（用于行编辑自动保存）
+- fd_label: data-label属性
+- fd_class: 额外CSS类（默认''）
+- fd_size: 尺寸，'sm'则添加form-control-sm（默认''）
+- fd_required: 是否必填（默认false）
+
+使用示例 — 行编辑：
+{% set fd_field = name %}
+{% set fd_label = label %}
+{% set fd_value = value or "" %}
+{% set fd_size = 'sm' %}
+{% include 'components/form_date_field.html' %}
+
+使用示例 — 新增表单：
+{% set fd_name = name %}
+{% set fd_size = '' %}
+{% include 'components/form_date_field.html' %}
+#}
+
+<input type="date"
+    class="form-control {{ 'form-control-sm' if fd_size|default('') == 'sm' else '' }} {{ fd_class|default('') }}" {% if
+    fd_id|default('') %}id="{{ fd_id }}" {% endif %} {% if fd_name|default('') %}name="{{ fd_name }}" {% endif %} {% if
+    fd_field|default('') %}data-field="{{ fd_field }}" {% endif %} {% if fd_label|default('')
+    %}data-label="{{ fd_label }}" {% endif %} value="{{ fd_value|default('') }}" {% if fd_required|default(false)
+    %}required{% endif %}>

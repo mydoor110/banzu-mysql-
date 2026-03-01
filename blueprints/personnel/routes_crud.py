@@ -31,10 +31,9 @@ from openpyxl import Workbook, load_workbook
 def index():
     """人员管理首页"""
     if request.method == 'POST':
-        # 🔒 权限检查: 创建/更新员工需要管理员权限
-        from flask import session
-        user_role = session.get('role', 'user')
-        if user_role not in ['admin', 'manager']:
+        # 🔒 权限检查: 创建/更新员工需要管理员权限（P1 统一出口）
+        from services.access_control_service import AccessControlService
+        if not AccessControlService.has_permission('manager'):
             flash("您没有权限执行此操作，需要部门管理员或系统管理员权限", "danger")
             return redirect(url_for("personnel.index"))
 
@@ -210,7 +209,24 @@ def import_data():
         )
         return redirect(url_for("personnel.index"))
 
-    imported = bulk_import_personnel(records)
+    # P1.3：整批原子导入
+    try:
+        result = bulk_import_personnel(records)
+        imported = result['imported']
+        import_skipped = result['skipped']
+    except Exception as e:
+        flash(f"批量导入失败，已全部回滚：{e}", "danger")
+        log_import_operation(
+            module='personnel',
+            operation='import',
+            file_name=file_obj.filename,
+            total_rows=len(records),
+            success_rows=0,
+            failed_rows=len(records),
+            skipped_rows=skipped_no_dept + skipped_no_permission,
+            error_message=str(e)
+        )
+        return redirect(url_for("personnel.index"))
 
     # 计算总行数
     total_rows = len(records) + skipped_no_dept + skipped_no_permission
@@ -218,6 +234,8 @@ def import_data():
     # 构建提示消息
     msg = f"已导入/更新 {imported} 名员工信息。"
     msg_parts = []
+    if import_skipped > 0:
+        msg_parts.append(f"{import_skipped} 条记录因缺少必填字段被跳过")
     if skipped_no_dept > 0:
         msg_parts.append(f"{skipped_no_dept} 条记录因未填写部门或部门无效被跳过")
     if skipped_no_permission > 0:
@@ -239,9 +257,10 @@ def import_data():
         total_rows=total_rows,
         success_rows=imported,
         failed_rows=0,
-        skipped_rows=skipped_no_dept + skipped_no_permission,
+        skipped_rows=skipped_no_dept + skipped_no_permission + import_skipped,
         import_details={
             'imported': imported,
+            'import_skipped': import_skipped,
             'skipped_no_dept': skipped_no_dept,
             'skipped_no_permission': skipped_no_permission,
             'accessible_departments': len(accessible_dept_ids)
@@ -299,8 +318,9 @@ def batch_delete():
         return redirect(url_for("personnel.index"))
 
     uid = require_user_id()
-    from flask import session
-    user_role = session.get('role', 'user')
+    # P1 统一出口
+    from services.access_control_service import AccessControlService
+    is_admin_user = AccessControlService.is_admin()
 
     conn = get_db()
     cur = conn.cursor()
@@ -311,7 +331,7 @@ def batch_delete():
         emp_no = emp_no.strip()
         if emp_no:
             # 🔒 权限检查: 非管理员需要验证是否有权删除每个员工
-            if user_role != 'admin':
+            if not is_admin_user:
                 if not validate_employee_access(emp_no):
                     skipped_count += 1
                     continue

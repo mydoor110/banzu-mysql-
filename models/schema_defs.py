@@ -339,6 +339,7 @@ CREATE TABLE IF NOT EXISTS algorithm_active_config (
     based_on_preset VARCHAR(100),
     is_customized INT DEFAULT 0,
     config_data TEXT NOT NULL,
+    config_version INT NOT NULL DEFAULT 1,
     updated_by INT,
     updated_at DATETIME,
     FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
@@ -358,6 +359,7 @@ CREATE TABLE IF NOT EXISTS algorithm_config_logs (
     changed_by_name VARCHAR(255),
     changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ip_address VARCHAR(50),
+    config_version INT DEFAULT NULL,
     FOREIGN KEY (changed_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """

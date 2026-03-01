@@ -58,16 +58,13 @@ def current_username():
 def current_user_role():
     """
     获取当前登录用户的角色
-    优先从 g.user_ctx 读取（请求级缓存），回退到 session
+    委托给 AccessControlService（P1 统一出口）
 
     Returns:
         str: 用户角色 ('admin', 'manager', 'user'),未登录返回None
     """
-    from flask import g
-    ctx = getattr(g, 'user_ctx', None)
-    if ctx:
-        return ctx.get('role')
-    return session.get('role')
+    from services.access_control_service import AccessControlService
+    return AccessControlService.get_current_role()
 
 
 def is_logged_in():
@@ -83,60 +80,33 @@ def is_logged_in():
 def is_admin():
     """
     检查当前用户是否为管理员
-    优先从 g.user_ctx 读取，避免重复 DB 查询
+    委托给 AccessControlService（P1 统一出口）
 
     Returns:
         bool: True表示是管理员,False表示不是
     """
     if not is_logged_in():
         return False
-
-    # 优先从请求级缓存读取
-    from flask import g
-    ctx = getattr(g, 'user_ctx', None)
-    if ctx:
-        return ctx.get('role') == 'admin'
-
-    # 回退：查数据库
-    user_id = current_user_id()
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
-    row = cur.fetchone()
-
-    return row and row['role'] == 'admin'
+    from services.access_control_service import AccessControlService
+    return AccessControlService.is_admin()
 
 
 def get_user_role():
     """
     获取当前用户的数据库角色
-    优先从 g.user_ctx 读取，避免重复 DB 查询
+    委托给 AccessControlService（P1 统一出口）
 
     Returns:
         str: 用户角色,未登录或查询失败返回None
     """
-    user_id = current_user_id()
-    if not user_id:
-        return None
-
-    # 优先从请求级缓存读取
-    from flask import g
-    ctx = getattr(g, 'user_ctx', None)
-    if ctx:
-        return ctx.get('role')
-
-    # 回退：查数据库
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
-    row = cur.fetchone()
-
-    return row['role'] if row else None
+    from services.access_control_service import AccessControlService
+    return AccessControlService.get_current_role()
 
 
 def has_permission(required_role):
     """
     检查用户是否具有指定权限
+    委托给 AccessControlService（P1 统一出口）
 
     Args:
         required_role: 需要的角色 ('admin', 'manager', 'user')
@@ -144,15 +114,8 @@ def has_permission(required_role):
     Returns:
         bool: True表示有权限,False表示无权限
     """
-    user_role = get_user_role()
-    if not user_role:
-        return False
-
-    role_hierarchy = {'admin': 3, 'manager': 2, 'user': 1}
-    user_level = role_hierarchy.get(user_role, 0)
-    required_level = role_hierarchy.get(required_role, 0)
-
-    return user_level >= required_level
+    from services.access_control_service import AccessControlService
+    return AccessControlService.has_permission(required_role)
 
 
 def get_user_info(user_id=None):
@@ -311,32 +274,19 @@ def require_user_id():
 def get_user_department():
     """
     获取当前用户的部门信息
+    委托给 AccessControlService（P1 统一出口）
 
     Returns:
         dict: 包含部门信息的字典，未登录或无部门返回None
     """
-    uid = current_user_id()
-    if not uid:
-        return None
-
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT u.department_id, u.role, d.name as dept_name, d.level, d.path
-        FROM users u
-        LEFT JOIN departments d ON u.department_id = d.id
-        WHERE u.id = %s
-        """,
-        (uid,)
-    )
-    row = cur.fetchone()
-    return dict(row) if row else None
+    from services.access_control_service import AccessControlService
+    return AccessControlService.get_user_department_info()
 
 
 def get_accessible_departments(user_dept_info=None):
     """
     获取当前用户可以访问的所有部门
+    委托给 AccessControlService（P1 统一出口）
 
     Args:
         user_dept_info: 用户部门信息，默认自动获取
@@ -344,32 +294,8 @@ def get_accessible_departments(user_dept_info=None):
     Returns:
         list: 可访问的部门列表
     """
-    if user_dept_info is None:
-        user_dept_info = get_user_department()
-
-    if not user_dept_info:
-        return []
-
-    conn = get_db()
-    cur = conn.cursor()
-
-    # 管理员可以看到所有部门（即使没有department_id）
-    if user_dept_info['role'] == 'admin':
-        cur.execute("SELECT id, name, level, path FROM departments ORDER BY level, name")
-    else:
-        # 普通用户必须有department_id
-        if not user_dept_info['department_id']:
-            return []
-
-        # 普通用户可以看到自己的部门及所有子部门
-        user_path = user_dept_info['path'] or f"/{user_dept_info['department_id']}"
-        cur.execute(
-            "SELECT id, name, level, path FROM departments WHERE path LIKE %s OR id = %s ORDER BY level, name",
-            (f"{user_path}/%", user_dept_info['department_id'])
-        )
-
-    rows = cur.fetchall()
-    return [dict(row) for row in rows]
+    from services.access_control_service import AccessControlService
+    return AccessControlService.get_accessible_departments(user_dept_info)
 
 
 def get_accessible_user_ids():
@@ -412,6 +338,7 @@ def get_accessible_user_ids():
 def get_accessible_department_ids(user_dept_info=None):
     """
     获取当前用户可以访问的所有部门ID列表
+    委托给 AccessControlService（P1 统一出口）
 
     Args:
         user_dept_info: 用户部门信息，默认自动获取
@@ -419,13 +346,14 @@ def get_accessible_department_ids(user_dept_info=None):
     Returns:
         list: 可访问的部门ID列表
     """
-    accessible_depts = get_accessible_departments(user_dept_info)
-    return [dept['id'] for dept in accessible_depts] if accessible_depts else []
+    from services.access_control_service import AccessControlService
+    return AccessControlService.get_accessible_department_ids(user_dept_info)
 
 
 def validate_employee_access(emp_no):
     """
     检查当前用户是否可以访问指定员工
+    委托给 AccessControlService（P1 统一出口）
 
     Args:
         emp_no: 员工工号
@@ -433,27 +361,14 @@ def validate_employee_access(emp_no):
     Returns:
         bool: True表示可以访问，False表示无权访问
     """
-    if not emp_no:
-        return False
-
-    # 管理员可以访问所有员工
-    if current_user_role() == 'admin':
-        return True
-
-    # 获取员工所属部门
-    emp_dept_id = get_employee_department_id(emp_no)
-    if emp_dept_id is None:
-        return False
-
-    # 获取当前用户可访问的部门列表
-    accessible_dept_ids = get_accessible_department_ids()
-
-    return emp_dept_id in accessible_dept_ids
+    from services.access_control_service import AccessControlService
+    return AccessControlService.validate_employee_access(emp_no)
 
 
 def get_employee_department_id(emp_no):
     """
     获取指定员工的部门ID
+    委托给 AccessControlService（P1 统一出口）
 
     Args:
         emp_no: 员工工号
@@ -461,20 +376,16 @@ def get_employee_department_id(emp_no):
     Returns:
         int: 部门ID，员工不存在返回None
     """
-    if not emp_no:
-        return None
-
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute("SELECT department_id FROM employees WHERE emp_no = %s", (emp_no,))
-    row = cur.fetchone()
-
-    return row['department_id'] if row else None
+    from services.access_control_service import AccessControlService
+    return AccessControlService._get_employee_department_id(emp_no)
 
 
 def calculate_years_from_date(date_val):
     """
     计算从指定日期到当前的年限（保留1位小数）
+
+    P1.2：实现已下沉到 services/domain/personnel_algo.py。
+    此处保留 thin wrapper 保持向后兼容。
 
     Args:
         date_val: 日期（支持字符串格式YYYY-MM-DD、datetime对象、date对象）
@@ -482,38 +393,8 @@ def calculate_years_from_date(date_val):
     Returns:
         float: 年限（保留1位小数），日期无效返回None
     """
-    if not date_val:
-        return None
-
-    try:
-        from datetime import datetime, date
-        # 解析日期
-        if isinstance(date_val, str):
-            for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y-%m-%d %H:%M:%S']:
-                try:
-                    start_date = datetime.strptime(date_val, fmt)
-                    break
-                except ValueError:
-                    continue
-            else:
-                return None
-        elif isinstance(date_val, datetime):
-            start_date = date_val
-        elif isinstance(date_val, date) or hasattr(date_val, 'year'):
-            # MySQL返回的date对象，转换为datetime
-            start_date = datetime(date_val.year, date_val.month, date_val.day)
-        else:
-            return None
-
-        # 计算年限
-        current_date = datetime.now()
-        days_diff = (current_date - start_date).days
-        years = days_diff / 365.25  # 考虑闰年
-
-        return round(years, 1)
-
-    except Exception:
-        return None
+    from services.domain.personnel_algo import calculate_years_from_date as _impl
+    return _impl(date_val)
 
 
 def log_import_operation(module, operation, file_name=None, total_rows=0,
@@ -596,6 +477,7 @@ def log_import_operation(module, operation, file_name=None, total_rows=0,
 def build_department_filter(table_alias=None):
     """
     构建基于部门的SQL过滤条件
+    委托给 AccessControlService（P1 统一出口）
 
     Args:
         table_alias: 表别名（如 'e', 'p', 'tr'），用于构建 JOIN 子句
@@ -606,112 +488,322 @@ def build_department_filter(table_alias=None):
     示例:
         # 对于employees表（已有department_id）
         where_clause, join_clause, params = build_department_filter()
-        # where_clause = "department_id IN (%s,%s,%s)"
-        # join_clause = ""
-        # params = [1, 2, 3]
 
         # 对于performance_records表（通过emp_no关联employees）
         where_clause, join_clause, params = build_department_filter('pr')
-        # where_clause = "e.department_id IN (%s,%s,%s)"
-        # join_clause = "LEFT JOIN employees e ON pr.emp_no = e.emp_no"
-        # params = [1, 2, 3]
     """
-    user_dept_info = get_user_department()
-
-    # 管理员无需过滤
-    if user_dept_info and user_dept_info['role'] == 'admin':
-        return "1=1", "", []
-
-    # 获取可访问部门
-    dept_ids = get_accessible_department_ids(user_dept_info)
-
-    if not dept_ids:
-        # 无可访问部门，返回空结果条件
-        return "1=0", "", []
-
-    placeholders = ','.join(['%s'] * len(dept_ids))
-
-    # 根据是否有表别名决定JOIN和WHERE
-    if table_alias:
-        # 需要JOIN employees表
-        join_clause = f"LEFT JOIN employees e ON {table_alias}.emp_no = e.emp_no"
-        where_clause = f"e.department_id IN ({placeholders})"
-    else:
-        # 直接查询employees表或已有department_id的表
-        join_clause = ""
-        where_clause = f"department_id IN ({placeholders})"
-
-    return where_clause, join_clause, dept_ids
+    from services.access_control_service import AccessControlService
+    return AccessControlService.build_department_filter(table_alias)
 
 
 # ==================== 日期筛选工具函数 ====================
 
-def parse_date_filters(default_range='current_month'):
+import re
+
+# 格式校验正则
+_RE_DAY = re.compile(r'^\d{4}-\d{2}-\d{2}$')     # YYYY-MM-DD
+_RE_MONTH = re.compile(r'^\d{4}-\d{2}$')          # YYYY-MM
+_RE_YEAR = re.compile(r'^\d{4}$')                  # YYYY
+
+
+class TimeRangeError(ValueError):
+    """时间区间参数不合法时抛出，Blueprint 层应 catch 并返回 400。"""
+    pass
+
+
+def month_range_to_dates(start_month, end_month):
     """
-    解析URL参数中的日期筛选条件
+    月区间转标准日期区间
 
     Args:
-        default_range: 默认日期范围
-            - 'current_month': 当月（月初至月末）
-            - 'last_month': 上月
-            - 'last_3_months': 最近3个月
-            - None: 不设默认值，返回空
+        start_month: 开始月份 (YYYY-MM)
+        end_month: 结束月份 (YYYY-MM)
 
     Returns:
-        tuple: (start_date, end_date) - YYYY-MM-DD格式字符串或None
+        tuple: (start_date, end_date) - YYYY-MM-DD 格式
 
     示例:
-        # 使用默认当月范围
-        start_date, end_date = parse_date_filters()  # ('2026-01-01', '2026-01-31')
-
-        # 不设默认值（保持URL参数）
-        start_date, end_date = parse_date_filters(None)  # (None, None) 或用户输入的值
+        month_range_to_dates('2026-01', '2026-03')  # ('2026-01-01', '2026-03-31')
     """
-    from datetime import datetime, timedelta
-    import calendar
+    start_date = None
+    end_date = None
 
-    # 尝试从请求参数获取日期
-    start_date = request.args.get("start_date", "").strip()
-    end_date = request.args.get("end_date", "").strip()
+    if start_month:
+        start_date = f"{start_month}-01"
 
-    # 如果用户已提供日期，直接返回
-    if start_date or end_date:
-        return (start_date or None, end_date or None)
+    if end_month:
+        try:
+            y, m = map(int, end_month.split('-'))
+            last_day = calendar.monthrange(y, m)[1]
+            end_date = f"{y:04d}-{m:02d}-{last_day:02d}"
+        except (ValueError, TypeError):
+            end_date = f"{end_month}-01"
 
-    # 如果没有指定默认范围，返回空
-    if default_range is None:
-        return (None, None)
+    return (start_date, end_date)
 
-    # 根据默认范围计算日期
-    now = datetime.now()
 
-    if default_range == 'current_month':
-        # 当月：月初至月末
-        first_day = datetime(now.year, now.month, 1)
-        last_day_num = calendar.monthrange(now.year, now.month)[1]
-        last_day = datetime(now.year, now.month, last_day_num)
-        return (first_day.strftime('%Y-%m-%d'), last_day.strftime('%Y-%m-%d'))
+def year_range_to_dates(start_year, end_year):
+    """
+    年区间转标准日期区间
 
-    elif default_range == 'last_month':
-        # 上月：上月月初至上月月末
-        first_day_this_month = datetime(now.year, now.month, 1)
-        last_day_last_month = first_day_this_month - timedelta(days=1)
-        first_day_last_month = datetime(last_day_last_month.year, last_day_last_month.month, 1)
-        return (first_day_last_month.strftime('%Y-%m-%d'), last_day_last_month.strftime('%Y-%m-%d'))
+    Args:
+        start_year: 开始年份 (YYYY)
+        end_year: 结束年份 (YYYY)
 
-    elif default_range == 'last_3_months':
-        # 最近3个月：90天前至今天
-        end_date = now
-        start_date = now - timedelta(days=90)
-        return (start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'))
+    Returns:
+        tuple: (start_date, end_date) - YYYY-MM-DD 格式
 
-    # 未知的default_range，返回空
-    return (None, None)
+    示例:
+        year_range_to_dates('2024', '2026')  # ('2024-01-01', '2026-12-31')
+    """
+    start_date = f"{start_year}-01-01" if start_year else None
+    end_date = f"{end_year}-12-31" if end_year else None
+    return (start_date, end_date)
+
+
+def parse_time_range(args, allowed_grains=None, default_grain=None, default_range='current_month'):
+    """
+    统一时间区间解析入口 — 仓库唯一合法的时间区间解析函数
+
+    根据请求参数自动识别时间粒度，并返回标准化的日期区间。
+
+    校验规则（依次执行）：
+    1. allowed_grains 拦截：传了时间参数但粒度不被允许 → 抛 TimeRangeError
+    2. 格式校验：day=YYYY-MM-DD, month=YYYY-MM, year=YYYY → 抛 TimeRangeError
+    3. 起止顺序校验：start > end → 抛 TimeRangeError
+
+    Args:
+        args: 请求参数字典（通常为 request.args 或 dict）
+        allowed_grains: 允许的粒度列表，如 ['day'], ['month'], ['day', 'month']
+                        为 None 时允许所有粒度
+        default_grain: 当无法从参数推断粒度时使用的默认粒度
+        default_range: 无参数时的默认范围
+            - 'current_month': 当月
+            - 'last_month': 上月
+            - 'last_3_months': 最近3个月
+            - 'last_6_months': 最近6个月
+            - 'last_12_months': 最近12个月
+            - None: 不设默认值
+
+    Returns:
+        dict: 标准化的时间区间对象
+            {
+                'grain': 'day' | 'month' | 'year',
+                'raw_start': 原始起始值,
+                'raw_end': 原始结束值,
+                'start_date': 'YYYY-MM-DD' 格式的起始日期,
+                'end_date': 'YYYY-MM-DD' 格式的结束日期,
+                'start_month': 'YYYY-MM' 或 None,
+                'end_month': 'YYYY-MM' 或 None,
+                'start_year': 'YYYY' 或 None,
+                'end_year': 'YYYY' 或 None,
+            }
+
+    Raises:
+        TimeRangeError: 粒度不允许 / 格式错误 / 起止倒序
+    """
+
+    # 读取各粒度参数
+    start_month = (args.get('start_month') or '').strip()
+    end_month = (args.get('end_month') or '').strip()
+    start_year = (args.get('start_year') or '').strip()
+    end_year = (args.get('end_year') or '').strip()
+    start_date = (args.get('start_date') or '').strip()
+    end_date = (args.get('end_date') or '').strip()
+
+    grain = None
+    raw_start = None
+    raw_end = None
+
+    # ── 1. 按粒度参数名识别 ──
+    if start_month or end_month:
+        grain = 'month'
+        raw_start = start_month or None
+        raw_end = end_month or None
+    elif start_year or end_year:
+        grain = 'year'
+        raw_start = start_year or None
+        raw_end = end_year or None
+    elif start_date or end_date:
+        grain = 'day'
+        raw_start = start_date or None
+        raw_end = end_date or None
+
+    # ── 2. 无参数 → 走默认范围 ──
+    if grain is None:
+        grain = default_grain or (allowed_grains[0] if allowed_grains else 'month')
+
+        if default_range is None:
+            return {
+                'grain': grain,
+                'raw_start': None, 'raw_end': None,
+                'start_date': None, 'end_date': None,
+                'start_month': None, 'end_month': None,
+                'start_year': None, 'end_year': None,
+            }
+
+        now = datetime.now()
+
+        if grain == 'day':
+            if default_range == 'current_month':
+                first_day = datetime(now.year, now.month, 1)
+                last_day_num = calendar.monthrange(now.year, now.month)[1]
+                start_date = first_day.strftime('%Y-%m-%d')
+                end_date = datetime(now.year, now.month, last_day_num).strftime('%Y-%m-%d')
+            elif default_range == 'last_month':
+                first_this = datetime(now.year, now.month, 1)
+                last_prev = first_this - timedelta(days=1)
+                start_date = datetime(last_prev.year, last_prev.month, 1).strftime('%Y-%m-%d')
+                end_date = last_prev.strftime('%Y-%m-%d')
+            elif default_range == 'last_3_months':
+                end_date = now.strftime('%Y-%m-%d')
+                start_date = (now - timedelta(days=90)).strftime('%Y-%m-%d')
+            else:
+                start_date = None
+                end_date = None
+            raw_start = start_date
+            raw_end = end_date
+
+        elif grain == 'month':
+            if default_range == 'current_month':
+                start_month = now.strftime('%Y-%m')
+                end_month = now.strftime('%Y-%m')
+            elif default_range == 'last_month':
+                first_this = datetime(now.year, now.month, 1)
+                last_prev = first_this - timedelta(days=1)
+                start_month = last_prev.strftime('%Y-%m')
+                end_month = last_prev.strftime('%Y-%m')
+            elif default_range == 'last_3_months':
+                end_month = now.strftime('%Y-%m')
+                s = datetime(now.year, now.month - 2, 1) if now.month > 2 else datetime(now.year - 1, now.month + 10, 1)
+                start_month = s.strftime('%Y-%m')
+            elif default_range == 'last_6_months':
+                end_month = now.strftime('%Y-%m')
+                s = datetime(now.year, now.month, 1) - timedelta(days=1)
+                for _ in range(4):
+                    s = datetime(s.year, s.month, 1) - timedelta(days=1)
+                start_month = datetime(s.year, s.month, 1).strftime('%Y-%m')
+            elif default_range == 'last_12_months':
+                end_month = now.strftime('%Y-%m')
+                s = datetime(now.year - 1, now.month, 1)
+                start_month = s.strftime('%Y-%m')
+            else:
+                start_month = None
+                end_month = None
+            raw_start = start_month
+            raw_end = end_month
+
+        elif grain == 'year':
+            yr = str(now.year)
+            start_year = yr
+            end_year = yr
+            raw_start = yr
+            raw_end = yr
+
+        # 默认值路径跳过校验（程序生成的值一定合法），直接归一化返回
+        return _build_time_range_result(grain, raw_start, raw_end,
+                                        start_date, end_date,
+                                        start_month, end_month,
+                                        start_year, end_year)
+
+    # ── 3. allowed_grains 拦截 ──
+    if allowed_grains and grain not in allowed_grains:
+        raise TimeRangeError(
+            f"此接口只允许 {allowed_grains} 粒度的时间参数，"
+            f"但收到了 '{grain}' 粒度的参数"
+        )
+
+    # ── 4. 格式校验 ──
+    _validate_format(grain, raw_start, raw_end)
+
+    # ── 5. 起止顺序校验 ──
+    if raw_start and raw_end and raw_start > raw_end:
+        raise TimeRangeError(
+            f"起始时间 '{raw_start}' 晚于结束时间 '{raw_end}'"
+        )
+
+    # ── 6. 归一化 ──
+    return _build_time_range_result(grain, raw_start, raw_end,
+                                    start_date, end_date,
+                                    start_month, end_month,
+                                    start_year, end_year)
+
+
+def _validate_format(grain, raw_start, raw_end):
+    """校验时间参数格式是否合法，不合法则抛 TimeRangeError。"""
+    fmt_map = {
+        'day':   (_RE_DAY,   'YYYY-MM-DD'),
+        'month': (_RE_MONTH, 'YYYY-MM'),
+        'year':  (_RE_YEAR,  'YYYY'),
+    }
+    regex, expected_fmt = fmt_map[grain]
+
+    for label, val in [('起始时间', raw_start), ('结束时间', raw_end)]:
+        if val is None:
+            continue
+        if not regex.match(val):
+            raise TimeRangeError(
+                f"{label} '{val}' 格式错误，要求 {expected_fmt}"
+            )
+        # 对 day 和 month 进一步验证值合法性（如 2026-02-30 不合法）
+        if grain == 'day':
+            try:
+                datetime.strptime(val, '%Y-%m-%d')
+            except ValueError:
+                raise TimeRangeError(f"{label} '{val}' 不是合法的日期")
+        elif grain == 'month':
+            try:
+                y, m = map(int, val.split('-'))
+                if m < 1 or m > 12:
+                    raise ValueError
+            except ValueError:
+                raise TimeRangeError(f"{label} '{val}' 不是合法的月份")
+
+
+def _build_time_range_result(grain, raw_start, raw_end,
+                              start_date, end_date,
+                              start_month, end_month,
+                              start_year, end_year):
+    """构建标准化的时间区间返回对象。"""
+    result = {
+        'grain': grain,
+        'raw_start': raw_start,
+        'raw_end': raw_end,
+        'start_date': None,
+        'end_date': None,
+        'start_month': None,
+        'end_month': None,
+        'start_year': None,
+        'end_year': None,
+    }
+
+    if grain == 'day':
+        result['start_date'] = start_date or None
+        result['end_date'] = end_date or None
+
+    elif grain == 'month':
+        result['start_month'] = start_month or None
+        result['end_month'] = end_month or None
+        sd, ed = month_range_to_dates(start_month, end_month)
+        result['start_date'] = sd
+        result['end_date'] = ed
+
+    elif grain == 'year':
+        result['start_year'] = start_year or None
+        result['end_year'] = end_year or None
+        sd, ed = year_range_to_dates(start_year, end_year)
+        result['start_date'] = sd
+        result['end_date'] = ed
+
+    return result
 
 
 def build_date_filter_sql(date_column, start_date=None, end_date=None):
     """
     构建日期筛选的SQL条件和参数
+
+    注意：此函数仅接受标准 YYYY-MM-DD 格式的日期。
+    请先通过 parse_time_range() 标准化后再调用。
 
     Args:
         date_column: 日期字段名（如'training_date', 'tr.training_date'）
@@ -722,30 +814,6 @@ def build_date_filter_sql(date_column, start_date=None, end_date=None):
         tuple: (conditions, params)
             - conditions: SQL条件列表（可直接用AND连接）
             - params: 参数列表（用于参数化查询）
-
-    示例:
-        # 基础用法
-        conditions, params = build_date_filter_sql('training_date', '2025-01-01', '2025-01-31')
-        # conditions = ['training_date >= %s', 'training_date <= %s']
-        # params = ['2025-01-01', '2025-01-31']
-
-        where_clause = " AND ".join(conditions) if conditions else "1=1"
-        cursor.execute(f"SELECT * FROM records WHERE {where_clause}", params)
-
-        # 结合其他条件
-        all_conditions = []
-        all_params = []
-
-        date_conditions, date_params = build_date_filter_sql('tr.training_date', start_date, end_date)
-        all_conditions.extend(date_conditions)
-        all_params.extend(date_params)
-
-        if name_filter:
-            all_conditions.append("name LIKE %s")
-            all_params.append(f"%{name_filter}%")
-
-        where_clause = " AND ".join(all_conditions) if all_conditions else "1=1"
-        cursor.execute(f"SELECT * FROM table WHERE {where_clause}", all_params)
     """
     conditions = []
     params = []

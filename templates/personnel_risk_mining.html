@@ -5,25 +5,39 @@
     .risk-card {
         transition: transform 0.2s;
     }
+
     .risk-card:hover {
         transform: translateY(-2px);
     }
+
     .risk-score {
         font-size: 2rem;
         font-weight: bold;
     }
-    .risk-high { color: #F53F3F; }
-    .risk-medium { color: #FF7D00; }
-    .risk-low { color: #198754; }
+
+    .risk-high {
+        color: #F53F3F;
+    }
+
+    .risk-medium {
+        color: #FF7D00;
+    }
+
+    .risk-low {
+        color: #198754;
+    }
+
     .risk-badge {
         padding: 0.25rem 0.5rem;
         border-radius: 0.25rem;
         font-size: 0.75rem;
     }
+
     .anomaly-badge {
         background-color: #722ED1;
         color: white;
     }
+
     .factor-tag {
         display: inline-block;
         padding: 0.2rem 0.5rem;
@@ -32,6 +46,7 @@
         border-radius: 0.25rem;
         font-size: 0.8rem;
     }
+
     .ai-diagnosis {
         background-color: #f8f9fa;
         border: 1px solid #dee2e6;
@@ -39,6 +54,7 @@
         padding: 1rem;
         margin-top: 1rem;
     }
+
     .ai-diagnosis-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -47,6 +63,7 @@
         margin: -1rem -1rem 1rem -1rem;
         font-weight: 600;
     }
+
     .ai-section {
         margin-bottom: 1rem;
         padding: 0.75rem;
@@ -54,14 +71,31 @@
         border-radius: 0.375rem;
         border-left: 3px solid;
     }
+
     .ai-section:last-child {
         margin-bottom: 0;
     }
-    .ai-section-risk { border-left-color: #F53F3F; }
-    .ai-section-training { border-left-color: #FF7D00; }
-    .ai-section-root { border-left-color: #722ED1; }
-    .ai-section-predict { border-left-color: #0dcaf0; }
-    .ai-section-action { border-left-color: #198754; }
+
+    .ai-section-risk {
+        border-left-color: #F53F3F;
+    }
+
+    .ai-section-training {
+        border-left-color: #FF7D00;
+    }
+
+    .ai-section-root {
+        border-left-color: #722ED1;
+    }
+
+    .ai-section-predict {
+        border-left-color: #0dcaf0;
+    }
+
+    .ai-section-action {
+        border-left-color: #198754;
+    }
+
     .ai-section-title {
         font-weight: 600;
         margin-bottom: 0.5rem;
@@ -69,11 +103,13 @@
         align-items: center;
         gap: 0.5rem;
     }
+
     .ai-section-content {
         color: #495057;
         font-size: 0.9rem;
         line-height: 1.6;
     }
+
     .ai-tag {
         display: inline-block;
         padding: 0.2rem 0.5rem;
@@ -82,10 +118,12 @@
         border-radius: 0.25rem;
         font-size: 0.8rem;
     }
+
     .ai-tag-severe {
         background-color: #f8d7da;
         color: #842029;
     }
+
     .ai-root-type {
         display: inline-block;
         padding: 0.25rem 0.75rem;
@@ -93,27 +131,44 @@
         font-weight: 600;
         font-size: 0.85rem;
     }
-    .ai-root-skill { background-color: #cfe2ff; color: #084298; }
-    .ai-root-habit { background-color: #fff3cd; color: #664d03; }
-    .ai-root-state { background-color: #f8d7da; color: #842029; }
+
+    .ai-root-skill {
+        background-color: #cfe2ff;
+        color: #084298;
+    }
+
+    .ai-root-habit {
+        background-color: #fff3cd;
+        color: #664d03;
+    }
+
+    .ai-root-state {
+        background-color: #f8d7da;
+        color: #842029;
+    }
+
     .ai-measure {
         display: flex;
         align-items: flex-start;
         gap: 0.5rem;
         margin-bottom: 0.5rem;
     }
+
     .ai-measure:last-child {
         margin-bottom: 0;
     }
+
     .ai-measure-icon {
         color: #198754;
         font-weight: bold;
     }
+
     .ai-mode-toggle {
         display: flex;
         justify-content: flex-end;
         margin-bottom: 0.75rem;
     }
+
     .ai-mode-btn {
         background: none;
         border: 1px solid #dee2e6;
@@ -123,36 +178,44 @@
         border-radius: 0.25rem;
         color: #6c757d;
     }
+
     .ai-mode-btn:hover {
         background-color: #f8f9fa;
     }
+
     .ai-brief-summary {
         background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
         border-radius: 0.5rem;
         padding: 1rem;
     }
+
     .ai-brief-conclusion {
         font-size: 1rem;
         margin-bottom: 0.75rem;
         padding-bottom: 0.75rem;
         border-bottom: 1px dashed #dee2e6;
     }
+
     .ai-brief-row {
         display: flex;
         gap: 1rem;
         margin-bottom: 0.5rem;
     }
+
     .ai-brief-label {
         font-weight: 600;
         color: #495057;
         min-width: 80px;
     }
+
     .ai-detail-section {
         display: none;
     }
+
     .ai-detail-section.show {
         display: block;
     }
+
     .wordcloud-container {
         min-height: 300px;
         display: flex;
@@ -162,6 +225,7 @@
         gap: 0.5rem;
         padding: 1rem;
     }
+
     .wordcloud-word {
         padding: 0.25rem 0.5rem;
         border-radius: 0.25rem;
@@ -169,34 +233,41 @@
         color: #0d6efd;
         cursor: default;
     }
+
     .survival-chart {
         min-height: 300px;
     }
+
     .summary-stat {
         text-align: center;
         padding: 1rem;
     }
+
     .summary-stat h3 {
         font-size: 2.5rem;
         margin-bottom: 0.25rem;
     }
+
     .summary-stat p {
         color: #6c757d;
         margin-bottom: 0;
     }
+
     .loading-overlay {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(255,255,255,0.8);
+        background: rgba(255, 255, 255, 0.8);
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 9999;
     }
-    .employee-table th, .employee-table td {
+
+    .employee-table th,
+    .employee-table td {
         vertical-align: middle;
     }
 </style>
@@ -217,14 +288,13 @@
 <div class="card mb-4">
     <div class="card-body">
         <div class="row align-items-end">
-            <div class="col-md-4 mb-2">
-                <label class="form-label">开始日期</label>
-                <input type="month" class="form-control" id="start-date">
-            </div>
-            <div class="col-md-4 mb-2">
-                <label class="form-label">结束日期</label>
-                <input type="month" class="form-control" id="end-date">
-            </div>
+            {% set start_date_id = 'start-date' %}
+            {% set end_date_id = 'end-date' %}
+            {% set col_class = 'col-md-4' %}
+            {% set labels = true %}
+            {% set show_quick_buttons = false %}
+            {% set show_range_label = false %}
+            {% include 'components/month_filter.html' %}
             <div class="col-md-4 mb-2">
                 <button class="btn btn-primary w-100" id="analyze-btn">
                     开始风险分析
@@ -375,122 +445,123 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="{{ url_for('static', filename='js/chartjs-theme.js') }}"></script>
+<script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Set default dates (last 12 months)
-    const now = new Date();
-    const endDate = now.toISOString().slice(0, 7);
-    const startDate = new Date(now.setMonth(now.getMonth() - 12)).toISOString().slice(0, 7);
+    document.addEventListener('DOMContentLoaded', function () {
+        // 初始化统一日期筛选器（默认近12个月）
+        new DateFilterHelper({
+            startDateId: 'start-date',
+            endDateId: 'end-date',
+            defaultRange: 'last_12_months',
+            showQuickButtons: false
+        });
 
-    document.getElementById('start-date').value = startDate;
-    document.getElementById('end-date').value = endDate;
+        let survivalChart = null;
+        let analysisData = null;
 
-    let survivalChart = null;
-    let analysisData = null;
+        // Analyze button click (省Token模式：不批量调用AI)
+        document.getElementById('analyze-btn').addEventListener('click', async function () {
+            const startDateVal = document.getElementById('start-date').value;
+            const endDateVal = document.getElementById('end-date').value;
 
-    // Analyze button click (省Token模式：不批量调用AI)
-    document.getElementById('analyze-btn').addEventListener('click', async function() {
-        const startDateVal = document.getElementById('start-date').value;
-        const endDateVal = document.getElementById('end-date').value;
+            // Show loading
+            document.getElementById('loading').style.display = 'flex';
 
-        // Show loading
-        document.getElementById('loading').style.display = 'flex';
+            try {
+                // 禁用批量AI，仅进行算法分析（免费）
+                const params = new URLSearchParams({
+                    start_month: startDateVal,
+                    end_month: endDateVal,
+                    enable_ai: 'false'  // 始终禁用批量AI
+                });
 
-        try {
-            // 禁用批量AI，仅进行算法分析（免费）
-            const params = new URLSearchParams({
-                start_date: startDateVal,
-                end_date: endDateVal,
-                enable_ai: 'false'  // 始终禁用批量AI
-            });
+                const resp = await fetch(`/personnel/api/risk-mining?${params}`);
+                const data = await resp.json();
 
-            const resp = await fetch(`/personnel/api/risk-mining?${params}`);
-            const data = await resp.json();
-
-            if (data.success) {
-                analysisData = data;
-                renderResults(data);
-            } else {
-                alert('分析失败: ' + data.error);
+                if (data.success) {
+                    analysisData = data;
+                    renderResults(data);
+                } else {
+                    alert('分析失败: ' + data.error);
+                }
+            } catch (e) {
+                console.error('Analysis failed:', e);
+                alert('分析请求失败，请检查网络连接');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
             }
-        } catch (e) {
-            console.error('Analysis failed:', e);
-            alert('分析请求失败，请检查网络连接');
-        } finally {
-            document.getElementById('loading').style.display = 'none';
-        }
-    });
+        });
 
-    // Render all results
-    function renderResults(data) {
-        // Show content sections
-        document.getElementById('summary-row').style.display = 'flex';
-        document.getElementById('main-content').style.display = 'flex';
+        // Render all results
+        function renderResults(data) {
+            // Show content sections
+            document.getElementById('summary-row').style.display = 'flex';
+            document.getElementById('main-content').style.display = 'flex';
 
-        // Update summary stats
-        document.getElementById('stat-total').textContent = data.summary.total_employees;
-        document.getElementById('stat-high-risk').textContent = data.summary.high_risk_count;
-        document.getElementById('stat-anomaly').textContent = data.summary.anomaly_count;
-        document.getElementById('stat-ai').textContent = data.summary.ai_diagnoses_performed || 0;
+            // Update summary stats
+            document.getElementById('stat-total').textContent = data.summary.total_employees;
+            document.getElementById('stat-high-risk').textContent = data.summary.high_risk_count;
+            document.getElementById('stat-anomaly').textContent = data.summary.anomaly_count;
+            document.getElementById('stat-ai').textContent = data.summary.ai_diagnoses_performed || 0;
 
-        // Render risk table
-        renderRiskTable(data.high_risk_list);
+            // Render risk table
+            renderRiskTable(data.high_risk_list);
 
-        // Render wordcloud
-        renderWordcloud(data.keyword_cloud);
+            // Render wordcloud
+            renderWordcloud(data.keyword_cloud);
 
-        // Render survival chart
-        renderSurvivalChart(data.survival_curve);
-    }
-
-    // Render risk table (省Token模式：高风险人员显示AI按钮)
-    function renderRiskTable(employees) {
-        const tbody = document.getElementById('risk-table');
-        document.getElementById('list-count').textContent = employees.length + ' 人';
-
-        if (!employees.length) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">无数据</td></tr>';
-            return;
+            // Render survival chart
+            renderSurvivalChart(data.survival_curve);
         }
 
-        // 计算总人数用于判断前5%
-        const totalEmployees = analysisData?.summary?.total_employees || employees.length;
-        const top5PercentThreshold = Math.ceil(totalEmployees * 0.05);
+        // Render risk table (省Token模式：高风险人员显示AI按钮)
+        function renderRiskTable(employees) {
+            const tbody = document.getElementById('risk-table');
+            document.getElementById('list-count').textContent = employees.length + ' 人';
 
-        tbody.innerHTML = employees.map((emp, idx) => {
-            const riskClass = emp.risk_score >= 80 ? 'risk-high' :
-                             emp.risk_score >= 50 ? 'risk-medium' : 'risk-low';
+            if (!employees.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">无数据</td></tr>';
+                return;
+            }
 
-            const slopeIcon = emp.performance_slope < -0.5 ? '📉' :
-                             emp.performance_slope < 0 ? '↘️' :
-                             emp.performance_slope > 0.5 ? '📈' : '➡️';
+            // 计算总人数用于判断前5%
+            const totalEmployees = analysisData?.summary?.total_employees || employees.length;
+            const top5PercentThreshold = Math.ceil(totalEmployees * 0.05);
 
-            const factors = emp.risk_factors.map(f =>
-                `<span class="factor-tag">${escapeHtml(f)}</span>`
-            ).join('');
+            tbody.innerHTML = employees.map((emp, idx) => {
+                const riskClass = emp.risk_score >= 80 ? 'risk-high' :
+                    emp.risk_score >= 50 ? 'risk-medium' : 'risk-low';
 
-            const badges = [];
-            if (emp.is_anomaly) badges.push('<span class="badge anomaly-badge">异常</span>');
-            if (emp.ai_diagnosis) badges.push('<span class="badge bg-warning text-dark">AI</span>');
+                const slopeIcon = emp.performance_slope < -0.5 ? '📉' :
+                    emp.performance_slope < 0 ? '↘️' :
+                        emp.performance_slope > 0.5 ? '📈' : '➡️';
 
-            // 与后端一致的逻辑：风险分>=80 或 排名在前5% 才显示AI诊断按钮
-            const rank = idx + 1;
-            const isHighRisk = emp.risk_score >= 80;
-            const isTop5Percent = rank <= top5PercentThreshold;
-            const shouldShowAiBtn = isHighRisk || isTop5Percent;
+                const factors = emp.risk_factors.map(f =>
+                    `<span class="factor-tag">${escapeHtml(f)}</span>`
+                ).join('');
 
-            let actionBtn = '';
-            if (shouldShowAiBtn) {
-                actionBtn = `<button class="btn btn-sm btn-outline-danger ai-diagnose-btn"
+                const badges = [];
+                if (emp.is_anomaly) badges.push('<span class="badge anomaly-badge">异常</span>');
+                if (emp.ai_diagnosis) badges.push('<span class="badge bg-warning text-dark">AI</span>');
+
+                // 与后端一致的逻辑：风险分>=80 或 排名在前5% 才显示AI诊断按钮
+                const rank = idx + 1;
+                const isHighRisk = emp.risk_score >= 80;
+                const isTop5Percent = rank <= top5PercentThreshold;
+                const shouldShowAiBtn = isHighRisk || isTop5Percent;
+
+                let actionBtn = '';
+                if (shouldShowAiBtn) {
+                    actionBtn = `<button class="btn btn-sm btn-outline-danger ai-diagnose-btn"
                               data-emp="${encodeURIComponent(JSON.stringify(emp))}"
                               onclick="event.stopPropagation(); triggerAIDiagnosis(this);">
                               🤖 AI诊断
                             </button>`;
-            } else {
-                actionBtn = '<span class="text-muted small">风险正常</span>';
-            }
+                } else {
+                    actionBtn = '<span class="text-muted small">风险正常</span>';
+                }
 
-            return `
+                return `
                 <tr class="risk-row" data-emp="${encodeURIComponent(JSON.stringify(emp))}" style="cursor: pointer;">
                     <td><strong>${idx + 1}</strong></td>
                     <td>
@@ -509,113 +580,113 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td>${actionBtn}</td>
                 </tr>
             `;
-        }).join('');
+            }).join('');
 
-        // Bind row clicks (not for AI button)
-        tbody.querySelectorAll('.risk-row').forEach(row => {
-            row.addEventListener('click', function(e) {
-                // 如果点击的是AI按钮，不触发行点击
-                if (e.target.closest('.ai-diagnose-btn')) return;
-                const emp = JSON.parse(decodeURIComponent(this.dataset.emp));
-                showDetail(emp);
+            // Bind row clicks (not for AI button)
+            tbody.querySelectorAll('.risk-row').forEach(row => {
+                row.addEventListener('click', function (e) {
+                    // 如果点击的是AI按钮，不触发行点击
+                    if (e.target.closest('.ai-diagnose-btn')) return;
+                    const emp = JSON.parse(decodeURIComponent(this.dataset.emp));
+                    showDetail(emp);
+                });
             });
-        });
-    }
-
-    // Render wordcloud
-    function renderWordcloud(keywords) {
-        const container = document.getElementById('wordcloud');
-
-        if (!keywords || !keywords.length) {
-            container.innerHTML = '<span class="text-muted">暂无关键词数据</span>';
-            return;
         }
 
-        const maxValue = Math.max(...keywords.map(k => k.value));
-        const minValue = Math.min(...keywords.map(k => k.value));
+        // Render wordcloud
+        function renderWordcloud(keywords) {
+            const container = document.getElementById('wordcloud');
 
-        container.innerHTML = keywords.map(k => {
-            const ratio = maxValue === minValue ? 0.5 :
-                         (k.value - minValue) / (maxValue - minValue);
-            const fontSize = 0.8 + ratio * 1.2; // 0.8rem to 2rem
-            const opacity = 0.5 + ratio * 0.5;
+            if (!keywords || !keywords.length) {
+                container.innerHTML = '<span class="text-muted">暂无关键词数据</span>';
+                return;
+            }
 
-            return `<span class="wordcloud-word" style="font-size: ${fontSize}rem; opacity: ${opacity};"
+            const maxValue = Math.max(...keywords.map(k => k.value));
+            const minValue = Math.min(...keywords.map(k => k.value));
+
+            container.innerHTML = keywords.map(k => {
+                const ratio = maxValue === minValue ? 0.5 :
+                    (k.value - minValue) / (maxValue - minValue);
+                const fontSize = 0.8 + ratio * 1.2; // 0.8rem to 2rem
+                const opacity = 0.5 + ratio * 0.5;
+
+                return `<span class="wordcloud-word" style="font-size: ${fontSize}rem; opacity: ${opacity};"
                          title="出现 ${k.value} 次">${escapeHtml(k.name)}</span>`;
-        }).join('');
-    }
-
-    // Render survival chart
-    function renderSurvivalChart(curveData) {
-        const ctx = document.getElementById('survival-canvas').getContext('2d');
-
-        if (survivalChart) {
-            survivalChart.destroy();
+            }).join('');
         }
 
-        if (!curveData || curveData.length < 2) {
-            document.getElementById('survival-chart').innerHTML =
-                '<div class="text-center text-muted py-5">数据不足，无法生成曲线</div>';
-            return;
-        }
+        // Render survival chart
+        function renderSurvivalChart(curveData) {
+            const ctx = document.getElementById('survival-canvas').getContext('2d');
 
-        survivalChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: curveData.map(d => d.time + '年'),
-                datasets: [{
-                    label: '无违章概率',
-                    data: curveData.map(d => d.probability * 100),
-                    borderColor: '#0d6efd',
-                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
+            if (survivalChart) {
+                survivalChart.destroy();
+            }
+
+            if (!curveData || curveData.length < 2) {
+                document.getElementById('survival-chart').innerHTML =
+                    '<div class="text-center text-muted py-5">数据不足，无法生成曲线</div>';
+                return;
+            }
+
+            survivalChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: curveData.map(d => d.time + '年'),
+                    datasets: [{
+                        label: '无违章概率',
+                        data: curveData.map(d => d.probability * 100),
+                        borderColor: '#0d6efd',
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    return `无违章概率: ${context.raw.toFixed(1)}%`;
+                                }
+                            }
+                        }
                     },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return `无违章概率: ${context.raw.toFixed(1)}%`;
+                    scales: {
+                        y: {
+                            min: 0,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: '无违章概率 (%)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: '驾驶年限'
                             }
                         }
                     }
-                },
-                scales: {
-                    y: {
-                        min: 0,
-                        max: 100,
-                        title: {
-                            display: true,
-                            text: '无违章概率 (%)'
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: '驾驶年限'
-                        }
-                    }
                 }
-            }
-        });
-    }
+            });
+        }
 
-    // Show employee detail modal (暴露为全局函数供AI诊断使用)
-    window.showDetailGlobal = showDetail;
-    function showDetail(emp) {
-        const modal = new bootstrap.Modal(document.getElementById('detail-modal'));
+        // Show employee detail modal (暴露为全局函数供AI诊断使用)
+        window.showDetailGlobal = showDetail;
+        function showDetail(emp) {
+            const modal = new bootstrap.Modal(document.getElementById('detail-modal'));
 
-        const riskClass = emp.risk_score >= 80 ? 'risk-high' :
-                         emp.risk_score >= 50 ? 'risk-medium' : 'risk-low';
+            const riskClass = emp.risk_score >= 80 ? 'risk-high' :
+                emp.risk_score >= 50 ? 'risk-medium' : 'risk-low';
 
-        let html = `
+            let html = `
             <div class="row mb-4">
                 <div class="col-md-6">
                     <h6>基本信息</h6>
@@ -662,8 +733,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 <h6>风险因素</h6>
                 <div>
                     ${emp.risk_factors.length ?
-                        emp.risk_factors.map(f => `<span class="factor-tag">${escapeHtml(f)}</span>`).join('') :
-                        '<span class="text-muted">无明显风险因素</span>'}
+                    emp.risk_factors.map(f => `<span class="factor-tag">${escapeHtml(f)}</span>`).join('') :
+                    '<span class="text-muted">无明显风险因素</span>'}
                 </div>
             </div>
 
@@ -676,156 +747,156 @@ document.addEventListener('DOMContentLoaded', function() {
             ${emp.ai_diagnosis ? renderAIDiagnosis(emp) : ''}
         `;
 
-        document.getElementById('detail-content').innerHTML = html;
-        document.getElementById('view-profile-btn').href =
-            `/personnel/capability-profile?emp_no=${encodeURIComponent(emp.emp_no)}`;
+            document.getElementById('detail-content').innerHTML = html;
+            document.getElementById('view-profile-btn').href =
+                `/personnel/capability-profile?emp_no=${encodeURIComponent(emp.emp_no)}`;
 
-        modal.show();
-    }
-
-    // Escape HTML
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    // Try to extract fields from malformed JSON string using regex
-    function tryExtractFields(text) {
-        if (!text) return null;
-
-        try {
-            const result = {};
-
-            // Helper: extract string value after key (handles escaped quotes)
-            function extractValue(key) {
-                // Match "key": "value" pattern, allowing for escaped quotes inside value
-                const regex = new RegExp('"' + key + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"');
-                const match = text.match(regex);
-                return match ? match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n') : null;
-            }
-
-            // Helper: extract array of strings
-            function extractStringArray(key) {
-                const regex = new RegExp('"' + key + '"\\s*:\\s*\\[([\\s\\S]*?)\\]');
-                const match = text.match(regex);
-                if (!match) return null;
-
-                const items = [];
-                // Match each string in the array
-                const strRegex = /"((?:[^"\\]|\\.)*)"/g;
-                let m;
-                while ((m = strRegex.exec(match[1])) !== null) {
-                    items.push(m[1].replace(/\\"/g, '"').replace(/\\n/g, '\n'));
-                }
-                return items.length > 0 ? items : null;
-            }
-
-            // Extract simple string fields
-            result.summary = extractValue('summary');
-            result.root_cause_type = extractValue('root_cause_type');
-            result.root_cause_analysis = extractValue('root_cause_analysis');
-            result.prediction = extractValue('prediction');
-            result.training_gap = extractValue('training_gap');
-            result.time_pattern = extractValue('time_pattern');
-
-            // Extract string arrays
-            result.frequent_issues = extractStringArray('frequent_issues');
-            result.measures = extractStringArray('measures');
-
-            // Extract severe_issues (array of objects)
-            const severeMatch = text.match(/"severe_issues"\s*:\s*\[([\s\S]*?)\]/);
-            if (severeMatch) {
-                const issues = [];
-                const issueRegex = /"issue"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
-                let m;
-                while ((m = issueRegex.exec(severeMatch[1])) !== null) {
-                    issues.push(m[1].replace(/\\"/g, '"'));
-                }
-                if (issues.length > 0) {
-                    result.severe_issues = issues;
-                }
-            }
-
-            // Clean up undefined values
-            Object.keys(result).forEach(k => {
-                if (result[k] === null || result[k] === undefined) {
-                    delete result[k];
-                }
-            });
-
-            // Check if we got at least summary or root_cause_type
-            if (result.summary || result.root_cause_type || result.measures) {
-                console.log('tryExtractFields succeeded:', result);
-                return result;
-            }
-        } catch (e) {
-            console.error('tryExtractFields error:', e);
+            modal.show();
         }
 
-        return null;
-    }
+        // Escape HTML
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
-    // Render AI diagnosis in structured format with brief/detail toggle
-    function renderAIDiagnosis(emp) {
-        // Try to parse JSON from ai_diagnosis_parsed or ai_diagnosis
-        let parsed = emp.ai_diagnosis_parsed;
+        // Try to extract fields from malformed JSON string using regex
+        function tryExtractFields(text) {
+            if (!text) return null;
 
-        // If not parsed yet, try to parse from raw string
-        if (!parsed && emp.ai_diagnosis) {
             try {
-                // 尝试直接解析
-                let diagStr = emp.ai_diagnosis;
+                const result = {};
 
-                // 如果是对象，直接使用
-                if (typeof diagStr === 'object' && diagStr !== null) {
-                    parsed = diagStr;
-                } else {
-                    // 清理字符串
-                    diagStr = diagStr.trim();
+                // Helper: extract string value after key (handles escaped quotes)
+                function extractValue(key) {
+                    // Match "key": "value" pattern, allowing for escaped quotes inside value
+                    const regex = new RegExp('"' + key + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"');
+                    const match = text.match(regex);
+                    return match ? match[1].replace(/\\"/g, '"').replace(/\\n/g, '\n') : null;
+                }
 
-                    // 移除markdown代码块标记
-                    if (diagStr.startsWith('```json')) {
-                        diagStr = diagStr.substring(7);
-                    }
-                    if (diagStr.startsWith('```')) {
-                        diagStr = diagStr.substring(3);
-                    }
-                    if (diagStr.endsWith('```')) {
-                        diagStr = diagStr.slice(0, -3);
-                    }
-                    diagStr = diagStr.trim();
+                // Helper: extract array of strings
+                function extractStringArray(key) {
+                    const regex = new RegExp('"' + key + '"\\s*:\\s*\\[([\\s\\S]*?)\\]');
+                    const match = text.match(regex);
+                    if (!match) return null;
 
-                    // 提取JSON对象
-                    const jsonMatch = diagStr.match(/\{[\s\S]*\}/);
-                    if (jsonMatch) {
-                        diagStr = jsonMatch[0];
+                    const items = [];
+                    // Match each string in the array
+                    const strRegex = /"((?:[^"\\]|\\.)*)"/g;
+                    let m;
+                    while ((m = strRegex.exec(match[1])) !== null) {
+                        items.push(m[1].replace(/\\"/g, '"').replace(/\\n/g, '\n'));
                     }
+                    return items.length > 0 ? items : null;
+                }
 
-                    parsed = JSON.parse(diagStr);
+                // Extract simple string fields
+                result.summary = extractValue('summary');
+                result.root_cause_type = extractValue('root_cause_type');
+                result.root_cause_analysis = extractValue('root_cause_analysis');
+                result.prediction = extractValue('prediction');
+                result.training_gap = extractValue('training_gap');
+                result.time_pattern = extractValue('time_pattern');
+
+                // Extract string arrays
+                result.frequent_issues = extractStringArray('frequent_issues');
+                result.measures = extractStringArray('measures');
+
+                // Extract severe_issues (array of objects)
+                const severeMatch = text.match(/"severe_issues"\s*:\s*\[([\s\S]*?)\]/);
+                if (severeMatch) {
+                    const issues = [];
+                    const issueRegex = /"issue"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+                    let m;
+                    while ((m = issueRegex.exec(severeMatch[1])) !== null) {
+                        issues.push(m[1].replace(/\\"/g, '"'));
+                    }
+                    if (issues.length > 0) {
+                        result.severe_issues = issues;
+                    }
+                }
+
+                // Clean up undefined values
+                Object.keys(result).forEach(k => {
+                    if (result[k] === null || result[k] === undefined) {
+                        delete result[k];
+                    }
+                });
+
+                // Check if we got at least summary or root_cause_type
+                if (result.summary || result.root_cause_type || result.measures) {
+                    console.log('tryExtractFields succeeded:', result);
+                    return result;
                 }
             } catch (e) {
-                console.error('AI diagnosis parse error:', e, emp.ai_diagnosis);
-                // Fallback: 尝试手动提取关键字段
-                parsed = tryExtractFields(emp.ai_diagnosis);
+                console.error('tryExtractFields error:', e);
             }
+
+            return null;
         }
 
-        if (!parsed) {
-            // 最终fallback：显示原始文本
-            return `
+        // Render AI diagnosis in structured format with brief/detail toggle
+        function renderAIDiagnosis(emp) {
+            // Try to parse JSON from ai_diagnosis_parsed or ai_diagnosis
+            let parsed = emp.ai_diagnosis_parsed;
+
+            // If not parsed yet, try to parse from raw string
+            if (!parsed && emp.ai_diagnosis) {
+                try {
+                    // 尝试直接解析
+                    let diagStr = emp.ai_diagnosis;
+
+                    // 如果是对象，直接使用
+                    if (typeof diagStr === 'object' && diagStr !== null) {
+                        parsed = diagStr;
+                    } else {
+                        // 清理字符串
+                        diagStr = diagStr.trim();
+
+                        // 移除markdown代码块标记
+                        if (diagStr.startsWith('```json')) {
+                            diagStr = diagStr.substring(7);
+                        }
+                        if (diagStr.startsWith('```')) {
+                            diagStr = diagStr.substring(3);
+                        }
+                        if (diagStr.endsWith('```')) {
+                            diagStr = diagStr.slice(0, -3);
+                        }
+                        diagStr = diagStr.trim();
+
+                        // 提取JSON对象
+                        const jsonMatch = diagStr.match(/\{[\s\S]*\}/);
+                        if (jsonMatch) {
+                            diagStr = jsonMatch[0];
+                        }
+
+                        parsed = JSON.parse(diagStr);
+                    }
+                } catch (e) {
+                    console.error('AI diagnosis parse error:', e, emp.ai_diagnosis);
+                    // Fallback: 尝试手动提取关键字段
+                    parsed = tryExtractFields(emp.ai_diagnosis);
+                }
+            }
+
+            if (!parsed) {
+                // 最终fallback：显示原始文本
+                return `
                 <div class="ai-diagnosis">
                     <div class="ai-diagnosis-header">🤖 AI 智能诊断</div>
                     <div class="ai-section-content" style="white-space: pre-wrap;">${escapeHtml(emp.ai_diagnosis)}</div>
                 </div>
             `;
-        }
+            }
 
-        const diagnosisId = 'ai-diag-' + emp.emp_no.replace(/[^a-zA-Z0-9]/g, '');
+            const diagnosisId = 'ai-diag-' + emp.emp_no.replace(/[^a-zA-Z0-9]/g, '');
 
-        // Build structured display with brief/detail modes
-        let html = `<div class="ai-diagnosis">
+            // Build structured display with brief/detail modes
+            let html = `<div class="ai-diagnosis">
             <div class="ai-diagnosis-header">🤖 AI 智能诊断</div>
             <div class="ai-mode-toggle">
                 <button class="ai-mode-btn" onclick="toggleAIDetail('${diagnosisId}', this)">
@@ -833,263 +904,269 @@ document.addEventListener('DOMContentLoaded', function() {
                 </button>
             </div>`;
 
-        // ========== BRIEF MODE (Always visible) ==========
-        html += `<div class="ai-brief-summary">`;
+            // ========== BRIEF MODE (Always visible) ==========
+            html += `<div class="ai-brief-summary">`;
 
-        // Summary/Conclusion
-        if (parsed.summary) {
-            html += `<div class="ai-brief-conclusion">
+            // Summary/Conclusion
+            if (parsed.summary) {
+                html += `<div class="ai-brief-conclusion">
                 <strong>📋 诊断结论：</strong>${escapeHtml(parsed.summary)}
             </div>`;
-        }
+            }
 
-        // Root cause type (highlighted)
-        if (parsed.root_cause_type) {
-            const typeClass = parsed.root_cause_type.includes('技能') ? 'ai-root-skill' :
-                             parsed.root_cause_type.includes('习惯') ? 'ai-root-habit' : 'ai-root-state';
-            html += `<div class="ai-brief-row">
+            // Root cause type (highlighted)
+            if (parsed.root_cause_type) {
+                const typeClass = parsed.root_cause_type.includes('技能') ? 'ai-root-skill' :
+                    parsed.root_cause_type.includes('习惯') ? 'ai-root-habit' : 'ai-root-state';
+                html += `<div class="ai-brief-row">
                 <span class="ai-brief-label">🧠 根因类型：</span>
                 <span class="ai-root-type ${typeClass}">${escapeHtml(parsed.root_cause_type)}</span>
             </div>`;
-        }
+            }
 
-        // Key measures (brief)
-        if (parsed.measures && parsed.measures.length > 0) {
-            html += `<div style="margin-top: 0.5rem;">
+            // Key measures (brief)
+            if (parsed.measures && parsed.measures.length > 0) {
+                html += `<div style="margin-top: 0.5rem;">
                 <span class="ai-brief-label">💊 整改措施：</span>
                 <div style="margin-top: 0.25rem;">`;
-            parsed.measures.slice(0, 3).forEach((measure, idx) => {
-                html += `<div class="ai-measure">
+                parsed.measures.slice(0, 3).forEach((measure, idx) => {
+                    html += `<div class="ai-measure">
                     <span class="ai-measure-icon">✓</span>
                     <span>${escapeHtml(measure)}</span>
                 </div>`;
-            });
-            if (parsed.measures.length > 3) {
-                html += `<small class="text-muted">...点击"展开详情"查看更多</small>`;
+                });
+                if (parsed.measures.length > 3) {
+                    html += `<small class="text-muted">...点击"展开详情"查看更多</small>`;
+                }
+                html += `</div></div>`;
             }
-            html += `</div></div>`;
-        }
 
-        html += `</div>`; // End brief summary
+            html += `</div>`; // End brief summary
 
-        // ========== DETAIL MODE (Toggle visibility) ==========
-        html += `<div id="${diagnosisId}" class="ai-detail-section">`;
+            // ========== DETAIL MODE (Toggle visibility) ==========
+            html += `<div id="${diagnosisId}" class="ai-detail-section">`;
 
-        // 1. Risk Profile - 关键风险画像
-        html += `<div class="ai-section ai-section-risk">
+            // 1. Risk Profile - 关键风险画像
+            html += `<div class="ai-section ai-section-risk">
             <div class="ai-section-title">🚨 关键风险画像</div>
             <div class="ai-section-content">`;
 
-        if (parsed.frequent_issues && parsed.frequent_issues.length > 0) {
-            html += `<p><strong>高频违章点：</strong></p><div>`;
-            parsed.frequent_issues.forEach(issue => {
-                html += `<span class="ai-tag">${escapeHtml(issue)}</span>`;
-            });
-            html += `</div>`;
-        }
+            if (parsed.frequent_issues && parsed.frequent_issues.length > 0) {
+                html += `<p><strong>高频违章点：</strong></p><div>`;
+                parsed.frequent_issues.forEach(issue => {
+                    html += `<span class="ai-tag">${escapeHtml(issue)}</span>`;
+                });
+                html += `</div>`;
+            }
 
-        if (parsed.severe_issues && parsed.severe_issues.length > 0) {
-            html += `<p style="margin-top: 0.5rem;"><strong>严重违章点：</strong></p><div>`;
-            parsed.severe_issues.forEach(item => {
-                const issue = typeof item === 'object' ? item.issue : item;
-                const score = typeof item === 'object' ? item.score : '';
-                html += `<span class="ai-tag ai-tag-severe">${escapeHtml(issue)}${score ? ' (' + score + ')' : ''}</span>`;
-            });
-            html += `</div>`;
-        }
+            if (parsed.severe_issues && parsed.severe_issues.length > 0) {
+                html += `<p style="margin-top: 0.5rem;"><strong>严重违章点：</strong></p><div>`;
+                parsed.severe_issues.forEach(item => {
+                    const issue = typeof item === 'object' ? item.issue : item;
+                    const score = typeof item === 'object' ? item.score : '';
+                    html += `<span class="ai-tag ai-tag-severe">${escapeHtml(issue)}${score ? ' (' + score + ')' : ''}</span>`;
+                });
+                html += `</div>`;
+            }
 
-        if (parsed.time_pattern) {
-            html += `<p style="margin-top: 0.5rem;"><strong>时空规律：</strong>${escapeHtml(parsed.time_pattern)}</p>`;
-        }
+            if (parsed.time_pattern) {
+                html += `<p style="margin-top: 0.5rem;"><strong>时空规律：</strong>${escapeHtml(parsed.time_pattern)}</p>`;
+            }
 
-        html += `</div></div>`;
+            html += `</div></div>`;
 
-        // 2. Training Gap - 培训关联分析
-        if (parsed.training_gap) {
-            html += `<div class="ai-section ai-section-training">
+            // 2. Training Gap - 培训关联分析
+            if (parsed.training_gap) {
+                html += `<div class="ai-section ai-section-training">
                 <div class="ai-section-title">📉 培训关联分析</div>
                 <div class="ai-section-content">${escapeHtml(parsed.training_gap)}</div>
             </div>`;
-        }
+            }
 
-        // 3. Root Cause - 根因深度定性 (Full version)
-        if (parsed.root_cause_analysis) {
-            html += `<div class="ai-section ai-section-root">
+            // 3. Root Cause - 根因深度定性 (Full version)
+            if (parsed.root_cause_analysis) {
+                html += `<div class="ai-section ai-section-root">
                 <div class="ai-section-title">🧠 根因深度分析</div>
                 <div class="ai-section-content">${escapeHtml(parsed.root_cause_analysis)}</div>
             </div>`;
-        }
+            }
 
-        // 4. Prediction - 预测性预警
-        if (parsed.prediction) {
-            html += `<div class="ai-section ai-section-predict">
+            // 4. Prediction - 预测性预警
+            if (parsed.prediction) {
+                html += `<div class="ai-section ai-section-predict">
                 <div class="ai-section-title">🔮 预测性预警</div>
                 <div class="ai-section-content">${escapeHtml(parsed.prediction)}</div>
             </div>`;
-        }
+            }
 
-        // 5. Measures - 精准帮扶方案 (Full version)
-        if (parsed.measures && parsed.measures.length > 3) {
-            html += `<div class="ai-section ai-section-action">
+            // 5. Measures - 精准帮扶方案 (Full version)
+            if (parsed.measures && parsed.measures.length > 3) {
+                html += `<div class="ai-section ai-section-action">
                 <div class="ai-section-title">💊 完整帮扶方案</div>
                 <div class="ai-section-content">`;
-            parsed.measures.forEach((measure, idx) => {
-                html += `<div class="ai-measure">
+                parsed.measures.forEach((measure, idx) => {
+                    html += `<div class="ai-measure">
                     <span class="ai-measure-icon">✓</span>
                     <span>${escapeHtml(measure)}</span>
                 </div>`;
-            });
-            html += `</div></div>`;
-        }
-
-        html += `</div>`; // End detail section
-        html += `</div>`; // End ai-diagnosis
-
-        return html;
-    }
-
-});
-
-// Toggle AI diagnosis detail view (global scope for onclick)
-function toggleAIDetail(id, btn) {
-    const detail = document.getElementById(id);
-    if (detail.classList.contains('show')) {
-        detail.classList.remove('show');
-        btn.innerHTML = '📖 展开详情';
-    } else {
-        detail.classList.add('show');
-        btn.innerHTML = '📕 收起详情';
-    }
-}
-
-// 单独调用AI诊断（省Token模式核心：先查缓存，无缓存才调用API）
-async function triggerAIDiagnosis(btn) {
-    const emp = JSON.parse(decodeURIComponent(btn.dataset.emp));
-
-    // 隐私保护提示：告知用户敏感信息已脱敏
-    const confirmed = confirm(
-        '🔒 隐私保护提示\n\n' +
-        'AI诊断将发送该员工数据进行分析。为保护隐私，系统已自动进行以下脱敏处理：\n\n' +
-        '✓ 员工姓名：完全匿名化\n' +
-        '✓ 员工工号：完全匿名化\n' +
-        '✓ 城市/省份：替换为通用标识符\n' +
-        '✓ 行政区域：替换为通用标识符\n\n' +
-        '保留信息（便于AI分析）：\n' +
-        '• 站点名称（如紫荆山站、火车站）\n' +
-        '• 线路编号（如1号线、2号线）\n' +
-        '• 违章类型和培训问题描述\n\n' +
-        '是否继续进行AI诊断？'
-    );
-
-    if (!confirmed) {
-        return; // 用户取消操作
-    }
-
-    // 获取当前选择的日期范围（关键：确保AI诊断使用与用户筛选一致的数据）
-    const startDate = document.getElementById('start-date').value;
-    const endDate = document.getElementById('end-date').value;
-
-    // 禁用按钮，显示加载状态
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '⏳ 分析中...';
-
-    try {
-        const resp = await fetch('/personnel/api/ai-diagnosis', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                emp_no: emp.emp_no,
-                name: emp.name,
-                risk_score: emp.risk_score,
-                // 新增：传递日期范围，确保AI诊断数据与用户筛选一致
-                start_date: startDate,
-                end_date: endDate,
-                risk_data: {
-                    performance_slope: emp.performance_slope,
-                    performance_score: emp.performance_score,
-                    safety_score: emp.safety_score,
-                    safety_count: emp.safety_count,
-                    training_score: emp.training_score,
-                    training_disqualified_count: emp.training_disqualified_count,
-                    is_anomaly: emp.is_anomaly,
-                    anomaly_score: emp.anomaly_score,
-                    risk_factors: emp.risk_factors
-                }
-            })
-        });
-
-        // 检查HTTP状态码
-        if (!resp.ok) {
-            let errorMsg = `HTTP ${resp.status}`;
-            try {
-                const errorData = await resp.json();
-                errorMsg = errorData.error || errorMsg;
-            } catch (e) {
-                // 无法解析JSON，使用状态文本
-                errorMsg = `${errorMsg}: ${resp.statusText}`;
-            }
-            btn.innerHTML = originalText;
-            btn.disabled = false;
-            alert('AI诊断失败: ' + errorMsg);
-            return;
-        }
-
-        const data = await resp.json();
-
-        if (data.success) {
-            // 更新员工数据，添加AI诊断结果
-            emp.ai_diagnosis = data.raw_diagnosis || data.diagnosis;
-            emp.ai_diagnosis_parsed = typeof data.diagnosis === 'object' ? data.diagnosis : null;
-
-            // 显示来源和Token消耗信息
-            const sourceText = data.source === 'cache' ? '📦 来自缓存' : '🌐 新API调用';
-            const tokenText = data.tokens_used === 0 ? '0 Token (节省!)' : `${data.tokens_used} Tokens`;
-
-            // 更新按钮显示
-            btn.classList.remove('btn-outline-danger');
-            btn.classList.add('btn-success');
-            btn.innerHTML = `✅ 已诊断`;
-            btn.title = `${sourceText} | ${tokenText}`;
-
-            // 关键修复：同时更新表格行和按钮的 data-emp 属性，使点击行时能获取到AI诊断结果
-            const updatedEmpData = encodeURIComponent(JSON.stringify(emp));
-            btn.dataset.emp = updatedEmpData;
-            const row = btn.closest('tr.risk-row');
-            if (row) {
-                row.dataset.emp = updatedEmpData;
+                });
+                html += `</div></div>`;
             }
 
-            // 弹出详情模态框显示诊断结果
-            showDetailWithDiagnosis(emp, data.source, data.tokens_used);
+            html += `</div>`; // End detail section
+            html += `</div>`; // End ai-diagnosis
 
-            // 显示Toast通知
-            showToast(`${sourceText} | ${tokenText}`, data.source === 'cache' ? 'success' : 'info');
+            return html;
+        }
+
+    });
+
+    // Toggle AI diagnosis detail view (global scope for onclick)
+    function toggleAIDetail(id, btn) {
+        const detail = document.getElementById(id);
+        if (detail.classList.contains('show')) {
+            detail.classList.remove('show');
+            btn.innerHTML = '📖 展开详情';
         } else {
+            detail.classList.add('show');
+            btn.innerHTML = '📕 收起详情';
+        }
+    }
+
+    // 单独调用AI诊断（省Token模式核心：先查缓存，无缓存才调用API）
+    async function triggerAIDiagnosis(btn) {
+        const emp = JSON.parse(decodeURIComponent(btn.dataset.emp));
+
+        // 隐私保护提示：告知用户敏感信息已脱敏
+        const confirmed = confirm(
+            '🔒 隐私保护提示\n\n' +
+            'AI诊断将发送该员工数据进行分析。为保护隐私，系统已自动进行以下脱敏处理：\n\n' +
+            '✓ 员工姓名：完全匿名化\n' +
+            '✓ 员工工号：完全匿名化\n' +
+            '✓ 城市/省份：替换为通用标识符\n' +
+            '✓ 行政区域：替换为通用标识符\n\n' +
+            '保留信息（便于AI分析）：\n' +
+            '• 站点名称（如紫荆山站、火车站）\n' +
+            '• 线路编号（如1号线、2号线）\n' +
+            '• 违章类型和培训问题描述\n\n' +
+            '是否继续进行AI诊断？'
+        );
+
+        if (!confirmed) {
+            return; // 用户取消操作
+        }
+
+        // 获取当前选择的日期范围，转为 YYYY-MM-DD（后端统一只接收标准日期）
+        const rawStart = document.getElementById('start-date').value;  // YYYY-MM
+        const rawEnd = document.getElementById('end-date').value;      // YYYY-MM
+        const startDate = rawStart ? rawStart + '-01' : '';
+        const endDate = rawEnd ? (function (ym) {
+            const [y, m] = ym.split('-').map(Number);
+            const lastDay = new Date(y, m, 0).getDate();
+            return ym + '-' + String(lastDay).padStart(2, '0');
+        })(rawEnd) : '';
+
+        // 禁用按钮，显示加载状态
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '⏳ 分析中...';
+
+        try {
+            const resp = await fetch('/personnel/api/ai-diagnosis', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    emp_no: emp.emp_no,
+                    name: emp.name,
+                    risk_score: emp.risk_score,
+                    // 传递标准 YYYY-MM-DD 日期，与后端协议一致
+                    start_date: startDate,
+                    end_date: endDate,
+                    risk_data: {
+                        performance_slope: emp.performance_slope,
+                        performance_score: emp.performance_score,
+                        safety_score: emp.safety_score,
+                        safety_count: emp.safety_count,
+                        training_score: emp.training_score,
+                        training_disqualified_count: emp.training_disqualified_count,
+                        is_anomaly: emp.is_anomaly,
+                        anomaly_score: emp.anomaly_score,
+                        risk_factors: emp.risk_factors
+                    }
+                })
+            });
+
+            // 检查HTTP状态码
+            if (!resp.ok) {
+                let errorMsg = `HTTP ${resp.status}`;
+                try {
+                    const errorData = await resp.json();
+                    errorMsg = errorData.error || errorMsg;
+                } catch (e) {
+                    // 无法解析JSON，使用状态文本
+                    errorMsg = `${errorMsg}: ${resp.statusText}`;
+                }
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                alert('AI诊断失败: ' + errorMsg);
+                return;
+            }
+
+            const data = await resp.json();
+
+            if (data.success) {
+                // 更新员工数据，添加AI诊断结果
+                emp.ai_diagnosis = data.raw_diagnosis || data.diagnosis;
+                emp.ai_diagnosis_parsed = typeof data.diagnosis === 'object' ? data.diagnosis : null;
+
+                // 显示来源和Token消耗信息
+                const sourceText = data.source === 'cache' ? '📦 来自缓存' : '🌐 新API调用';
+                const tokenText = data.tokens_used === 0 ? '0 Token (节省!)' : `${data.tokens_used} Tokens`;
+
+                // 更新按钮显示
+                btn.classList.remove('btn-outline-danger');
+                btn.classList.add('btn-success');
+                btn.innerHTML = `✅ 已诊断`;
+                btn.title = `${sourceText} | ${tokenText}`;
+
+                // 关键修复：同时更新表格行和按钮的 data-emp 属性，使点击行时能获取到AI诊断结果
+                const updatedEmpData = encodeURIComponent(JSON.stringify(emp));
+                btn.dataset.emp = updatedEmpData;
+                const row = btn.closest('tr.risk-row');
+                if (row) {
+                    row.dataset.emp = updatedEmpData;
+                }
+
+                // 弹出详情模态框显示诊断结果
+                showDetailWithDiagnosis(emp, data.source, data.tokens_used);
+
+                // 显示Toast通知
+                showToast(`${sourceText} | ${tokenText}`, data.source === 'cache' ? 'success' : 'info');
+            } else {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                alert('AI诊断失败: ' + data.error);
+            }
+        } catch (e) {
+            console.error('AI diagnosis failed:', e);
             btn.innerHTML = originalText;
             btn.disabled = false;
-            alert('AI诊断失败: ' + data.error);
+            alert('AI诊断请求失败，请检查网络连接');
         }
-    } catch (e) {
-        console.error('AI diagnosis failed:', e);
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-        alert('AI诊断请求失败，请检查网络连接');
     }
-}
 
-// 显示带诊断结果的详情模态框
-function showDetailWithDiagnosis(emp, source, tokensUsed) {
-    // 复用现有的showDetail逻辑，但会显示AI诊断结果
-    // 获取showDetail函数引用（需要在DOMContentLoaded内定义为全局）
-    if (window.showDetailGlobal) {
-        window.showDetailGlobal(emp);
-    } else {
-        // Fallback: 直接触发模态框
-        const modal = new bootstrap.Modal(document.getElementById('detail-modal'));
-        document.getElementById('detail-content').innerHTML = `
+    // 显示带诊断结果的详情模态框
+    function showDetailWithDiagnosis(emp, source, tokensUsed) {
+        // 复用现有的showDetail逻辑，但会显示AI诊断结果
+        // 获取showDetail函数引用（需要在DOMContentLoaded内定义为全局）
+        if (window.showDetailGlobal) {
+            window.showDetailGlobal(emp);
+        } else {
+            // Fallback: 直接触发模态框
+            const modal = new bootstrap.Modal(document.getElementById('detail-modal'));
+            document.getElementById('detail-content').innerHTML = `
             <div class="alert ${source === 'cache' ? 'alert-success' : 'alert-info'}">
                 <strong>数据来源：</strong>${source === 'cache' ? '📦 缓存命中（0 Token）' : '🌐 新API调用'}
                 <br><strong>Token消耗：</strong>${tokensUsed}
@@ -1099,23 +1176,23 @@ function showDetailWithDiagnosis(emp, source, tokensUsed) {
                 <pre style="white-space: pre-wrap;">${JSON.stringify(emp.ai_diagnosis_parsed || emp.ai_diagnosis, null, 2)}</pre>
             </div>
         `;
-        modal.show();
+            modal.show();
+        }
     }
-}
 
-// 显示Toast通知
-function showToast(message, type) {
-    // 创建简单的toast通知
-    const toast = document.createElement('div');
-    toast.className = `alert alert-${type} position-fixed`;
-    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px; animation: fadeIn 0.3s;';
-    toast.innerHTML = message;
-    document.body.appendChild(toast);
+    // 显示Toast通知
+    function showToast(message, type) {
+        // 创建简单的toast通知
+        const toast = document.createElement('div');
+        toast.className = `alert alert-${type} position-fixed`;
+        toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px; animation: fadeIn 0.3s;';
+        toast.innerHTML = message;
+        document.body.appendChild(toast);
 
-    setTimeout(() => {
-        toast.style.animation = 'fadeOut 0.3s';
-        setTimeout(() => toast.remove(), 300);
-    }, 3000);
-}
+        setTimeout(() => {
+            toast.style.animation = 'fadeOut 0.3s';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
 </script>
 {% endblock %}

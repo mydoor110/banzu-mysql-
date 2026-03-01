@@ -178,7 +178,7 @@ def compare_scores(emp_no: str, start_date: str = None, end_date: str = None):
         else last_12_start
     )
 
-    violations_by_month = _load_monthly_safety_violations(cur, emp_name, stability_query_start, stability_window_end)
+    violations_by_month = _load_monthly_safety_violations(cur, emp['id'], emp_name, stability_query_start, stability_window_end)
     monthly_safety_scores, monthly_issue_counts = _build_monthly_safety_scores(
         violations_by_month, stability_window_months, algo_config
     )

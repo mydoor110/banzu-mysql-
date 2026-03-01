@@ -648,7 +648,7 @@
 <!-- 引入 Chart.js 和 Annotation 插件 -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script
-  src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
 <script src="{{ url_for('static', filename='js/chartjs-theme.js') }}"></script>
 
 <!-- 引入日期筛选器库 -->
@@ -756,8 +756,8 @@
             const department = document.getElementById('filterDepartment')?.value;
             const position = document.getElementById('filterPosition')?.value;
 
-            if (startDate) params.append('start_date', startDate);
-            if (endDate) params.append('end_date', endDate);
+            if (startDate) params.append('start_month', startDate);
+            if (endDate) params.append('end_month', endDate);
             if (department) params.append('department', department);
             if (position) params.append('position', position);
 
@@ -895,8 +895,8 @@
             const startDate = document.getElementById('filterStartDate')?.value;
             const endDate = document.getElementById('filterEndDate')?.value;
 
-            if (startDate) params.append('start_date', startDate);
-            if (endDate) params.append('end_date', endDate);
+            if (startDate) params.append('start_month', startDate);
+            if (endDate) params.append('end_month', endDate);
 
             const url = `/personnel/api/comprehensive-profile/${empNo}${params.toString() ? '?' + params.toString() : ''}`;
             const response = await fetch(url);

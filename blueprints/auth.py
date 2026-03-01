@@ -20,7 +20,7 @@ from services.dingtalk_service import get_userid_by_auth_code
 auth_bp = Blueprint('auth', __name__)
 
 # 应用标题（从环境变量或配置中获取）
-APP_TITLE = "班组管理"
+APP_TITLE = "乘务数字化管理平台"
 
 
 def _is_dingtalk_session_valid():

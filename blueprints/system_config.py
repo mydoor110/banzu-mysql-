@@ -11,7 +11,7 @@ from models.database import get_db
 import json
 
 system_config_bp = Blueprint('system_config', __name__, url_prefix='/system/config')
-APP_TITLE = "班组管理"
+APP_TITLE = "乘务数字化管理平台"
 
 
 @system_config_bp.route('/algorithm')

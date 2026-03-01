@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """人员管理 - 数据分析路由（统计/九宫格/学员管理）"""
+import os
 from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, session, current_app
 
 from config.settings import APP_TITLE, EXPORT_DIR
@@ -9,7 +10,8 @@ from ..decorators import login_required, manager_required
 from ..helpers import (
     current_user_id, require_user_id, get_accessible_department_ids,
     get_accessible_departments, calculate_years_from_date, get_user_department,
-    validate_employee_access, log_import_operation
+    validate_employee_access, log_import_operation, parse_time_range,
+    month_range_to_dates
 )
 from . import personnel_bp
 from . import (
@@ -111,9 +113,14 @@ def api_analytics_data():
 
         dept_info = {row['id']: dict(row) for row in cur.fetchall()}
 
-        # 对于最底层用户，只显示自己部门；对于上级用户，显示所有下级底层部门
+        # 管理员始终显示所有可访问的底层部门。
+        # 非管理员：最底层用户只显示自己部门；上级用户显示所有下级底层部门。
+        # P1 统一出口
+        from services.access_control_service import AccessControlService
         user_dept_info = get_user_department()
-        if user_dept_info and user_dept_info['department_id']:
+        if AccessControlService.is_admin():
+            display_dept_ids = [dept_id for dept_id, info in dept_info.items() if info['has_children'] == 0]
+        elif user_dept_info and user_dept_info['department_id']:
             user_dept_id = user_dept_info['department_id']
             # 检查用户部门是否是底层部门
             if user_dept_id in dept_info and dept_info[user_dept_id]['has_children'] == 0:
@@ -398,15 +405,10 @@ def api_nine_grid_data():
     cur = conn.cursor()
 
     # 获取筛选参数
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
+    tr = parse_time_range(request.args, ['month'], default_grain='month', default_range='current_month')
+    start_month = tr['start_month']
+    end_month = tr['end_month']
     department_filter = request.args.get('department_id')
-
-    # 默认当月
-    if not start_date and not end_date:
-        current_month = datetime.now().strftime('%Y-%m')
-        start_date = current_month
-        end_date = current_month
 
     # 读取配置
     from services.algorithm_config_service import AlgorithmConfigService
@@ -440,7 +442,7 @@ def api_nine_grid_data():
 
     for row in rows:
         try:
-            scores = _calculate_single_employee_score(row, start_date, end_date, algo_config, cur)
+            scores = _calculate_single_employee_score(row, start_month, end_month, algo_config, cur)
             
             # 计算X轴（三维综合分）
             x_raw = (scores['performance'] * w_perf + 
@@ -527,15 +529,10 @@ def export_nine_grid():
     cur = conn.cursor()
 
     # 获取筛选参数
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
+    tr = parse_time_range(request.args, ['month'], default_grain='month', default_range='current_month')
+    start_month = tr['start_month']
+    end_month = tr['end_month']
     department_filter = request.args.get('department_id')
-
-    # 默认当月
-    if not start_date and not end_date:
-        current_month = datetime.now().strftime('%Y-%m')
-        start_date = current_month
-        end_date = current_month
 
     # 读取配置
     from services.algorithm_config_service import AlgorithmConfigService
@@ -584,7 +581,7 @@ def export_nine_grid():
     
     for row in rows:
         try:
-            scores = _calculate_single_employee_score(row, start_date, end_date, algo_config, cur)
+            scores = _calculate_single_employee_score(row, start_month, end_month, algo_config, cur)
             
             # 计算X轴（三维综合分）
             x_raw = (scores['performance'] * w_perf + 
@@ -706,7 +703,7 @@ def export_nine_grid():
     return send_file(xlsx_path, as_attachment=True, download_name=export_filename)
 
 
-def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur):
+def _calculate_single_employee_score(row, start_month, end_month, algo_config, cur):
     """
     辅助函数：计算单个员工的各项评分
     """
@@ -727,23 +724,23 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
     training_query = "SELECT score, is_qualified, is_disqualified, training_date FROM training_records WHERE emp_no = %s"
     training_params = [emp_no]
 
-    if start_date:
+    if start_month:
         training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') >= %s"
-        training_params.append(start_date)
-    if end_date:
+        training_params.append(start_month)
+    if end_month:
         training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') <= %s"
-        training_params.append(end_date)
+        training_params.append(end_month)
 
     training_query += " ORDER BY training_date ASC"
     cur.execute(training_query, training_params)
     training_records_list = cur.fetchall()
 
-    if start_date and end_date:
+    if start_month and end_month:
         try:
-            start_dt = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-            end_dt = datetime.strptime(end_date + '-01', '%Y-%m-%d')
-            end_year, end_month = int(end_date.split('-')[0]), int(end_date.split('-')[1])
-            last_day = calendar.monthrange(end_year, end_month)[1]
+            start_dt = datetime.strptime(start_month + '-01', '%Y-%m-%d')
+            end_dt = datetime.strptime(end_month + '-01', '%Y-%m-%d')
+            ey, em = int(end_month.split('-')[0]), int(end_month.split('-')[1])
+            last_day = calendar.monthrange(ey, em)[1]
             end_dt = end_dt.replace(day=last_day)
             duration_days = max(1, (end_dt - start_dt).days + 1)
         except Exception:
@@ -758,12 +755,12 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
     safety_query = "SELECT assessment, inspection_date FROM safety_inspection_records WHERE inspected_person = %s"
     safety_params = [emp_name]
 
-    if start_date:
+    if start_month:
         safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') >= %s"
-        safety_params.append(start_date)
-    if end_date:
+        safety_params.append(start_month)
+    if end_month:
         safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') <= %s"
-        safety_params.append(end_date)
+        safety_params.append(end_month)
 
     safety_query += " ORDER BY inspection_date ASC"
     cur.execute(safety_query, safety_params)
@@ -776,12 +773,11 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
             violations_list.append(float(score))
 
     months_active = 1
-    if start_date:
+    if start_month:
         try:
-            start = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-            end = datetime.strptime(end_date + '-01', '%Y-%m-%d') if end_date else datetime.now()
-            if not end_date:
-                # 只指定开始，到今天
+            start = datetime.strptime(start_month + '-01', '%Y-%m-%d')
+            end = datetime.strptime(end_month + '-01', '%Y-%m-%d') if end_month else datetime.now()
+            if not end_month:
                 months_active = max(1, int((end - start).days / 30) + 1)
             else:
                 months_active = max(1, int((end - start).days / 30) + 1)
@@ -799,16 +795,16 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
     safety_score = safety_result['final_score']
 
     # 3. 工作绩效
-    is_monthly = (start_date == end_date) if start_date and end_date else True
+    is_monthly = (start_month == end_month) if start_month and end_month else True
     perf_query = "SELECT score, grade, year, month FROM performance_records WHERE emp_no = %s"
     perf_params = [emp_no]
 
-    if start_date:
+    if start_month:
         perf_query += " AND CAST(CONCAT(year, '-', LPAD(month, 2, '0')) AS CHAR) >= %s"
-        perf_params.append(start_date)
-    if end_date:
+        perf_params.append(start_month)
+    if end_month:
         perf_query += " AND CAST(CONCAT(year, '-', LPAD(month, 2, '0')) AS CHAR) <= %s"
-        perf_params.append(end_date)
+        perf_params.append(end_month)
 
     perf_query += " ORDER BY year, month"
     cur.execute(perf_query, perf_params)
@@ -831,7 +827,7 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
 
     # 4. 学习能力
     is_long_term = False
-    if start_date and end_date and start_date != end_date:
+    if start_month and end_month and start_month != end_month:
         is_long_term = True
     
     learning_score = 0
@@ -840,8 +836,8 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
     if is_long_term:
         try:
             monthly_counts = {}
-            start_dt = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-            end_dt = datetime.strptime(end_date + '-01', '%Y-%m-%d')
+            start_dt = datetime.strptime(start_month + '-01', '%Y-%m-%d')
+            end_dt = datetime.strptime(end_month + '-01', '%Y-%m-%d')
             
             # 预查上月数据
             pre_period_month = (start_dt.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
@@ -851,7 +847,7 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
                 pre_rows = cur.fetchall()
                 pre_period_count = sum(1 for r in pre_rows if extract_score_from_assessment(r['assessment']) > 0)
             except Exception:
-                pre_period_count = None # None means no record/new employee
+                pre_period_count = None
 
             curr = start_dt
             months_seq = []
@@ -874,7 +870,7 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
             period_group_avg = 1.0 
             if dept_id:
                 try:
-                    cur.execute("SELECT COUNT(*) / COUNT(DISTINCT e.name) / %s as avg_viol FROM safety_inspection_records s JOIN employees e ON s.inspected_person = e.name WHERE e.department_id = %s AND DATE_FORMAT(s.inspection_date, '%%Y-%%m') >= %s AND DATE_FORMAT(s.inspection_date, '%%Y-%%m') <= %s", [max(1, len(months_seq)), dept_id, start_date, end_date])
+                    cur.execute("SELECT COUNT(*) / COUNT(DISTINCT e.name) / %s as avg_viol FROM safety_inspection_records s JOIN employees e ON s.inspected_person = e.name WHERE e.department_id = %s AND DATE_FORMAT(s.inspection_date, '%%Y-%%m') >= %s AND DATE_FORMAT(s.inspection_date, '%%Y-%%m') <= %s", [max(1, len(months_seq)), dept_id, start_month, end_month])
                     avg_res = cur.fetchone()
                     if avg_res and avg_res['avg_viol']:
                          period_group_avg = float(avg_res['avg_viol'])
@@ -909,17 +905,17 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
     if not calculated_learning:
         # 单月/Short term logic
         current_violations = 0
-        if end_date:
-            target_month = end_date
+        if end_month:
+            target_month = end_month
         else:
             target_month = datetime.now().strftime('%Y-%m')
             
         current_violations = sum(1 for r in list(filter(lambda x: x['inspection_date'].strftime('%Y-%m') == target_month, safety_rows)) if extract_score_from_assessment(x['assessment']) > 0)
 
         previous_violations = None
-        if start_date:
+        if start_month:
             try:
-                curr_dt = datetime.strptime(start_date + '-01', '%Y-%m-%d')
+                curr_dt = datetime.strptime(start_month + '-01', '%Y-%m-%d')
                 prev_month = (curr_dt.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
                 cur.execute("SELECT assessment FROM safety_inspection_records WHERE inspected_person = %s AND DATE_FORMAT(inspection_date, '%%Y-%%m') = %s", [emp_name, prev_month])
                 prev_rows = cur.fetchall()
@@ -928,9 +924,9 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
                 pass
         
         group_avg = 1.0
-        if dept_id and start_date:
+        if dept_id and start_month:
             try:
-                cur.execute("SELECT COUNT(*) / COUNT(DISTINCT e.name) as avg_viol FROM safety_inspection_records s JOIN employees e ON s.inspected_person = e.name WHERE e.department_id = %s AND DATE_FORMAT(s.inspection_date, '%%Y-%%m') = %s", [dept_id, start_date])
+                cur.execute("SELECT COUNT(*) / COUNT(DISTINCT e.name) as avg_viol FROM safety_inspection_records s JOIN employees e ON s.inspected_person = e.name WHERE e.department_id = %s AND DATE_FORMAT(s.inspection_date, '%%Y-%%m') = %s", [dept_id, start_month])
                 res = cur.fetchone()
                 if res and res['avg_viol']: group_avg = float(res['avg_viol'])
             except Exception:
@@ -942,8 +938,8 @@ def _calculate_single_employee_score(row, start_date, end_date, algo_config, cur
     # 5. 稳定性（波动型）
     stability_result = calculate_stability_for_employee(
         emp_name,
-        start_date,
-        end_date,
+        start_month,
+        end_month,
         algo_config,
         cur,
         safety_score_for_tip=safety_score
@@ -977,16 +973,11 @@ def api_students_list():
     cur = conn.cursor()
 
     # 获取筛选参数
-    start_date = request.args.get('start_date')  # 格式：YYYY-MM
-    end_date = request.args.get('end_date')      # 格式：YYYY-MM
+    tr = parse_time_range(request.args, ['month'], default_grain='month', default_range='current_month')
+    start_month = tr['start_month']
+    end_month = tr['end_month']
     department_filter = request.args.get('department')
     position_filter = request.args.get('position')
-
-    # 如果没有指定日期筛选，默认使用当月（1号到今天）
-    if not start_date and not end_date:
-        current_month = datetime.now().strftime('%Y-%m')
-        start_date = current_month
-        end_date = current_month
 
     # 获取当前月份（用于关键人员标记）
     current_month = datetime.now().strftime('%Y-%m')
@@ -1044,28 +1035,28 @@ def api_students_list():
         """
         training_params = [emp_no]
 
-        if start_date:
+        if start_month:
             training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') >= %s"
-            training_params.append(start_date)
+            training_params.append(start_month)
 
-        if end_date:
+        if end_month:
             training_query += " AND DATE_FORMAT(training_date, '%%Y-%%m') <= %s"
-            training_params.append(end_date)
+            training_params.append(end_month)
 
         training_query += " ORDER BY training_date ASC"
         cur.execute(training_query, training_params)
         training_records_list = cur.fetchall()
 
         # 计算统计周期天数
-        if start_date and end_date and start_date == end_date:
+        if start_month and end_month and start_month == end_month:
             duration_days = 30
-        elif start_date and end_date:
+        elif start_month and end_month:
             try:
-                start_dt = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-                end_dt = datetime.strptime(end_date + '-01', '%Y-%m-%d')
+                start_dt = datetime.strptime(start_month + '-01', '%Y-%m-%d')
+                end_dt = datetime.strptime(end_month + '-01', '%Y-%m-%d')
                 import calendar
-                end_year, end_month = int(end_date.split('-')[0]), int(end_date.split('-')[1])
-                last_day = calendar.monthrange(end_year, end_month)[1]
+                ey, em_i = int(end_month.split('-')[0]), int(end_month.split('-')[1])
+                last_day = calendar.monthrange(ey, em_i)[1]
                 end_dt = end_dt.replace(day=last_day)
                 duration_days = max(1, (end_dt - start_dt).days + 1)
             except Exception:
@@ -1086,13 +1077,13 @@ def api_students_list():
         """
         safety_params = [emp_name]
 
-        if start_date:
+        if start_month:
             safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') >= %s"
-            safety_params.append(start_date)
+            safety_params.append(start_month)
 
-        if end_date:
+        if end_month:
             safety_query += " AND DATE_FORMAT(inspection_date, '%%Y-%%m') <= %s"
-            safety_params.append(end_date)
+            safety_params.append(end_month)
 
         safety_query += " ORDER BY inspection_date ASC"
         cur.execute(safety_query, safety_params)
@@ -1108,18 +1099,16 @@ def api_students_list():
 
         # 计算统计周期月数
         months_active = 1
-        if start_date and end_date:
-            # 如果指定了日期范围，计算该范围的月数
+        if start_month and end_month:
             try:
-                start = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-                end = datetime.strptime(end_date + '-01', '%Y-%m-%d')
+                start = datetime.strptime(start_month + '-01', '%Y-%m-%d')
+                end = datetime.strptime(end_month + '-01', '%Y-%m-%d')
                 months_active = max(1, int((end - start).days / 30) + 1)
             except Exception:
                 months_active = 1
-        elif start_date:
-            # 只指定了开始日期，从开始日期到现在
+        elif start_month:
             try:
-                start = datetime.strptime(start_date + '-01', '%Y-%m-%d')
+                start = datetime.strptime(start_month + '-01', '%Y-%m-%d')
                 months_active = max(1, int((datetime.now() - start).days / 30) + 1)
             except Exception:
                 months_active = 1
@@ -1138,7 +1127,7 @@ def api_students_list():
         safety_alert_tag = safety_result['alert_tag']
 
         # 3. 工作绩效（使用双算法系统，应用日期筛选）
-        is_monthly = (start_date == end_date) if start_date and end_date else True
+        is_monthly = (start_month == end_month) if start_month and end_month else True
 
         perf_query = """
             SELECT score, grade, year, month
@@ -1147,13 +1136,13 @@ def api_students_list():
         """
         perf_params = [emp_no]
 
-        if start_date:
+        if start_month:
             perf_query += f" AND ({get_year_month_concat()}) >= %s"
-            perf_params.append(start_date)
+            perf_params.append(start_month)
 
-        if end_date:
+        if end_month:
             perf_query += f" AND ({get_year_month_concat()}) <= %s"
-            perf_params.append(end_date)
+            perf_params.append(end_month)
 
         perf_query += " ORDER BY year, month"
         cur.execute(perf_query, perf_params)
@@ -1184,7 +1173,7 @@ def api_students_list():
         
         # 判断是否为长周期（跨月）
         is_long_term = False
-        if start_date and end_date and start_date != end_date:
+        if start_month and end_month and start_month != end_month:
             is_long_term = True
             
         # 初始化班组平均违规数（默认值）
@@ -1195,8 +1184,8 @@ def api_students_list():
             try:
                 # 1. 初始化每月计数
                 monthly_counts = {}
-                start_dt = datetime.strptime(start_date + '-01', '%Y-%m-%d')
-                end_dt = datetime.strptime(end_date + '-01', '%Y-%m-%d')
+                start_dt = datetime.strptime(start_month + '-01', '%Y-%m-%d')
+                end_dt = datetime.strptime(end_month + '-01', '%Y-%m-%d')
 
                 # 预先查询周期前一个月的数据（作为第一个月的previous基础）
                 pre_period_month = (start_dt.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
@@ -1239,7 +1228,7 @@ def api_students_list():
                             WHERE e.department_id = %s
                             AND DATE_FORMAT(s.inspection_date, '%%Y-%%m') >= %s
                             AND DATE_FORMAT(s.inspection_date, '%%Y-%%m') <= %s
-                        """, [max(1, len(months_seq)), dept_id, start_date, end_date])
+                        """, [max(1, len(months_seq)), dept_id, start_month, end_month])
                         avg_res = cur.fetchone()
                         if avg_res and avg_res['avg_viol']:
                             period_group_avg = float(avg_res['avg_viol'])
@@ -1281,9 +1270,8 @@ def api_students_list():
 
         if not is_long_term:
             # 单月模式：本月 vs 上月
-            if end_date:
-                # 统计end_date当月的违规数（安全处理 datetime 和 str 类型）
-                end_target = end_date
+            if end_month:
+                end_target = end_month
                 current_violations = sum(1 for r in safety_rows 
                                        if (r['inspection_date'].strftime('%Y-%m') if hasattr(r['inspection_date'], 'strftime') 
                                            else str(r['inspection_date'])[:7]) == end_target 
@@ -1292,9 +1280,9 @@ def api_students_list():
                 current_violations = len(violations_list)
 
             # 获取上月违规数
-            if start_date:
+            if start_month:
                 try:
-                    current_dt = datetime.strptime(start_date + '-01', '%Y-%m-%d')
+                    current_dt = datetime.strptime(start_month + '-01', '%Y-%m-%d')
                     prev_dt = current_dt.replace(day=1) - timedelta(days=1)
                     prev_month = prev_dt.strftime('%Y-%m')
 
@@ -1311,7 +1299,7 @@ def api_students_list():
         if not learning_result:
             # 获取班组平均违规数
             group_avg_violations = 1.0
-            if dept_id and start_date:
+            if dept_id and start_month:
                 try:
                     cur.execute("""
                         SELECT COUNT(*) / COUNT(DISTINCT e.name) as avg_viol
@@ -1319,7 +1307,7 @@ def api_students_list():
                         JOIN employees e ON s.inspected_person = e.name
                         WHERE e.department_id = %s
                         AND DATE_FORMAT(s.inspection_date, '%%Y-%%m') = %s
-                    """, [dept_id, start_date])
+                    """, [dept_id, start_month])
                     avg_result = cur.fetchone()
                     if avg_result and avg_result['avg_viol']:
                         group_avg_violations = float(avg_result['avg_viol'])
@@ -1338,8 +1326,8 @@ def api_students_list():
         # 5. 稳定性（波动型）
         stability_result = calculate_stability_for_employee(
             emp_name,
-            start_date,
-            end_date,
+            start_month,
+            end_month,
             algo_config,
             cur,
             safety_score_for_tip=safety_score

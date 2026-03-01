@@ -74,8 +74,9 @@ class TaskStatus(Enum):
 class BackupTask:
     """Background task for backup/restore operations"""
     
-    def __init__(self, task_type, description=''):
-        self.id = str(uuid.uuid4())
+    def __init__(self, task_type, description='', db_id=None):
+        self.id = str(uuid.uuid4()) if db_id is None else str(db_id)
+        self.db_id = db_id  # async_tasks 表中的整型 ID
         self.type = task_type
         self.description = description
         self.status = TaskStatus.PENDING.value
@@ -97,20 +98,81 @@ class BackupTask:
             'message': self.message,
             'result': self.result,
             'error': self.error,
-            'created_at': self.created_at.isoformat(),
-            'completed_at': self.completed_at.isoformat() if self.completed_at else None
+            'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else str(self.created_at),
+            'completed_at': self.completed_at.isoformat() if isinstance(self.completed_at, datetime) and self.completed_at else None
         }
 
 class BackupTaskManager:
-    """Manages background backup/restore tasks"""
+    """Manages background backup/restore tasks (database-persisted)
     
-    _tasks = {}
+    任务状态持久化到 async_tasks 表。
+    活跃任务同时保留内存引用用于线程内进度追踪。
+    """
+    
+    _tasks = {}   # 仅保留活跃任务的内存引用，用于进度追踪
     _lock = threading.Lock()
     
     @classmethod
+    def _persist_create(cls, task):
+        """将新任务写入 async_tasks 表"""
+        try:
+            from models.database import get_db
+            conn = get_db()
+            cur = conn.cursor()
+            meta = json.dumps({'description': task.description, 'uuid': task.id})
+            cur.execute("""
+                INSERT INTO async_tasks (task_type, status, meta_data, created_at)
+                VALUES (%s, 'pending', %s, NOW())
+            """, (task.type, meta))
+            task.db_id = cur.lastrowid
+            task.id = str(task.db_id)  # 使用数据库 ID 作为对外 ID
+            conn.commit()
+        except Exception as e:
+            logging.getLogger('app').warning(f"Failed to persist task create: {e}")
+
+    @classmethod
+    def _persist_finish(cls, task):
+        """任务完成/失败时同步状态到数据库"""
+        try:
+            from models.database import get_db
+            conn = get_db()
+            cur = conn.cursor()
+            result_msg = None
+            if task.result:
+                try:
+                    result_msg = json.dumps(task.result, ensure_ascii=False, default=str)
+                except (TypeError, ValueError):
+                    result_msg = str(task.result)
+            cur.execute("""
+                UPDATE async_tasks
+                SET status=%s, completed_at=NOW(), result_message=%s, error_message=%s
+                WHERE id=%s
+            """, (task.status, result_msg, task.error, task.db_id))
+            conn.commit()
+        except Exception as e:
+            logging.getLogger('app').warning(f"Failed to persist task finish: {e}")
+
+    @classmethod
+    def _persist_running(cls, task):
+        """线程开始执行时同步 running 状态到数据库"""
+        try:
+            from models.database import get_db
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE async_tasks SET status='running' WHERE id=%s
+            """, (task.db_id,))
+            conn.commit()
+        except Exception as e:
+            logging.getLogger('app').warning(f"Failed to persist task running: {e}")
+
+    @classmethod
     def create_task(cls, task_type, task_description, target_func, *args, **kwargs):
-        """Create and start a new background task"""
+        """Create and start a new background task (persisted to DB)"""
         task = BackupTask(task_type, task_description)
+        
+        # 持久化到数据库
+        cls._persist_create(task)
         
         with cls._lock:
             cls._tasks[task.id] = task
@@ -119,9 +181,9 @@ class BackupTaskManager:
         def task_wrapper():
             task.status = TaskStatus.RUNNING.value
             task.message = "Starting..."
+            # 同步 running 状态到数据库
+            cls._persist_running(task)
             try:
-                # Pass task object to function if it accepts 'task_tracker'
-                # otherwise just run it
                 result = target_func(*args, task_tracker=task, **kwargs)
                 
                 task.status = TaskStatus.COMPLETED.value
@@ -136,6 +198,11 @@ class BackupTaskManager:
                 task.message = f"Error: {str(e)}"
             finally:
                 task.completed_at = datetime.now()
+                # 同步最终状态到数据库
+                cls._persist_finish(task)
+                # 完成后从内存移除（数据库已持久化）
+                with cls._lock:
+                    cls._tasks.pop(task.id, None)
                 
         # Start thread
         thread = threading.Thread(target=task_wrapper)
@@ -147,23 +214,56 @@ class BackupTaskManager:
         
     @classmethod
     def get_task(cls, task_id):
-        """Get task by ID"""
-        return cls._tasks.get(task_id)
+        """Get task by ID (memory first, then DB fallback)"""
+        task_id_str = str(task_id)
         
-    @classmethod
-    def cleanup_old_tasks(cls, max_age_seconds=3600):
-        """Clean up old completed tasks"""
+        # 优先从内存读（活跃任务有实时进度）
         with cls._lock:
-            now = datetime.now()
-            to_remove = []
-            for tid, task in cls._tasks.items():
-                if task.completed_at:
-                    age = (now - task.completed_at).total_seconds()
-                    if age > max_age_seconds:
-                        to_remove.append(tid)
-            
-            for tid in to_remove:
-                del cls._tasks[tid]
+            if task_id_str in cls._tasks:
+                return cls._tasks[task_id_str]
+        
+        # Fallback 到数据库读（历史任务）
+        try:
+            from models.database import get_db
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, task_type, status, result_message, error_message,
+                       created_at, completed_at, meta_data
+                FROM async_tasks WHERE id = %s
+            """, (task_id,))
+            row = cur.fetchone()
+            if row:
+                meta = {}
+                if row.get('meta_data'):
+                    try:
+                        meta = json.loads(row['meta_data'])
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                task = BackupTask(
+                    task_type=row['task_type'],
+                    description=meta.get('description', ''),
+                    db_id=row['id']
+                )
+                task.status = row['status']
+                task.created_at = row['created_at']
+                task.completed_at = row['completed_at']
+                task.error = row.get('error_message')
+                if row.get('result_message'):
+                    try:
+                        task.result = json.loads(row['result_message'])
+                    except (json.JSONDecodeError, TypeError):
+                        task.result = row['result_message']
+                if task.status == 'completed':
+                    task.progress = 100
+                    task.message = "Completed successfully"
+                elif task.status == 'failed':
+                    task.message = f"Error: {task.error}" if task.error else "Failed"
+                return task
+        except Exception as e:
+            logging.getLogger('app').warning(f"Failed to query task from DB: {e}")
+        
+        return None
 
 
 # ========== Backup Manager ==========

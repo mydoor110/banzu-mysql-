@@ -10,6 +10,32 @@ from services.domain.pdf_parser import extract_text_from_pdf, parse_pdf_text
 # Note: We need to import log_import_operation but it also depends on usage.
 # We might need to implement a custom logger or pass enough context.
 
+
+def fix_interrupted_tasks():
+    """启动时修正异常中断的任务。
+    
+    将所有处于 pending/processing/running 状态的任务标记为 failed，
+    因为如果进程重启了，这些任务的线程已经丢失，不可能再完成。
+    注意：备份任务使用 running 状态，绩效导入使用 processing 状态，
+    两者都需要被修正。
+    """
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE async_tasks
+            SET status = 'failed',
+                completed_at = NOW(),
+                error_message = '进程中断：任务在服务重启前未完成'
+            WHERE status IN ('pending', 'processing', 'running')
+        """)
+        affected = cur.rowcount
+        conn.commit()
+        if affected > 0:
+            print(f"[*] Fixed {affected} interrupted task(s) on startup")
+    except Exception as e:
+        print(f"[!] Warning: Failed to fix interrupted tasks: {e}")
+
 def run_performance_import_task(app, task_id, file_path, file_name, user_id, user_info, target_year, target_month, force_import):
     """
     Background worker for performance PDF import.

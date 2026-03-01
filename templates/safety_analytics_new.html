@@ -261,6 +261,9 @@
     // 全局日期筛选器实例
     let dateFilter = null;
 
+    // 缓存的安全分析数据（一次请求，多处复用）
+    let cachedSafetyData = null;
+
     // 获取当前筛选参数
     function getFilterParams() {
         if (dateFilter) {
@@ -275,41 +278,44 @@
         return params.toString();
     }
 
-    // 初始化所有图表
+    // 初始化所有图表（一次性获取全部数据）
     async function initCharts() {
         try {
-            // 加载所有数据并初始化图表
-            await Promise.all([
-                initSeverityDistribution(),
-                initDailyTrend(),
-                initTopLossItems(),
-                initPersonnelRiskMatrix(),
-                initTopContributors()
+            const params = getFilterParams();
+            // 并发请求所有 API，只请求一次
+            const [severityData, dailyData, itemsData, personnelData, contributorsData] = await Promise.all([
+                fetch(`/safety/api/analytics/severity-distribution?${params}`).then(r => r.json()),
+                fetch(`/safety/api/analytics/daily-trend?${params}`).then(r => r.json()),
+                fetch(`/safety/api/analytics/top-loss-items?${params}`).then(r => r.json()),
+                fetch(`/safety/api/analytics/personnel-risk-matrix?${params}`).then(r => r.json()),
+                fetch(`/safety/api/analytics/top-contributors?${params}`).then(r => r.json())
             ]);
 
-            // 更新KPI
-            updateKPI();
+            // 缓存数据，供 KPI 和后续交互使用
+            cachedSafetyData = { severityData, dailyData, itemsData, personnelData, contributorsData };
+
+            // 用缓存数据渲染所有图表
+            renderSeverityDistribution(severityData);
+            renderDailyTrend(dailyData);
+            renderTopLossItems(itemsData);
+            renderPersonnelRiskMatrix(personnelData);
+            renderTopContributors(contributorsData);
+
+            // 用同一份数据更新 KPI（不再重复请求）
+            updateKPIFromCache();
         } catch (error) {
             console.error('图表初始化失败:', error);
             showError('数据加载失败，请刷新页面重试');
         }
     }
 
-    // 图表A：问题严重度分布（饼图）
-    async function initSeverityDistribution() {
-        const params = getFilterParams();
-        const response = await fetch(`/safety/api/analytics/severity-distribution?${params}`);
-        const data = await response.json();
-
+    // 图表A：问题严重度分布（饼图 - ChartRegistry）
+    function renderSeverityDistribution(data) {
         const chartDom = document.getElementById('chartSeverityDistribution');
-
-        // 销毁旧的图表实例
         if (charts.severityDistribution) {
             charts.severityDistribution.dispose();
             charts.severityDistribution = null;
         }
-
-        // 清空容器内容
         chartDom.innerHTML = '';
 
         if (!data || data.length === 0) {
@@ -317,52 +323,17 @@
             return;
         }
 
-        const chart = echarts.init(chartDom);
-        charts.severityDistribution = chart;
+        const chartInstance = ChartRegistry.renderToContainer('safety', 'safety_severity', data, chartDom);
+        charts.severityDistribution = chartInstance;
 
-        const option = {
-            tooltip: {
-                trigger: 'item',
-                formatter: '{b}: {c} 次 ({d}%)'
-            },
-            legend: {
-                orient: 'vertical',
-                right: 10,
-                top: 'center'
-            },
-            series: [{
-                name: '问题严重度',
-                type: 'pie',
-                radius: ['40%', '70%'],
-                avoidLabelOverlap: true,
-                itemStyle: {
-                    borderRadius: 10,
-                    borderColor: '#fff',
-                    borderWidth: 2
-                },
-                label: {
-                    show: true,
-                    formatter: '{b}\n{c} 次'
-                },
-                emphasis: {
-                    label: {
-                        show: true,
-                        fontSize: 16,
-                        fontWeight: 'bold'
-                    }
-                },
-                data: data
-            }]
-        };
-
-        chart.setOption(option);
-
-        // 添加点击事件 - 下钻查看人员详情
-        chart.on('click', function (params) {
-            if (params.data && params.data.name) {
-                handleSeverityDrilldown(params.data.name);
-            }
-        });
+        // 保留点击事件 - 下钻查看人员详情
+        if (chartInstance) {
+            chartInstance.on('click', function (params) {
+                if (params.data && params.data.name) {
+                    handleSeverityDrilldown(params.data.name);
+                }
+            });
+        }
     }
 
     // 处理严重度下钻
@@ -537,21 +508,13 @@
         }, 100);
     }
 
-    // 图表B：每日违规趋势（双轴图）
-    async function initDailyTrend() {
-        const params = getFilterParams();
-        const response = await fetch(`/safety/api/analytics/daily-trend?${params}`);
-        const data = await response.json();
-
+    // 图表B：每日违规趋势（双轴图 - ChartRegistry）
+    function renderDailyTrend(data) {
         const chartDom = document.getElementById('chartDailyTrend');
-
-        // 销毁旧的图表实例
         if (charts.dailyTrend) {
             charts.dailyTrend.dispose();
             charts.dailyTrend = null;
         }
-
-        // 清空容器内容
         chartDom.innerHTML = '';
 
         if (!data.dates || data.dates.length === 0) {
@@ -559,82 +522,13 @@
             return;
         }
 
-        const chart = echarts.init(chartDom);
-        charts.dailyTrend = chart;
-
-        const option = {
-            tooltip: {
-                trigger: 'axis',
-                axisPointer: {
-                    type: 'cross'
-                }
-            },
-            legend: {
-                data: ['违规次数', '累计扣分']
-            },
-            grid: {
-                left: '3%',
-                right: '4%',
-                bottom: '3%',
-                containLabel: true
-            },
-            xAxis: {
-                type: 'category',
-                boundaryGap: true,
-                data: data.dates,
-                axisLabel: {
-                    rotate: 45
-                }
-            },
-            yAxis: [
-                {
-                    type: 'value',
-                    name: '违规次数',
-                    position: 'left'
-                },
-                {
-                    type: 'value',
-                    name: '累计扣分',
-                    position: 'right'
-                }
-            ],
-            series: [
-                {
-                    name: '违规次数',
-                    type: 'bar',
-                    data: data.counts,
-                    itemStyle: {
-                        color: '#5470c6'
-                    }
-                },
-                {
-                    name: '累计扣分',
-                    type: 'line',
-                    yAxisIndex: 1,
-                    data: data.scores,
-                    smooth: true,
-                    itemStyle: {
-                        color: '#ee6666'
-                    },
-                    lineStyle: {
-                        width: 3
-                    }
-                }
-            ]
-        };
-
-        chart.setOption(option);
+        charts.dailyTrend = ChartRegistry.renderToContainer('safety', 'safety_daily_trend', data, chartDom);
     }
 
-    // 图表C：高频失分项目 Top 10（横向条形图）
-    async function initTopLossItems() {
-        const params = getFilterParams();
-        const response = await fetch(`/safety/api/analytics/top-loss-items?${params}`);
-        const data = await response.json();
-
-        // 总览页面的简化版
+    // 图表C：高频失分项目 Top 10（横向条形图 - ChartRegistry）
+    function renderTopLossItems(data) {
+        // 总览页面
         const chartDom1 = document.getElementById('chartTopLossItems');
-        // 销毁旧的图表实例
         if (charts.topLossItems) {
             charts.topLossItems.dispose();
             charts.topLossItems = null;
@@ -643,7 +537,6 @@
 
         // 项目分析页面的详细版
         const chartDom2 = document.getElementById('chartTopLossItemsDetailed');
-        // 销毁旧的图表实例
         if (charts.topLossItemsDetailed) {
             charts.topLossItemsDetailed.dispose();
             charts.topLossItemsDetailed = null;
@@ -656,77 +549,17 @@
             return;
         }
 
-        const chart1 = echarts.init(chartDom1);
-        charts.topLossItems = chart1;
-        const chart2 = echarts.init(chartDom2);
-        charts.topLossItemsDetailed = chart2;
-
-        const option = {
-            tooltip: {
-                trigger: 'axis',
-                axisPointer: {
-                    type: 'shadow'
-                },
-                formatter: '{b0}: {c0} 分'
-            },
-            grid: {
-                left: '3%',
-                right: '4%',
-                bottom: '3%',
-                containLabel: true
-            },
-            xAxis: {
-                type: 'value',
-                name: '累计扣分'
-            },
-            yAxis: {
-                type: 'category',
-                data: data.items,
-                axisLabel: {
-                    fontSize: 11,
-                    formatter: function (value) {
-                        return value.length > 20 ? value.substring(0, 20) + '...' : value;
-                    }
-                }
-            },
-            series: [{
-                name: '累计扣分',
-                type: 'bar',
-                data: data.scores,
-                itemStyle: {
-                    color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                        { offset: 0, color: '#83bff6' },
-                        { offset: 1, color: '#188df0' }
-                    ])
-                },
-                barWidth: '60%',
-                label: {
-                    show: true,
-                    position: 'right',
-                    formatter: '{c} 分'
-                }
-            }]
-        };
-
-        chart1.setOption(option);
-        chart2.setOption(option);
+        charts.topLossItems = ChartRegistry.renderToContainer('safety', 'safety_top_loss', data, chartDom1);
+        charts.topLossItemsDetailed = ChartRegistry.renderToContainer('safety', 'safety_top_loss', data, chartDom2);
     }
 
-    // 图表D：人员风险矩阵（散点图）
-    async function initPersonnelRiskMatrix() {
-        const params = getFilterParams();
-        const response = await fetch(`/safety/api/analytics/personnel-risk-matrix?${params}`);
-        const data = await response.json();
-
+    // 图表D：人员风险矩阵（散点图 - ChartRegistry）
+    function renderPersonnelRiskMatrix(data) {
         const chartDom = document.getElementById('chartPersonnelRiskMatrix');
-
-        // 销毁旧的图表实例
         if (charts.personnelRiskMatrix) {
             charts.personnelRiskMatrix.dispose();
             charts.personnelRiskMatrix = null;
         }
-
-        // 清空容器内容
         chartDom.innerHTML = '';
 
         if (!data || data.length === 0) {
@@ -734,101 +567,22 @@
             return;
         }
 
-        const chart = echarts.init(chartDom);
-        charts.personnelRiskMatrix = chart;
+        charts.personnelRiskMatrix = ChartRegistry.renderToContainer('safety', 'safety_risk_matrix', data, chartDom);
 
-        const option = {
-            tooltip: {
-                trigger: 'item',
-                formatter: function (params) {
-                    return `${params.data.name}<br/>` +
-                        `所属车队: ${params.data.team}<br/>` +
-                        `违规次数: ${params.value[0]} 次<br/>` +
-                        `累计扣分: ${params.value[1]} 分`;
-                }
-            },
-            grid: {
-                left: '3%',
-                right: '7%',
-                bottom: '3%',
-                containLabel: true
-            },
-            xAxis: {
-                name: '违规次数',
-                nameLocation: 'middle',
-                nameGap: 30,
-                splitLine: {
-                    lineStyle: {
-                        type: 'dashed'
-                    }
-                }
-            },
-            yAxis: {
-                name: '累计扣分',
-                nameLocation: 'middle',
-                nameGap: 40,
-                splitLine: {
-                    lineStyle: {
-                        type: 'dashed'
-                    }
-                }
-            },
-            visualMap: {
-                min: 0,
-                max: Math.max(...data.map(d => d.value[1])),
-                dimension: 1,
-                orient: 'vertical',
-                right: 10,
-                top: 'center',
-                text: ['高风险', '低风险'],
-                calculable: true,
-                inRange: {
-                    color: ['#50a3ba', '#eac736', '#d94e5d']
-                }
-            },
-            series: [{
-                name: '人员风险',
-                type: 'scatter',
-                symbolSize: function (val) {
-                    return Math.max(10, val[0] * 3 + val[1] / 2);
-                },
-                data: data,
-                emphasis: {
-                    label: {
-                        show: true,
-                        formatter: function (param) {
-                            return param.data.name;
-                        },
-                        position: 'top'
-                    }
-                }
-            }]
-        };
-
-        chart.setOption(option);
-
-        // 更新高风险人员数量（右上角区域）
+        // 更新高风险人员数量 KPI
         const avgX = data.reduce((sum, d) => sum + d.value[0], 0) / data.length;
         const avgY = data.reduce((sum, d) => sum + d.value[1], 0) / data.length;
         const highRiskCount = data.filter(d => d.value[0] > avgX && d.value[1] > avgY).length;
         document.getElementById('kpiHighRiskPersonnel').textContent = highRiskCount;
     }
 
-    // 图表E：问题发现能手榜 Top 10（柱状图）
-    async function initTopContributors() {
-        const params = getFilterParams();
-        const response = await fetch(`/safety/api/analytics/top-contributors?${params}`);
-        const data = await response.json();
-
+    // 图表E：问题发现能手榜 Top 10（柱状图 - ChartRegistry）
+    function renderTopContributors(data) {
         const chartDom = document.getElementById('chartTopContributors');
-
-        // 销毁旧的图表实例
         if (charts.topContributors) {
             charts.topContributors.dispose();
             charts.topContributors = null;
         }
-
-        // 清空容器内容
         chartDom.innerHTML = '';
 
         if (!data.names || data.names.length === 0) {
@@ -836,77 +590,27 @@
             return;
         }
 
-        const chart = echarts.init(chartDom);
-        charts.topContributors = chart;
-
-        const option = {
-            tooltip: {
-                trigger: 'axis',
-                axisPointer: {
-                    type: 'shadow'
-                }
-            },
-            grid: {
-                left: '3%',
-                right: '4%',
-                bottom: '3%',
-                containLabel: true
-            },
-            xAxis: {
-                type: 'category',
-                data: data.names,
-                axisLabel: {
-                    rotate: 45
-                }
-            },
-            yAxis: {
-                type: 'value',
-                name: '问题数量'
-            },
-            series: [{
-                name: '发现/整改问题数',
-                type: 'bar',
-                data: data.counts,
-                itemStyle: {
-                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                        { offset: 0, color: '#fbc531' },
-                        { offset: 1, color: '#f39c12' }
-                    ])
-                },
-                barWidth: '50%',
-                label: {
-                    show: true,
-                    position: 'top',
-                    formatter: '{c} 个'
-                }
-            }]
-        };
-
-        chart.setOption(option);
+        charts.topContributors = ChartRegistry.renderToContainer('safety', 'safety_top_contributors', data, chartDom);
     }
 
-    // 更新KPI指标
-    async function updateKPI() {
+    // 更新KPI指标（从缓存数据计算，不再重复请求）
+    function updateKPIFromCache() {
+        if (!cachedSafetyData) return;
         try {
-            const params = getFilterParams();
-            // 获取所有数据
-            const [severityData, dailyData, itemsData, personnelData] = await Promise.all([
-                fetch(`/safety/api/analytics/severity-distribution?${params}`).then(r => r.json()),
-                fetch(`/safety/api/analytics/daily-trend?${params}`).then(r => r.json()),
-                fetch(`/safety/api/analytics/top-loss-items?${params}`).then(r => r.json()),
-                fetch(`/safety/api/analytics/personnel-risk-matrix?${params}`).then(r => r.json())
-            ]);
+            const { severityData, dailyData, itemsData } = cachedSafetyData;
 
             // 问题总数
-            const totalProblems = severityData.reduce((sum, item) => sum + item.value, 0);
+            const totalProblems = Array.isArray(severityData)
+                ? severityData.reduce((sum, item) => sum + (item.value || 0), 0) : 0;
             document.getElementById('kpiTotalProblems').textContent = totalProblems;
 
             // 累计扣分
-            const totalScore = dailyData.scores ? dailyData.scores.reduce((a, b) => a + b, 0) : 0;
+            const totalScore = dailyData && dailyData.scores
+                ? dailyData.scores.reduce((a, b) => a + b, 0) : 0;
             document.getElementById('kpiTotalScore').textContent = totalScore.toFixed(1);
 
             // 高频失分项
-            if (itemsData.items && itemsData.items.length > 0) {
+            if (itemsData && itemsData.items && itemsData.items.length > 0) {
                 const topItem = itemsData.items[0];
                 document.getElementById('kpiTopProblem').textContent =
                     topItem.length > 10 ? topItem.substring(0, 10) + '...' : topItem;

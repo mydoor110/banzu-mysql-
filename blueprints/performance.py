@@ -17,7 +17,7 @@ from werkzeug.utils import secure_filename
 from config.settings import APP_TITLE, UPLOAD_DIR, EXPORT_DIR
 from models.database import get_db
 from .decorators import login_required, role_required
-from .helpers import require_user_id, build_department_filter, log_import_operation
+from .helpers import require_user_id, build_department_filter, log_import_operation, parse_time_range
 
 # 创建 Blueprint
 performance_bp = Blueprint('performance', __name__, url_prefix='/performance')
@@ -575,13 +575,9 @@ def records():
         year_options.append(year)
         year_options.sort()
 
-    # 获取当前用户角色
-    conn = get_db()
-    cur = conn.cursor()
-    user_id = session.get('user_id')
-    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
-    row = cur.fetchone()
-    user_role = row['role'] if row else 'user'
+    # 获取当前用户角色（P1 统一出口）
+    from services.access_control_service import AccessControlService
+    user_role = AccessControlService.get_current_role() or 'user'
 
     if month and year:
         # 使用部门过滤机制
@@ -655,28 +651,22 @@ def records():
 @login_required
 def range_view():
     """自定义区间绩效统计"""
-    # 支持新格式（YYYY-MM）和旧格式（sy, sm, ey, em）的向后兼容
-    start_date = request.args.get("start_date", "").strip()
-    end_date = request.args.get("end_date", "").strip()
+    tr = parse_time_range(request.args, ['month'], default_grain='month', default_range=None)
+    start_month = tr['start_month']
+    end_month = tr['end_month']
 
-    # 如果使用新格式，解析为年月
-    if start_date and end_date:
+    # 解析年月
+    sy = sm = ey = em = None
+    if start_month:
         try:
-            sy, sm = map(int, start_date.split('-'))
-            ey, em = map(int, end_date.split('-'))
+            sy, sm = map(int, start_month.split('-'))
         except (ValueError, AttributeError):
-            sy = sm = ey = em = None
-    else:
-        # 向后兼容：使用旧的参数格式
-        sy = request.args.get("sy", type=int)
-        sm = request.args.get("sm", type=int)
-        ey = request.args.get("ey", type=int)
-        em = request.args.get("em", type=int)
-        # 如果有旧参数，转换为新格式供模板使用
-        if sy and sm:
-            start_date = f"{sy:04d}-{sm:02d}"
-        if ey and em:
-            end_date = f"{ey:04d}-{em:02d}"
+            pass
+    if end_month:
+        try:
+            ey, em = map(int, end_month.split('-'))
+        except (ValueError, AttributeError):
+            pass
 
     data = []
     months = []
@@ -743,12 +733,8 @@ def range_view():
         title=f"区间统计 | {APP_TITLE}",
         data=data,
         months=months,
-        start_date=start_date,
-        end_date=end_date,
-        sy=sy,  # 保留旧参数以支持向后兼容
-        sm=sm,
-        ey=ey,
-        em=em,
+        start_month=start_month or '',
+        end_month=end_month or '',
     )
 
 
@@ -799,23 +785,21 @@ def export_single():
 @login_required
 def export_range():
     """导出区间绩效数据"""
-    # 支持新格式（YYYY-MM）和旧格式（sy, sm, ey, em）的向后兼容
-    start_date = request.args.get("start_date", "").strip()
-    end_date = request.args.get("end_date", "").strip()
+    tr = parse_time_range(request.args, ['month'], default_grain='month', default_range=None)
+    start_month = tr['start_month']
+    end_month = tr['end_month']
 
-    # 如果使用新格式，解析为年月
-    if start_date and end_date:
+    sy = sm = ey = em = None
+    if start_month:
         try:
-            sy, sm = map(int, start_date.split('-'))
-            ey, em = map(int, end_date.split('-'))
+            sy, sm = map(int, start_month.split('-'))
         except (ValueError, AttributeError):
-            sy = sm = ey = em = None
-    else:
-        # 向后兼容：使用旧的参数格式
-        sy = request.args.get("sy", type=int)
-        sm = request.args.get("sm", type=int)
-        ey = request.args.get("ey", type=int)
-        em = request.args.get("em", type=int)
+            pass
+    if end_month:
+        try:
+            ey, em = map(int, end_month.split('-'))
+        except (ValueError, AttributeError):
+            pass
 
     if not (sy and sm and ey and em):
         flash("请先选择起止年月", "warning")

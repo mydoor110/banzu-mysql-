@@ -13,7 +13,7 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 EXPORT_DIR = os.path.join(BASE_DIR, "exports")
 
 # Application settings
-APP_TITLE = "班组管理系统"
+APP_TITLE = "乘务数字化管理平台"
 SECRET_KEY = (
     os.environ.get("SECRET_KEY")
     or os.environ.get("APP_SECRET_KEY")
@@ -50,6 +50,7 @@ class SecurityConfig:
         "style-src": "'self' 'unsafe-inline' https://cdn.jsdelivr.net",
         "font-src": "'self' https://cdn.jsdelivr.net",
         "img-src": "'self' data:",
+        "connect-src": "'self' https://cdn.jsdelivr.net",
         "object-src": "'none'"
     }
 

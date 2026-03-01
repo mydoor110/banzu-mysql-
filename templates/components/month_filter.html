@@ -11,6 +11,8 @@
   - show_range_label: 是否显示日期范围标签（默认false）
   - labels: 是否显示标签（默认true）
 
+  输出字段：start_month / end_month（统一规范）
+
   使用示例：
     {% set start_date_id = 'startMonth' %}
     {% set end_date_id = 'endMonth' %}
@@ -31,7 +33,7 @@
   {% if show_labels %}
   <label for="{{ start_id }}" class="form-label">开始月份</label>
   {% endif %}
-  <input type="month" id="{{ start_id }}" name="start_date"
+  <input type="month" id="{{ start_id }}" name="start_month"
          class="form-control form-control-sm" value="{{ start_date_value }}">
 </div>
 
@@ -39,7 +41,7 @@
   {% if show_labels %}
   <label for="{{ end_id }}" class="form-label">结束月份</label>
   {% endif %}
-  <input type="month" id="{{ end_id }}" name="end_date"
+  <input type="month" id="{{ end_id }}" name="end_month"
          class="form-control form-control-sm" value="{{ end_date_value }}">
 </div>
 

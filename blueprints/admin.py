@@ -15,10 +15,11 @@ from .decorators import admin_required
 from openpyxl import Workbook
 import os
 from config.settings import EXPORT_DIR
+from blueprints.helpers import parse_time_range, build_date_filter_sql
 
 # 创建 Blueprint
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
-APP_TITLE = "班组管理"
+APP_TITLE = "乘务数字化管理平台"
 
 # ========== 用户管理 ==========
 
@@ -154,13 +155,40 @@ def users():
         return redirect(url_for('admin.users'))
 
     elif action == 'delete':
-        user_id = request.args.get('id', type=int)
+        if request.method != 'POST':
+            flash('删除操作必须使用 POST 请求', 'danger')
+            return redirect(url_for('admin.users'))
+            
+        user_id = request.form.get('id', type=int)
         if user_id == 1:
-            flash('管理员不可删除', 'warning')
+            flash('默认超级管理员(ID=1)不可删除', 'warning')
         elif user_id:
+            # 防止删除当前登录用户
+            if session.get('user_id') == user_id:
+                flash('不可删除当前正在使用的账号', 'warning')
+                return redirect(url_for('admin.users'))
+                
+            # 防止删除最后一个系统管理员
+            cur.execute("SELECT COUNT(*) as admin_count FROM users WHERE role = 'admin'")
+            admin_count = cur.fetchone()['admin_count']
+            cur.execute("SELECT role, username FROM users WHERE id = %s", (user_id,))
+            target_user = cur.fetchone()
+            
+            if target_user and target_user['role'] == 'admin' and admin_count <= 1:
+                flash('系统中必须至少保留一个系统管理员', 'warning')
+                return redirect(url_for('admin.users'))
+                
             cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
             conn.commit()
-            flash(f'已删除用户 {user_id}', 'success')
+            flash(f'已删除用户 {target_user["username"] if target_user else user_id}', 'success')
+            
+            # 记录安全日志
+            try:
+                from utils.logger import SecurityLogger
+                SecurityLogger.suspicious_activity('user_deleted', {'deleted_user_id': user_id, 'by_admin_id': session.get('user_id')})
+            except Exception:
+                pass
+                
         return redirect(url_for('admin.users'))
 
     # 获取用户列表
@@ -308,8 +336,8 @@ def import_logs():
     # 获取筛选参数
     module_filter = request.args.get('module', '').strip()
     user_filter = request.args.get('user', '').strip()
-    start_date = request.args.get('start_date', '').strip()
-    end_date = request.args.get('end_date', '').strip()
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range=None)
+    start_date, end_date = tr['start_date'], tr['end_date']
     page = request.args.get('page', 1, type=int)
     per_page = 50
 
@@ -325,13 +353,9 @@ def import_logs():
         conditions.append("username LIKE %s")
         params.append(f"%{user_filter}%")
 
-    if start_date:
-        conditions.append("DATE(created_at) >= %s")
-        params.append(start_date)
-
-    if end_date:
-        conditions.append("DATE(created_at) <= %s")
-        params.append(end_date)
+    date_conds, date_params = build_date_filter_sql('DATE(created_at)', start_date, end_date)
+    conditions.extend(date_conds)
+    params.extend(date_params)
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 
@@ -488,8 +512,8 @@ def export_import_logs():
     # 获取筛选参数（与列表页相同）
     module_filter = request.args.get('module', '').strip()
     user_filter = request.args.get('user', '').strip()
-    start_date = request.args.get('start_date', '').strip()
-    end_date = request.args.get('end_date', '').strip()
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range=None)
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     # 构建查询条件
     conditions = []
@@ -503,13 +527,9 @@ def export_import_logs():
         conditions.append("username LIKE %s")
         params.append(f"%{user_filter}%")
 
-    if start_date:
-        conditions.append("DATE(created_at) >= %s")
-        params.append(start_date)
-
-    if end_date:
-        conditions.append("DATE(created_at) <= %s")
-        params.append(end_date)
+    date_conds, date_params = build_date_filter_sql('DATE(created_at)', start_date, end_date)
+    conditions.extend(date_conds)
+    params.extend(date_params)
 
     where_clause = " AND ".join(conditions) if conditions else "1=1"
 

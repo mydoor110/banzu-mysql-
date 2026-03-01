@@ -195,14 +195,13 @@
     <div class="step-card">
         <div class="step-title"><span class="step-num">1</span> 选择日期范围</div>
         <div class="row g-3 align-items-end">
-            <div class="col-md-3">
-                <label class="form-label">开始月份</label>
-                <input type="month" class="form-control" id="startDate">
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">结束月份</label>
-                <input type="month" class="form-control" id="endDate">
-            </div>
+            {% set start_date_id = 'startDate' %}
+            {% set end_date_id = 'endDate' %}
+            {% set col_class = 'col-md-3' %}
+            {% set labels = true %}
+            {% set show_quick_buttons = false %}
+            {% set show_range_label = false %}
+            {% include 'components/month_filter.html' %}
             <div class="col-md-6">
                 <div class="d-flex gap-2 flex-wrap">
                     <button class="btn btn-outline-secondary btn-sm" onclick="setQuickRange(3)">近3个月</button>
@@ -334,6 +333,7 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script src="{{ url_for('static', filename='js/chart-registry.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
 <script>
     // ─── 状态 ──────────────────────────────────────────────────────────────
     let allPersons = [];    // 所有人员（含非关键人员）
@@ -348,6 +348,14 @@
         nine_grid: ''     // 人才九宫格（单图）
     };
     let radarImages = {};   // { emp_no: base64 }
+
+    // 初始化统一日期筛选器（默认近6个月）
+    new DateFilterHelper({
+        startDateId: 'startDate',
+        endDateId: 'endDate',
+        defaultRange: 'last_6_months',
+        showQuickButtons: false
+    });
 
     // ─── 日期工具 ───────────────────────────────────────────────────────────
     function setQuickRange(months) {
@@ -373,7 +381,7 @@
         btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>加载中...';
 
         try {
-            const params = new URLSearchParams({ start_date: start, end_date: end });
+            const params = new URLSearchParams({ start_month: start, end_month: end });
             const resp = await fetch(`/personnel/api/students-list?${params}`);
             const data = await resp.json();
 
@@ -628,8 +636,8 @@
 
             const body = {
                 theme: theme,
-                start_date: start,
-                end_date: end,
+                start_month: start,
+                end_month: end,
                 module_slides: moduleSlides,
                 nine_grid_image: '',  // 兼容后端（九宫格已在 module_slides 中）
                 key_persons: empNos,
@@ -709,7 +717,7 @@
             const mod = ChartRegistry.getModule(moduleKey);
             if (!mod) return [];
 
-            const params = new URLSearchParams({ start_date: start, end_date: end });
+            const params = new URLSearchParams({ start_month: start, end_month: end });
             let apiResp;
 
             if (mod.multiApi) {
@@ -755,7 +763,7 @@
 
     async function captureNineGrid(start, end) {
         try {
-            const params = new URLSearchParams({ start_date: start, end_date: end });
+            const params = new URLSearchParams({ start_month: start, end_month: end });
             const resp = await fetch(`/personnel/api/nine-grid-data?${params}`);
             if (!resp.ok) return '';
             const d = await resp.json();
@@ -898,7 +906,7 @@
 
     async function captureRadarChart(empNo, start, end) {
         try {
-            const params = new URLSearchParams({ start_date: start, end_date: end });
+            const params = new URLSearchParams({ start_month: start, end_month: end });
             const resp = await fetch(`/personnel/api/comprehensive-profile/${empNo}?${params}`);
             if (!resp.ok) return { image: '', profile: {} };
             const data = await resp.json();

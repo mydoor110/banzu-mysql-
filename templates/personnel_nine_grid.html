@@ -3,6 +3,7 @@
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script src="{{ url_for('static', filename='js/echarts-theme.js') }}"></script>
+<script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
 {% endblock %}
 
 {% block content %}
@@ -27,14 +28,12 @@
                                 <option value="">全部部门</option>
                             </select>
                         </div>
-                        <div class="col-md-2">
-                            <label for="start-date" class="form-label">开始月份</label>
-                            <input type="month" class="form-control" id="start-date" name="start_date">
-                        </div>
-                        <div class="col-md-2">
-                            <label for="end-date" class="form-label">结束月份</label>
-                            <input type="month" class="form-control" id="end-date" name="end_date">
-                        </div>
+                        {% set start_date_id = 'start-date' %}
+                        {% set end_date_id = 'end-date' %}
+                        {% set col_class = 'col-md-2' %}
+                        {% set show_quick_buttons = false %}
+                        {% set show_range_label = false %}
+                        {% include 'components/month_filter.html' %}
                         <div class="col-md-2 d-flex align-items-end">
                             <button type="submit" class="btn btn-primary w-100">
                                 <i class="bi bi-search"></i> 查询
@@ -42,10 +41,12 @@
                         </div>
                         <div class="col-md-3 d-flex align-items-end gap-2">
                             <div class="btn-group w-100" role="group">
-                                <button type="button" class="btn btn-outline-secondary active" id="view-grid" onclick="switchView('grid')">
+                                <button type="button" class="btn btn-outline-secondary active" id="view-grid"
+                                    onclick="switchView('grid')">
                                     <i class="bi bi-grid-3x3"></i> 九宫格
                                 </button>
-                                <button type="button" class="btn btn-outline-secondary" id="view-scatter" onclick="switchView('scatter')">
+                                <button type="button" class="btn btn-outline-secondary" id="view-scatter"
+                                    onclick="switchView('scatter')">
                                     <i class="bi bi-graph-up"></i> 散点图
                                 </button>
                             </div>
@@ -319,11 +320,13 @@
         // 加载部门列表
         loadDepartments();
 
-        // 设置默认日期范围（当前月份）
-        const now = new Date();
-        const currentMonth = now.toISOString().slice(0, 7);
-        document.getElementById('start-date').value = currentMonth;
-        document.getElementById('end-date').value = currentMonth;
+        // 初始化统一日期筛选器（默认当月）
+        new DateFilterHelper({
+            startDateId: 'start-date',
+            endDateId: 'end-date',
+            defaultRange: 'current_month',
+            showQuickButtons: false
+        });
 
         // 绑定表单提交
         document.getElementById('filter-form').addEventListener('submit', function (e) {
@@ -356,7 +359,7 @@
     function loadNineGridData() {
         const formData = new FormData(document.getElementById('filter-form'));
         const params = new URLSearchParams(formData);
-        
+
         fetch('/personnel/api/nine-grid-data?' + params.toString())
             .then(response => response.json())
             .then(data => {
@@ -377,7 +380,7 @@
             '2-1': [], '2-2': [], '2-3': [],
             '3-1': [], '3-2': [], '3-3': []
         };
-        
+
         // 分配员工到对应单元格
         data.forEach(person => {
             const key = `${person.grid_row}-${person.grid_col}`;
@@ -385,26 +388,26 @@
                 cells[key].push(person);
             }
         });
-        
+
         // 渲染每个单元格
         Object.keys(cells).forEach(key => {
             const cellId = `cell-${key}`;
             const cell = document.getElementById(cellId);
             if (!cell) return;
-            
+
             const count = cells[key].length;
             cell.querySelector('.cell-count').textContent = `${count}人`;
             cell.querySelector('.cell-list').innerHTML = cells[key]
                 .map(p => `<div class="person-item">${p.name}</div>`)
                 .join('');
         });
-        
+
         // 更新统计卡片
         const excellent = cells['1-3'].length + cells['2-3'].length;
         const potential = cells['1-2'].length + cells['1-1'].length;
         const attention = cells['2-2'].length + cells['3-2'].length;
         const risk = cells['3-1'].length + cells['2-1'].length;
-        
+
         document.getElementById('stat-excellent').textContent = excellent;
         document.getElementById('stat-potential').textContent = potential;
         document.getElementById('stat-attention').textContent = attention;
@@ -412,18 +415,18 @@
     }
 
     let scatterChartInstance = null;
-    
+
     function renderScatterChart(data) {
         if (!scatterChartInstance) {
             scatterChartInstance = echarts.init(document.getElementById('scatter-chart'));
         }
-        
+
         const scatterData = data.map(p => [p.x_score, p.y_score, p.name]);
-        
+
         const option = {
             title: { text: '人才分布散点图', left: 'center' },
             tooltip: {
-                formatter: function(params) {
+                formatter: function (params) {
                     return `${params.value[2]}<br/>综合分: ${params.value[0]}<br/>稳定度+学习: ${params.value[1]}`;
                 }
             },
@@ -457,19 +460,19 @@
                 }
             }]
         };
-        
+
         scatterChartInstance.setOption(option);
     }
 
     function switchView(viewType) {
         currentView = viewType;
-        
+
         if (viewType === 'grid') {
             document.getElementById('nine-grid-container').style.display = 'block';
             document.getElementById('scatter-chart-container').style.display = 'none';
             document.getElementById('view-grid').classList.add('active');
             document.getElementById('view-scatter').classList.remove('active');
-            
+
             if (cachedData) {
                 renderNineGrid(cachedData);
             }
@@ -478,11 +481,11 @@
             document.getElementById('scatter-chart-container').style.display = 'block';
             document.getElementById('view-grid').classList.remove('active');
             document.getElementById('view-scatter').classList.add('active');
-            
+
             if (cachedData) {
                 renderScatterChart(cachedData);
             }
-            
+
             // 调整图表大小
             if (scatterChartInstance) {
                 scatterChartInstance.resize();
@@ -493,7 +496,7 @@
     function exportData() {
         const formData = new FormData(document.getElementById('filter-form'));
         const params = new URLSearchParams(formData);
-        
+
         window.location.href = '/personnel/nine-grid/export?' + params.toString();
     }
 </script>

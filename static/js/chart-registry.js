@@ -55,28 +55,21 @@
                     summaryHint: '各部门链花对比，快速定位短板部门',
                     extractData: function (resp) { return resp.team_power || []; },
                     buildOption: function (data) {
-                        var maxT = Math.max.apply(null, data.map(function (t) { return t.avg_tenure || 0; })) || 10;
-                        var maxS = Math.max.apply(null, data.map(function (t) { return t.avg_solo || 0; })) || 10;
-                        var maxC = Math.max.apply(null, data.map(function (t) { return t.avg_cert || 0; })) || 10;
-                        var indicator = [
-                            { name: '平均司龄', max: Math.ceil(maxT * 1.3) || 10 },
-                            { name: '平均驾龄', max: Math.ceil(maxS * 1.3) || 10 },
-                            { name: '取证年限', max: Math.ceil(maxC * 1.3) || 10 }
-                        ];
+                        // 分组条形图（替代雷达图，更直观可读）
+                        var teams = data.slice(0, 8).map(function (t) {
+                            return (t.team || t.name || '') + '(' + (t.member_count || 0) + '人)';
+                        });
                         return {
-                            tooltip: { trigger: 'item' },
-                            legend: { bottom: '5%', type: 'scroll' },
-                            radar: { indicator: indicator, radius: '55%' },
-                            series: [{
-                                type: 'radar',
-                                data: data.slice(0, 6).map(function (t) {
-                                    return {
-                                        name: (t.team || t.name || '') + '(' + (t.member_count || 0) + '人)',
-                                        value: [t.avg_tenure || 0, t.avg_solo || 0, t.avg_cert || 0],
-                                        areaStyle: { opacity: 0.12 }
-                                    };
-                                })
-                            }]
+                            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                            legend: { top: 35, data: ['平均司龄', '平均驾龄', '取证年限'] },
+                            grid: { left: 120, right: 30, top: 70, bottom: 30 },
+                            yAxis: { type: 'category', data: teams.reverse(), axisLabel: { fontSize: 11 } },
+                            xAxis: { type: 'value', name: '年' },
+                            series: [
+                                { name: '平均司龄', type: 'bar', data: data.slice(0, 8).map(function (t) { return Number(Number(t.avg_tenure || 0).toFixed(1)); }).reverse(), itemStyle: { color: '#165DFF' }, barWidth: '22%' },
+                                { name: '平均驾龄', type: 'bar', data: data.slice(0, 8).map(function (t) { return Number(Number(t.avg_solo || 0).toFixed(1)); }).reverse(), itemStyle: { color: '#14C9C9' }, barWidth: '22%' },
+                                { name: '取证年限', type: 'bar', data: data.slice(0, 8).map(function (t) { return Number(Number(t.avg_cert || 0).toFixed(1)); }).reverse(), itemStyle: { color: '#F7BA1E' }, barWidth: '22%' }
+                            ]
                         };
                     }
                 },
@@ -401,14 +394,20 @@
                         return arr.filter(function (i) { return (i.value || 0) > 0; });
                     },
                     buildOption: function (data) {
+                        // 横向条形图（替代饼图，更清晰对比各级别差异）
+                        var sorted = data.slice().sort(function (a, b) { return a.value - b.value; });
+                        var colorMap = { '重大': '#F53F3F', '严重': '#FF7D00', '一般': '#FADC19', '轻微': '#00B42A' };
                         return {
-                            tooltip: { trigger: 'item', formatter: '{b}: {c}次 ({d}%)' },
-                            legend: { bottom: '5%', type: 'scroll' },
-                            color: ['#F53F3F', '#FF7D00', '#FADC19', '#165DFF', '#00B42A', '#14C9C9'],
+                            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                            grid: { left: 100, right: 50, top: 40, bottom: 30 },
+                            yAxis: { type: 'category', data: sorted.map(function (d) { return d.name; }), axisLabel: { fontSize: 12 } },
+                            xAxis: { type: 'value', name: '次数', minInterval: 1 },
                             series: [{
-                                type: 'pie', radius: ['30%', '60%'], center: ['50%', '46%'],
-                                label: { formatter: '{b}\n{c}次', fontSize: 12 },
-                                data: data
+                                type: 'bar', barWidth: '55%',
+                                data: sorted.map(function (d) {
+                                    return { value: d.value, itemStyle: { color: colorMap[d.name] || '#165DFF' } };
+                                }),
+                                label: { show: true, position: 'right', formatter: '{c}次', fontSize: 12 }
                             }]
                         };
                     }
@@ -450,6 +449,16 @@
                         return Array.isArray(resp) ? resp : [];
                     },
                     buildOption: function (data) {
+                        // 计算均值用于象限线
+                        var sumX = 0, sumY = 0;
+                        var pts = data.map(function (m) {
+                            var x = Array.isArray(m.value) ? m.value[0] : (m.count || 0);
+                            var y = Array.isArray(m.value) ? m.value[1] : (m.total_score || 0);
+                            sumX += x; sumY += y;
+                            return [x, y, m.name || ''];
+                        });
+                        var avgX = pts.length ? (sumX / pts.length) : 1;
+                        var avgY = pts.length ? (sumY / pts.length) : 1;
                         return {
                             tooltip: {
                                 trigger: 'item',
@@ -460,18 +469,27 @@
                             grid: { left: 70, right: 30, top: 55, bottom: 55 },
                             xAxis: { type: 'value', name: '违规次数', minInterval: 1 },
                             yAxis: { type: 'value', name: '累计扣分' },
-                            series: [{
-                                type: 'scatter', symbolSize: 14,
-                                data: data.map(function (m) {
-                                    return [
-                                        Array.isArray(m.value) ? m.value[0] : (m.count || 0),
-                                        Array.isArray(m.value) ? m.value[1] : (m.total_score || 0),
-                                        m.name || ''
-                                    ];
-                                }),
-                                itemStyle: { color: '#F53F3F', opacity: 0.75 },
-                                label: { show: data.length <= 20, formatter: function (p) { return p.data[2]; }, position: 'right', fontSize: 10 }
-                            }]
+                            series: [
+                                {
+                                    type: 'scatter', symbolSize: 14,
+                                    data: pts,
+                                    itemStyle: { color: '#F53F3F', opacity: 0.75 },
+                                    label: { show: data.length <= 20, formatter: function (p) { return p.data[2]; }, position: 'right', fontSize: 10 }
+                                },
+                                {
+                                    // 均值竖线（违规次数均值）
+                                    type: 'line', symbol: 'none', silent: true,
+                                    markLine: {
+                                        silent: true,
+                                        lineStyle: { color: '#999', type: 'dashed', width: 1.5 },
+                                        label: { show: true, fontSize: 10, color: '#666' },
+                                        data: [
+                                            { xAxis: avgX, label: { formatter: '均值 ' + avgX.toFixed(1), position: 'end' } },
+                                            { yAxis: avgY, label: { formatter: '均值 ' + avgY.toFixed(1), position: 'end' } }
+                                        ]
+                                    }
+                                }
+                            ]
                         };
                     }
                 },
@@ -641,7 +659,7 @@
                 return null;
             }
 
-            chartInstance.setOption(option);
+            chartInstance.setOption(option, true);  // notMerge=true，避免旧配置残留
             return chartInstance;
         },
 

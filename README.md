@@ -1,8 +1,8 @@
-# 班组管理系统 - 企业级管理平台
+# 乘务数字化管理平台 - 企业级管理平台
 
 ## 项目简介
 
-班组管理系统是一个全功能的企业级管理平台，为基层班组提供绩效管理、培训管理、安全管理、人员管理和部门管理等核心功能。基于 Flask Blueprint 架构开发，使用 Bootstrap 5 构建现代化响应式界面。
+乘务数字化管理平台是一个全功能的企业级管理平台，为基层班组提供绩效管理、培训管理、安全管理、人员管理和部门管理等核心功能。基于 Flask Blueprint 架构开发，使用 Bootstrap 5 构建现代化响应式界面。
 
 项目遵循"轻量、易部署、易维护"的设计理念，支持多部门层级管理、自动化的数据库维护和灵活的算法配置。
 
@@ -121,13 +121,54 @@ vim .env
 - `DB_TYPE=mysql`
 - `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
 
-### 4. 自动数据库初始化
-**无需手动执行 SQL 脚本**。项目集成了自动化的数据库版本管理 (`DBVersionManager`)。
-首次启动或升级时，系统会自动：
-1. 检测当前数据库版本。
-2. 创建缺失的表。
-3. 执行增量更新（添加新字段、索引）。
-4. 初始化基础数据（管理员账号、默认部门、算法预设）。
+### 4. 数据库初始化与升级
+
+项目集成了 `DBVersionManager`（当前版本 v4），支持自动化的数据库版本管理。
+
+#### 新库初始化
+
+```bash
+# CLI 方式（推荐）
+flask --app app init-db
+
+# 或者直接启动应用（python app.py 会自动初始化）
+python app.py
+```
+
+系统会自动：
+1. 检测当前数据库版本
+2. 创建缺失的表
+3. 执行增量迁移（v1→v2→v3→v4）
+4. 初始化基础数据（管理员账号、默认部门、算法预设）
+
+#### 老库升级
+
+对于 **已有数据的老库**，执行同样的命令即可自动升级：
+
+```bash
+flask --app app init-db
+```
+
+`DBVersionManager` 会检测当前版本号并执行缺失的迁移：
+- **v4 数据模型治理**: 自动为 `performance_records`、`training_records`、`safety_inspection_records` 添加 `employee_id` 外键并回填，同时将 `employees` 表的日期字段迁移为 `DATE` 类型。
+
+#### 专项迁移（dry-run 模式）
+
+如果需要单独预览迁移效果或手动补救，可使用以下 CLI 命令：
+
+```bash
+# 预览 employee_id 外键迁移（不执行）
+flask --app app migrate-employee-id --dry-run
+
+# 执行 employee_id 外键迁移
+flask --app app migrate-employee-id
+
+# 预览日期字段迁移（不执行）
+flask --app app migrate-dates --dry-run
+
+# 执行日期字段迁移
+flask --app app migrate-dates
+```
 
 ### 5. 启动服务
 
@@ -138,38 +179,82 @@ python app.py
 
 ---
 
+## CLI 命令参考
+
+所有 CLI 命令通过 Flask CLI 调用：
+
+| 命令 | 说明 | 常用选项 |
+|------|------|----------|
+| `flask --app app init-db` | 初始化/升级数据库 | `--silent` 静默模式 |
+| `flask --app app check-system` | 检查系统依赖 | — |
+| `flask --app app migrate-employee-id` | employee_id 外键迁移 | `--dry-run` 仅预览 |
+| `flask --app app migrate-dates` | 日期字段类型迁移 | `--dry-run` 仅预览 |
+
+---
+
 ## 项目结构
 
 ```
 .
-├── app.py                      # Flask 主应用入口
+├── app.py                      # Flask 主应用入口（工厂函数 + CLI 命令）
 ├── config/                     # 配置文件
-├── models/                     # 数据模型
-│   ├── database.py             # 数据库连接
-│   ├── db_mgmt.py              # 数据库版本与迁移管理（核心）
+├── models/                     # 数据模型层
+│   ├── database.py             # 数据库连接管理
+│   ├── db_mgmt.py              # 数据库版本与迁移管理（核心，v4）
+│   ├── db_transaction.py       # 事务上下文管理器
 │   └── schema_defs.py          # 表结构定义
 ├── blueprints/                 # 功能模块 (Blueprint)
+│   ├── auth.py                 # 认证模块
 │   ├── performance.py          # 绩效管理
+│   ├── training.py             # 培训管理
 │   ├── safety.py               # 安全管理 (含双轨制算法)
-│   └── ...
+│   ├── export_ppt.py           # PPT 导出
+│   ├── personnel/              # 人员管理 (子模块)
+│   │   ├── __init__.py         # Blueprint 定义 + 常量
+│   │   ├── routes_crud.py      # CRUD 路由
+│   │   ├── routes_dashboard.py # 仪表盘路由
+│   │   ├── routes_analytics.py # 分析路由
+│   │   └── routes_ai.py        # AI 画像路由
+│   ├── decorators.py           # 权限装饰器
+│   └── helpers.py              # 通用辅助函数
 ├── services/                   # 业务逻辑层
+│   ├── personnel_service.py    # 人员管理服务
+│   ├── ai_config_service.py    # AI 配置管理
+│   ├── algorithm_config_service.py  # 算法配置
+│   ├── bootstrap_service.py    # 系统启动初始化
+│   ├── async_task_service.py   # 异步任务管理
+│   └── domain/                 # 领域算法
+│       ├── personnel_algo.py   # 人员评估算法
+│       └── safety_utils.py     # 安全评分工具
 ├── utils/                      # 工具函数
 ├── templates/                  # 前端模板
 ├── static/                     # 静态资源
+├── scripts/                    # 辅助脚本（dry-run 工具）
+├── tests/                      # 测试
+│   └── test_smoke.py           # 冒烟测试
 └── requirements.txt            # Python 依赖
 ```
 
 ## 技术架构
 
-- **后端**: Flask 2.x + Blueprint
+- **后端**: Flask 2.x + Blueprint + 应用工厂模式
 - **数据库**: MySQL (pymysql + 原生 SQL 优化)
+- **事务管理**: `db_transaction()` 上下文管理器
+- **权限控制**: 请求级 `g.user_ctx` 缓存，消除重复查询
 - **数据处理**: Pandas + NumPy
 - **前端**: Bootstrap 5 + ECharts
 - **部署**: 原生支持，集成自动迁移与备份
 
 ## 版本历史
 
-### v3.3.0 - 2026年2月 (当前版本)
+### v3.4.0 - 2026年2月 (当前版本)
+- ✅ **数据模型治理**: employee_id 外键迁移和日期字段类型迁移纳入 DBVersionManager v4
+- ✅ **权限统一**: 全部替换 `session['role']` → `g.user_ctx`，session 仅存储认证信息
+- ✅ **事务管理**: 核心写操作统一使用 `db_transaction()` 上下文管理器
+- ✅ **模块瘦身**: `personnel/__init__.py` 业务逻辑下沉至 `services/personnel_service.py`
+- ✅ **CLI 完善**: 新增 `migrate-employee-id`、`migrate-dates` 命令
+
+### v3.3.0 - 2026年2月
 - ✅ **数据库自动化**: 引入 `DBVersionManager`，实现数据库自动初始化与无感升级。
 - ✅ **算法文档整合**: 统一核心算法逻辑说明至主文档。
 

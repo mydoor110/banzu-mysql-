@@ -125,6 +125,7 @@ class DateFilterHelper {
                 <button type="button" class="btn btn-outline-secondary" data-range="current_quarter">本季度</button>
                 <button type="button" class="btn btn-outline-secondary" data-range="last_quarter">上季度</button>
                 <button type="button" class="btn btn-outline-secondary" data-range="last_6_months">近6个月</button>
+                <button type="button" class="btn btn-outline-secondary" data-range="last_12_months">近12个月</button>
             `;
         } else {
             // 日期模式的快捷按钮
@@ -209,6 +210,13 @@ class DateFilterHelper {
                     // 近3个月
                     const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
                     startDate = this.formatMonth(threeMonthsAgo);
+                    endDate = this.formatMonth(now);
+                    break;
+
+                case 'last_12_months':
+                    // 近12个月
+                    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+                    startDate = this.formatMonth(twelveMonthsAgo);
                     endDate = this.formatMonth(now);
                     break;
 
@@ -351,11 +359,26 @@ class DateFilterHelper {
     }
 
     /**
-     * 获取日期参数对象
+     * 获取当前粒度
      *
-     * @returns {Object} { start_date, end_date }
+     * @returns {string} 'day' 或 'month'
+     */
+    getGrain() {
+        return this.isMonthMode ? 'month' : 'day';
+    }
+
+    /**
+     * 获取日期参数对象（按粒度返回不同键名）
+     *
+     * @returns {Object} 日模式返回 { start_date, end_date }，月模式返回 { start_month, end_month }
      */
     getParams() {
+        if (this.isMonthMode) {
+            return {
+                start_month: this.startDateInput.value || null,
+                end_month: this.endDateInput.value || null
+            };
+        }
         return {
             start_date: this.startDateInput.value || null,
             end_date: this.endDateInput.value || null
@@ -363,17 +386,22 @@ class DateFilterHelper {
     }
 
     /**
-     * 获取URL查询字符串
+     * 获取URL查询字符串（按粒度输出键名）
      *
      * @returns {string} URL查询字符串（不含?）
      */
     getQueryString() {
         const params = new URLSearchParams();
-        const startDate = this.startDateInput.value;
-        const endDate = this.endDateInput.value;
+        const startVal = this.startDateInput.value;
+        const endVal = this.endDateInput.value;
 
-        if (startDate) params.append('start_date', startDate);
-        if (endDate) params.append('end_date', endDate);
+        if (this.isMonthMode) {
+            if (startVal) params.append('start_month', startVal);
+            if (endVal) params.append('end_month', endVal);
+        } else {
+            if (startVal) params.append('start_date', startVal);
+            if (endVal) params.append('end_date', endVal);
+        }
 
         return params.toString();
     }

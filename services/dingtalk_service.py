@@ -127,34 +127,19 @@ def _get_cached_jsapi_ticket():
 
 
 def _save_jsapi_ticket(jsapi_ticket, expires_at):
-    """保存 jsapi_ticket 到本地缓存"""
+    """保存 jsapi_ticket 到本地缓存（不影响 access_token 字段）"""
     conn = get_db()
     cur = conn.cursor()
-    
-    # 先检查记录是否存在
-    cur.execute("SELECT id FROM dingtalk_token_cache WHERE id = %s", (TOKEN_CACHE_ID,))
-    exists = cur.fetchone()
-    
-    if exists:
-        # 更新现有记录
-        cur.execute(
-            """
-            UPDATE dingtalk_token_cache 
-            SET jsapi_ticket = %s, ticket_expires_at = %s 
-            WHERE id = %s
-            """,
-            (jsapi_ticket, expires_at, TOKEN_CACHE_ID)
-        )
-    else:
-        # 插入新记录
-        cur.execute(
-            """
-            INSERT INTO dingtalk_token_cache (id, jsapi_ticket, ticket_expires_at)
-            VALUES (%s, %s, %s)
-            """,
-            (TOKEN_CACHE_ID, jsapi_ticket, expires_at)
-        )
-    
+    cur.execute(
+        """
+        INSERT INTO dingtalk_token_cache (id, access_token, expires_at, jsapi_ticket, ticket_expires_at)
+        VALUES (%s, '', '1970-01-01', %s, %s)
+        ON DUPLICATE KEY UPDATE
+            jsapi_ticket = VALUES(jsapi_ticket),
+            ticket_expires_at = VALUES(ticket_expires_at)
+        """,
+        (TOKEN_CACHE_ID, jsapi_ticket, expires_at)
+    )
     conn.commit()
 
 
@@ -178,13 +163,16 @@ def _get_cached_token():
 
 
 def _save_token(access_token, expires_at):
-    """保存 access_token 到本地缓存"""
+    """保存 access_token 到本地缓存（不影响 jsapi_ticket 字段）"""
     conn = get_db()
     cur = conn.cursor()
     cur.execute(
         """
-        REPLACE INTO dingtalk_token_cache (id, access_token, expires_at)
+        INSERT INTO dingtalk_token_cache (id, access_token, expires_at)
         VALUES (%s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            access_token = VALUES(access_token),
+            expires_at = VALUES(expires_at)
         """,
         (TOKEN_CACHE_ID, access_token, expires_at)
     )

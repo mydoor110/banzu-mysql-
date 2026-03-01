@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
-  <title>{{ title or "班组管理" }}</title>
+  <title>{{ title or "乘务数字化管理平台" }}</title>
   <!-- Google Fonts Mirror or removal for China access -->
   <!-- <link rel="preconnect" href="https://fonts.googleapis.com"> -->
   <!-- <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> -->
@@ -105,7 +105,7 @@
   <nav class="navbar navbar-expand-lg app-navbar">
     <div class="container-fluid">
       <a class="navbar-brand" href="{{ url_for('personnel.dashboard') }}">
-        <i class="fas fa-users-cog me-2"></i>班组管理
+        <i class="fas fa-users-cog me-2"></i>乘务数字化管理平台
       </a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
         aria-controls="mainNav" aria-expanded="false" aria-label="切换导航">
@@ -180,7 +180,7 @@
               href="{{ url_for('auth.change_password') }}">
               <i class="fas fa-key me-1"></i>修改密码
             </a>
-            <a class="btn btn-outline-light btn-sm" href="{{ url_for('auth.logout') }}">
+            <a class="btn btn-outline-danger btn-sm" href="{{ url_for('auth.logout') }}">
               <i class="fas fa-sign-out-alt me-1"></i>退出
             </a>
           </div>
@@ -225,8 +225,8 @@
       <div class="row">
         <div class="col-md-4">
           <h5><i class="fas fa-info-circle me-2"></i>关于系统</h5>
-          <p class="text-muted">班组管理系统 v1.0</p>
-          <p class="small text-muted">© 2026 班组管理系统 版权所有</p>
+          <p class="text-muted">乘务数字化管理平台 v1.0</p>
+          <p class="small text-muted">© 2026 乘务数字化管理平台 版权所有</p>
         </div>
         <div class="col-md-4">
           <h5><i class="fas fa-link me-2"></i>快速链接</h5>
@@ -248,7 +248,7 @@
       <hr class="bg-secondary">
       <div class="text-center text-muted">
         <small>
-          <i class="fas fa-copyright me-1"></i>2026 班组管理系统 |
+          <i class="fas fa-copyright me-1"></i>2026 乘务数字化管理平台 |
           <i class="fas fa-shield-alt me-1"></i>安全 |
           <i class="fas fa-user-shield me-1"></i>隐私政策
         </small>

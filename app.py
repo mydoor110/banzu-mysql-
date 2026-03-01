@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-班组管理系统 - Blueprint 架构版本
+乘务数字化管理平台 - Blueprint 架构版本
 主应用程序入口
 
 整改说明：
@@ -97,6 +97,17 @@ def create_app(config_name=None):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(EXPORT_DIR, exist_ok=True)
 
+    # 启动时修正异常中断的后台任务（P0：异步任务状态持久化）
+    # 放在 create_app 而非 init_db 中，确保所有启动路径都执行
+    with application.app_context():
+        try:
+            from services.async_task_service import fix_interrupted_tasks
+            fix_interrupted_tasks()
+        except Exception as e:
+            application.logger.warning(f"Failed to fix interrupted tasks on startup: {e}")
+        finally:
+            close_db()
+
     return application
 
 
@@ -108,6 +119,16 @@ def _register_error_handlers(application):
         if request.is_json or request.path.startswith('/api/'):
             return jsonify({'error': '上传文件过大', 'status': 413}), 413
         flash('上传文件过大，请压缩后重试。', 'danger')
+        return redirect(request.referrer or url_for('index'))
+
+    # 日期参数校验失败 → 400
+    from blueprints.helpers import TimeRangeError
+
+    @application.errorhandler(TimeRangeError)
+    def handle_time_range_error(error):
+        if request.is_json or request.path.startswith('/api/'):
+            return jsonify({'error': str(error), 'status': 400}), 400
+        flash(f'日期参数错误：{error}', 'danger')
         return redirect(request.referrer or url_for('index'))
 
 
@@ -171,6 +192,7 @@ def init_db():
         # 初始化算法配置（已迁移到 services/bootstrap_service.py）
         from services.bootstrap_service import init_algorithm_config
         init_algorithm_config()
+        # 注意：fix_interrupted_tasks 已移到 create_app() 中统一调用
     finally:
         # 启动型调用不在请求上下文内，teardown_appcontext 不会触发
         close_db()
@@ -266,6 +288,15 @@ def _register_root_routes(application):
             return redirect(url_for('auth.login'))
         return redirect(url_for('personnel.dashboard'))
 
+    @application.route('/favicon.ico')
+    def favicon():
+        """返回 favicon 图标"""
+        from flask import send_from_directory
+        return send_from_directory(
+            os.path.join(application.root_path, 'static'),
+            'favicon.ico', mimetype='image/x-icon'
+        )
+
 
 # ==================== 应用入口 ====================
 
@@ -279,7 +310,7 @@ app = create_app()
 if __name__ == "__main__":
     # 检查系统依赖
     print("\n" + "=" * 70)
-    print("🚀 启动班组管理系统")
+    print("🚀 启动乘务数字化管理平台")
     print("=" * 70 + "\n")
 
     from utils.system_check import check_system_dependencies

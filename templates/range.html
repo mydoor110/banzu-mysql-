@@ -10,15 +10,16 @@
       {% set start_date_id = 'startDate' %}
       {% set end_date_id = 'endDate' %}
       {% set col_class = 'col-auto' %}
-      {% set start_date_value = start_date %}
-      {% set end_date_value = end_date %}
+      {% set start_date_value = start_month %}
+      {% set end_date_value = end_month %}
       {% set show_quick_buttons = true %}
       {% set show_range_label = false %}
       {% include 'components/month_filter.html' %}
       <div class="col-auto">
         <button class="btn btn-sm btn-primary" type="submit">统计</button>
         {% if months %}
-        <a class="btn btn-sm btn-success ms-2" href="{{ url_for('performance.export_range', start_date=start_date, end_date=end_date) }}">导出Excel</a>
+        <a class="btn btn-sm btn-success ms-2"
+          href="{{ url_for('performance.export_range', start_month=start_month, end_month=end_month) }}">导出Excel</a>
         {% endif %}
       </div>
     </form>
@@ -35,14 +36,14 @@
             <th rowspan="2">工号</th>
             <th rowspan="2">姓名</th>
             {% for y,m in months %}
-              <th colspan="2" class="text-center">{{ y }}-{{ "%02d"|format(m) }}</th>
+            <th colspan="2" class="text-center">{{ y }}-{{ "%02d"|format(m) }}</th>
             {% endfor %}
             <th rowspan="2">平均分</th>
           </tr>
           <tr>
             {% for y,m in months %}
-              <th class="text-center">分</th>
-              <th class="text-center">等</th>
+            <th class="text-center">分</th>
+            <th class="text-center">等</th>
             {% endfor %}
           </tr>
         </thead>
@@ -52,8 +53,8 @@
             <td>{{ r.emp_no }}</td>
             <td>{{ r.name }}</td>
             {% for item in r.detail %}
-              <td class="text-end">{{ item.score if item else "" }}</td>
-              <td class="text-center">{{ item.grade if item else "" }}</td>
+            <td class="text-end">{{ item.score if item else "" }}</td>
+            <td class="text-center">{{ item.grade if item else "" }}</td>
             {% endfor %}
             <td class="text-end">{{ r.avg_score or "" }}</td>
           </tr>
@@ -73,15 +74,15 @@
 <script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
 
 <script>
-// 初始化月份筛选器
-document.addEventListener('DOMContentLoaded', function() {
-  new DateFilterHelper({
-    startDateId: 'startDate',
-    endDateId: 'endDate',
-    defaultRange: 'current_month',
-    showQuickButtons: true,
-    validateDates: true
+  // 初始化月份筛选器
+  document.addEventListener('DOMContentLoaded', function () {
+    new DateFilterHelper({
+      startDateId: 'startDate',
+      endDateId: 'endDate',
+      defaultRange: 'current_month',
+      showQuickButtons: true,
+      validateDates: true
+    });
   });
-});
 </script>
 {% endblock %}

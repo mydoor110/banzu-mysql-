@@ -5,8 +5,8 @@ POST /api/export/ppt  → 权限 manager+
 
 请求格式（JSON）:
 {
-    "start_date": "2026-01",
-    "end_date":   "2026-02",
+    "start_month": "2026-01",
+    "end_month":   "2026-02",
     "module_slides": [
         {
             "title":  "人员数据分析",
@@ -32,9 +32,9 @@ def ppt_export_page():
     if not session.get('logged_in'):
         return redirect(url_for('auth.login'))
 
-    # role 在登录时已写入 session，直接读取，无需再查库
-    role = session.get('role', 'user')
-    if role == 'user':
+    # P1 统一出口
+    from services.access_control_service import AccessControlService
+    if not AccessControlService.has_permission('manager'):
         flash('需要管理员权限才能使用导出功能', 'danger')
         return redirect(url_for('personnel.dashboard'))
 
@@ -42,16 +42,17 @@ def ppt_export_page():
 
 
 def _get_user_info():
-    """返回 (user_id, role, department_id)"""
-    from models.database import get_db
-    conn = get_db()
-    cur  = conn.cursor()
-    uid  = session.get('user_id')
-    cur.execute("SELECT role, department_id FROM users WHERE id = %s", (uid,))
-    row = cur.fetchone()
-    if not row:
-        return uid, 'user', None
-    return uid, row['role'], row['department_id']
+    """返回 (user_id, role, department_id)（P1 统一出口）"""
+    from services.access_control_service import AccessControlService
+    ctx = AccessControlService.get_current_user_context()
+    uid = session.get('user_id')
+    if ctx:
+        return uid, ctx.get('role', 'user'), ctx.get('department_id')
+    # fallback
+    role = AccessControlService.get_current_role() or 'user'
+    dept_info = AccessControlService.get_user_department_info()
+    dept_id = dept_info.get('department_id') if dept_info else None
+    return uid, role, dept_id
 
 
 def _belongs_to_dept(emp_no: str, dept_id: int) -> bool:
@@ -75,36 +76,19 @@ def _belongs_to_dept(emp_no: str, dept_id: int) -> bool:
 
 
 def _load_person_profile(emp_no: str, start_date: str, end_date: str) -> dict:
-    """直接调用 comprehensive-profile 核心逻辑（绕过 HTTP，在同一进程内完成）"""
+    """直接调用 ComprehensiveProfileService（无 HTTP 开销，同一进程内完成）
+
+    Args:
+        emp_no: 员工工号
+        start_date: 开始日期 (YYYY-MM-DD 格式)
+        end_date: 结束日期 (YYYY-MM-DD 格式)
+    """
     try:
-        from flask import current_app
-        params = {}
-        if start_date:
-            params['start_date'] = start_date
-        if end_date:
-            params['end_date'] = end_date
-
-        # 用 test_client 发内部请求，携带当前 session cookie
-        client = current_app.test_client()
-        session_cookie = request.cookies.get('session', '')
-
-        # 构建查询字符串
-        from urllib.parse import urlencode
-        qs = urlencode(params)
-        url = f"/personnel/api/comprehensive-profile/{emp_no}"
-        if qs:
-            url = f"{url}?{qs}"
-
-        # 传递 session cookie 实现权限穿透
-        environ_base = {}
-        if session_cookie:
-            environ_base['HTTP_COOKIE'] = f"session={session_cookie}"
-
-        resp = client.get(url, environ_base=environ_base)
-        if resp.status_code == 200:
-            return resp.get_json() or {}
+        from services.comprehensive_profile_service import ComprehensiveProfileService
+        result = ComprehensiveProfileService.get_profile(emp_no, start_date, end_date)
+        return result or {}
     except Exception as e:
-        print(f"[_load_person_profile] 内部调用失败: {e}")
+        print(f"[_load_person_profile] Service 调用失败: {e}")
     return {}
 
 
@@ -140,13 +124,17 @@ def export_ppt():
 
     # ── 解析请求 ──────────────────────────────────────────────────────────────
     body = request.get_json(silent=True) or {}
-    start_date    = body.get('start_date', '')
-    end_date      = body.get('end_date', '')
+    start_month   = body.get('start_month', '')
+    end_month     = body.get('end_month', '')
     module_slides = body.get('module_slides', [])   # list of {title, images, note}
     nine_grid_img = body.get('nine_grid_image', '')
     key_emp_nos   = body.get('key_persons', [])     # list of emp_no strings
     theme         = body.get('theme', 'blue')       # e.g., 'blue', 'dark', 'simple'
     summary_data  = body.get('summary_data', None)  # 执行摘要数据
+
+    # 标准化日期：月份 → YYYY-MM-DD（Service 层统一接收标准日期）
+    from blueprints.helpers import month_range_to_dates
+    start_date_std, end_date_std = month_range_to_dates(start_month, end_month)
 
     if not module_slides and not key_emp_nos:
         return jsonify({'error': '请提供图表数据或关键人员'}), 400
@@ -160,11 +148,9 @@ def export_ppt():
     person_profiles_from_frontend = body.get('person_profiles', {})  # 前端已查好的profile
 
     for emp_no in key_emp_nos:
-        # 优先使用前端传来的 profile（前端已成功调用 comprehensive-profile API）
         profile = person_profiles_from_frontend.get(emp_no)
         if not profile:
-            # 降级：后端再查一次
-            profile = _load_person_profile(emp_no, start_date, end_date)
+            profile = _load_person_profile(emp_no, start_date_std, end_date_std)
 
         emp_info = _get_employee_info(emp_no)
         radar_img  = body.get('radar_images', {}).get(emp_no, '')
@@ -184,8 +170,8 @@ def export_ppt():
     try:
         svc = PPTExportService(theme_name=theme)
         pptx_bytes = svc.generate(
-            start_date    = start_date,
-            end_date      = end_date,
+            start_date    = start_month,
+            end_date      = end_month,
             module_slides = module_slides,
             nine_grid_image = nine_grid_img,
             key_persons   = key_persons,
@@ -197,7 +183,7 @@ def export_ppt():
         return jsonify({'error': f'PPT生成失败：{e}'}), 500
 
     # ── 返回文件 ──────────────────────────────────────────────────────────────
-    date_tag = f"{start_date}_{end_date}".replace('-', '').replace('__', '_')
+    date_tag = f"{start_month}_{end_month}".replace('-', '').replace('__', '_')
     filename = f"人员综合能力报告_{date_tag}.pptx"
 
     return send_file(

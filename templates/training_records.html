@@ -5,9 +5,9 @@
   <div>
     <h5 class="mb-0">培训记录
       {% if start_date or end_date %}
-        <span class="badge bg-primary" style="font-size: 0.7em;">{{ start_date or '起始' }} 至 {{ end_date or '当前' }}</span>
+      <span class="badge bg-primary" style="font-size: 0.7em;">{{ start_date or '起始' }} 至 {{ end_date or '当前' }}</span>
       {% else %}
-        <span class="badge bg-secondary" style="font-size: 0.7em;">全部数据</span>
+      <span class="badge bg-secondary" style="font-size: 0.7em;">全部数据</span>
       {% endif %}
     </h5>
     <small class="text-muted">查看和管理培训记录数据</small>
@@ -25,8 +25,8 @@
       <div class="row g-3 mb-3">
         <div class="col-md-2">
           <label for="name" class="form-label">姓名</label>
-          <input type="text" id="name" name="name" class="form-control form-control-sm"
-                 value="{{ name_filter }}" placeholder="输入姓名">
+          <input type="text" id="name" name="name" class="form-control form-control-sm" value="{{ name_filter }}"
+            placeholder="输入姓名">
         </div>
         {% set start_date_id = 'start_date' %}
         {% set end_date_id = 'end_date' %}
@@ -40,8 +40,8 @@
           <label for="qualified" class="form-label">是否合格</label>
           <select id="qualified" name="qualified" class="form-select form-select-sm">
             <option value="">全部</option>
-            <option value="1" {% if qualified_filter == '1' %}selected{% endif %}>合格</option>
-            <option value="0" {% if qualified_filter == '0' %}selected{% endif %}>不合格</option>
+            <option value="1" {% if qualified_filter=='1' %}selected{% endif %}>合格</option>
+            <option value="0" {% if qualified_filter=='0' %}selected{% endif %}>不合格</option>
           </select>
         </div>
         <div class="col-md-2">
@@ -49,7 +49,7 @@
           <select id="team_name" name="team_name" class="form-select form-select-sm">
             <option value="">全部</option>
             {% for tn in team_names %}
-            <option value="{{ tn }}" {% if team_name_filter == tn %}selected{% endif %}>{{ tn }}</option>
+            <option value="{{ tn }}" {% if team_name_filter==tn %}selected{% endif %}>{{ tn }}</option>
             {% endfor %}
           </select>
         </div>
@@ -58,7 +58,7 @@
           <select id="project" name="project" class="form-select form-select-sm">
             <option value="">全部</option>
             {% for pn in project_names %}
-            <option value="{{ pn }}" {% if project_filter == pn %}selected{% endif %}>{{ pn }}</option>
+            <option value="{{ pn }}" {% if project_filter==pn %}selected{% endif %}>{{ pn }}</option>
             {% endfor %}
           </select>
         </div>
@@ -67,7 +67,7 @@
           <select id="category" name="category" class="form-select form-select-sm">
             <option value="">全部</option>
             {% for cat in categories %}
-            <option value="{{ cat }}" {% if category_filter == cat %}selected{% endif %}>{{ cat }}</option>
+            <option value="{{ cat }}" {% if category_filter==cat %}selected{% endif %}>{{ cat }}</option>
             {% endfor %}
           </select>
         </div>
@@ -78,7 +78,7 @@
           <select id="problem_type" name="problem_type" class="form-select form-select-sm">
             <option value="">全部</option>
             {% for pt in problem_types %}
-            <option value="{{ pt }}" {% if problem_type_filter == pt %}selected{% endif %}>{{ pt }}</option>
+            <option value="{{ pt }}" {% if problem_type_filter==pt %}selected{% endif %}>{{ pt }}</option>
             {% endfor %}
           </select>
         </div>
@@ -96,7 +96,7 @@
           <a href="{{ url_for('training.export', start_date=start_date, end_date=end_date,
                      name=name_filter, qualified=qualified_filter, team_name=team_name_filter,
                      project_category=project_category_filter, problem_type=problem_type_filter) }}"
-             class="btn btn-sm btn-success w-100">
+            class="btn btn-sm btn-success w-100">
             <i class="bi bi-download me-1"></i>导出Excel
           </a>
         </div>
@@ -146,7 +146,8 @@
   <div class="card-header d-flex justify-content-between align-items-center">
     <h6 class="mb-0">培训记录详细数据</h6>
     {% if user_role in ['manager', 'admin'] %}
-    <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn" onclick="batchDelete()" style="display:none;">
+    <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn" onclick="batchDelete()"
+      style="display:none;">
       <i class="fas fa-trash me-1"></i>批量删除
     </button>
     {% endif %}
@@ -186,7 +187,8 @@
           <tr>
             {% if user_role in ['manager', 'admin'] %}
             <td>
-              <input type="checkbox" class="form-check-input record-checkbox" value="{{ record.id }}" onchange="updateBatchDeleteBtn()">
+              <input type="checkbox" class="form-check-input record-checkbox" value="{{ record.id }}"
+                onchange="updateBatchDeleteBtn()">
             </td>
             {% endif %}
             <td>{{ record.emp_no }}</td>
@@ -197,33 +199,34 @@
             <td>{{ record.category_name or '-' }}</td>
             <td>
               {% if record.problem_type and record.problem_type != '无' %}
-                <span class="badge bg-warning text-dark">{{ record.problem_type }}</span>
+              <span class="badge bg-warning text-dark">{{ record.problem_type }}</span>
               {% else %}
-                <span class="badge bg-success">无</span>
+              <span class="badge bg-success">无</span>
               {% endif %}
             </td>
             <td>
               {% if record.specific_problem and record.specific_problem != '无' %}
-                <span class="text-truncate d-inline-block" style="max-width: 150px;"
-                      title="{{ record.specific_problem }}">{{ record.specific_problem }}</span>
+              <span class="text-truncate d-inline-block" style="max-width: 150px;"
+                title="{{ record.specific_problem }}">{{ record.specific_problem }}</span>
               {% else %}
-                -
+              -
               {% endif %}
             </td>
             <td>
               {% if record.corrective_measures and record.corrective_measures != '无' %}
-                <span class="text-truncate d-inline-block" style="max-width: 150px;"
-                      title="{{ record.corrective_measures }}">{{ record.corrective_measures }}</span>
+              <span class="text-truncate d-inline-block" style="max-width: 150px;"
+                title="{{ record.corrective_measures }}">{{ record.corrective_measures }}</span>
               {% else %}
-                -
+              -
               {% endif %}
             </td>
             <td>{{ record.time_spent or '-' }}</td>
             <td>
               {% if record.score is not none %}
-                <span class="badge {% if record.score >= 60 %}bg-info{% else %}bg-warning text-dark{% endif %}">{{ record.score }}</span>
+              <span class="badge {% if record.score >= 60 %}bg-info{% else %}bg-warning text-dark{% endif %}">{{
+                record.score }}</span>
               {% else %}
-                -
+              -
               {% endif %}
             </td>
             <td>
@@ -235,21 +238,15 @@
             <td>{{ record.remarks or '-' }}</td>
             {% if user_role in ['manager', 'admin'] %}
             <td>
-              <button class="btn btn-outline-primary btn-sm btn-edit-record"
-                      data-id="{{ record.id }}"
-                      data-emp-no="{{ record.emp_no }}"
-                      data-name="{{ record.name }}"
-                      data-team-name="{{ record.team_name or '' }}"
-                      data-training-date="{{ record.training_date }}"
-                      data-project-name="{{ record.project_name or '' }}"
-                      data-problem-type="{{ record.problem_type or '' }}"
-                      data-specific-problem="{{ record.specific_problem or '' }}"
-                      data-corrective-measures="{{ record.corrective_measures or '' }}"
-                      data-time-spent="{{ record.time_spent or '' }}"
-                      data-score="{{ record.score or '' }}"
-                      data-assessor="{{ record.assessor or '' }}"
-                      data-remarks="{{ record.remarks or '' }}"
-                      data-is-qualified="{{ record.is_qualified }}">
+              <button class="btn btn-outline-primary btn-sm btn-edit-record" data-id="{{ record.id }}"
+                data-emp-no="{{ record.emp_no }}" data-name="{{ record.name }}"
+                data-team-name="{{ record.team_name or '' }}" data-training-date="{{ record.training_date }}"
+                data-project-name="{{ record.project_name or '' }}" data-problem-type="{{ record.problem_type or '' }}"
+                data-specific-problem="{{ record.specific_problem or '' }}"
+                data-corrective-measures="{{ record.corrective_measures or '' }}"
+                data-time-spent="{{ record.time_spent or '' }}" data-score="{{ record.score or '' }}"
+                data-assessor="{{ record.assessor or '' }}" data-remarks="{{ record.remarks or '' }}"
+                data-is-qualified="{{ record.is_qualified }}">
                 <i class="fas fa-edit me-1"></i>编辑
               </button>
             </td>
@@ -275,15 +272,15 @@
 <script src="{{ url_for('static', filename='js/date-filter.js') }}"></script>
 
 <script>
-// 初始化日期筛选器（增强表单提交体验）
-document.addEventListener('DOMContentLoaded', function() {
-  new DateFilterHelper({
-    startDateId: 'start_date',
-    endDateId: 'end_date',
-    showQuickButtons: true,
-    validateDates: true
+  // 初始化日期筛选器（增强表单提交体验）
+  document.addEventListener('DOMContentLoaded', function () {
+    new DateFilterHelper({
+      startDateId: 'start_date',
+      endDateId: 'end_date',
+      showQuickButtons: true,
+      validateDates: true
+    });
   });
-});
 </script>
 
 {% if user_role in ['manager', 'admin'] %}
@@ -312,7 +309,14 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <div class="col-md-6">
               <label class="form-label">培训日期 *</label>
-              <input type="date" name="training_date" id="editTrainingDate" class="form-control" required>
+              {% set fd_name = 'training_date' %}
+              {% set fd_id = 'editTrainingDate' %}
+              {% set fd_value = '' %}
+              {% set fd_size = '' %}
+              {% set fd_field = '' %}
+              {% set fd_label = '' %}
+              {% set fd_required = true %}
+              {% include 'components/form_date_field.html' %}
             </div>
             <div class="col-md-6">
               <label class="form-label">项目名称</label>
@@ -365,105 +369,105 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 <script>
-// 使用事件委托处理编辑按钮点击
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.btn-edit-record').forEach(button => {
-    button.addEventListener('click', function() {
-      const id = this.dataset.id;
-      const empNo = this.dataset.empNo;
-      const name = this.dataset.name;
-      const teamName = this.dataset.teamName;
-      const trainingDate = this.dataset.trainingDate;
-      const projectName = this.dataset.projectName;
-      const problemType = this.dataset.problemType;
-      const specificProblem = this.dataset.specificProblem;
-      const correctiveMeasures = this.dataset.correctiveMeasures;
-      const timeSpent = this.dataset.timeSpent;
-      const score = this.dataset.score;
-      const assessor = this.dataset.assessor;
-      const remarks = this.dataset.remarks;
-      const isQualified = this.dataset.isQualified;
+  // 使用事件委托处理编辑按钮点击
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.btn-edit-record').forEach(button => {
+      button.addEventListener('click', function () {
+        const id = this.dataset.id;
+        const empNo = this.dataset.empNo;
+        const name = this.dataset.name;
+        const teamName = this.dataset.teamName;
+        const trainingDate = this.dataset.trainingDate;
+        const projectName = this.dataset.projectName;
+        const problemType = this.dataset.problemType;
+        const specificProblem = this.dataset.specificProblem;
+        const correctiveMeasures = this.dataset.correctiveMeasures;
+        const timeSpent = this.dataset.timeSpent;
+        const score = this.dataset.score;
+        const assessor = this.dataset.assessor;
+        const remarks = this.dataset.remarks;
+        const isQualified = this.dataset.isQualified;
 
-      document.getElementById('editRecordForm').action = "{{ url_for('training.edit_record', record_id=0) }}".replace('0', id);
-      document.getElementById('editEmpNo').value = empNo;
-      document.getElementById('editName').value = name;
-      document.getElementById('editTeamName').value = teamName;
-      document.getElementById('editTrainingDate').value = trainingDate;
-      document.getElementById('editProjectName').value = projectName;
-      document.getElementById('editProblemType').value = problemType;
-      document.getElementById('editSpecificProblem').value = specificProblem;
-      document.getElementById('editCorrectiveMeasures').value = correctiveMeasures;
-      document.getElementById('editTimeSpent').value = timeSpent;
-      document.getElementById('editScore').value = score;
-      document.getElementById('editAssessor').value = assessor;
-      document.getElementById('editRemarks').value = remarks;
-      document.getElementById('editIsQualified').value = isQualified;
+        document.getElementById('editRecordForm').action = "{{ url_for('training.edit_record', record_id=0) }}".replace('0', id);
+        document.getElementById('editEmpNo').value = empNo;
+        document.getElementById('editName').value = name;
+        document.getElementById('editTeamName').value = teamName;
+        document.getElementById('editTrainingDate').value = trainingDate;
+        document.getElementById('editProjectName').value = projectName;
+        document.getElementById('editProblemType').value = problemType;
+        document.getElementById('editSpecificProblem').value = specificProblem;
+        document.getElementById('editCorrectiveMeasures').value = correctiveMeasures;
+        document.getElementById('editTimeSpent').value = timeSpent;
+        document.getElementById('editScore').value = score;
+        document.getElementById('editAssessor').value = assessor;
+        document.getElementById('editRemarks').value = remarks;
+        document.getElementById('editIsQualified').value = isQualified;
 
-      const modal = new bootstrap.Modal(document.getElementById('editRecordModal'));
-      modal.show();
+        const modal = new bootstrap.Modal(document.getElementById('editRecordModal'));
+        modal.show();
+      });
     });
   });
-});
 
-function toggleSelectAll(checkbox) {
-  const checkboxes = document.querySelectorAll('.record-checkbox');
-  checkboxes.forEach(cb => {
-    cb.checked = checkbox.checked;
-  });
-  updateBatchDeleteBtn();
-}
-
-function updateBatchDeleteBtn() {
-  const checkboxes = document.querySelectorAll('.record-checkbox:checked');
-  const batchDeleteBtn = document.getElementById('batchDeleteBtn');
-  if (checkboxes.length > 0) {
-    batchDeleteBtn.style.display = 'inline-block';
-    batchDeleteBtn.textContent = `批量删除 (${checkboxes.length})`;
-    batchDeleteBtn.innerHTML = `<i class="fas fa-trash me-1"></i>批量删除 (${checkboxes.length})`;
-  } else {
-    batchDeleteBtn.style.display = 'none';
-  }
-
-  // 更新全选复选框状态
-  const allCheckboxes = document.querySelectorAll('.record-checkbox');
-  const selectAllCheckbox = document.getElementById('selectAll');
-  if (selectAllCheckbox) {
-    selectAllCheckbox.checked = allCheckboxes.length > 0 && checkboxes.length === allCheckboxes.length;
-  }
-}
-
-function batchDelete() {
-  const checkboxes = document.querySelectorAll('.record-checkbox:checked');
-  if (checkboxes.length === 0) {
-    alert('请至少选择一条记录');
-    return;
-  }
-
-  const ids = Array.from(checkboxes).map(cb => cb.value);
-  if (confirm(`确定要删除选中的 ${ids.length} 条培训记录吗？此操作不可恢复！`)) {
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = "{{ url_for('training.batch_delete_records') }}";
-
-    // Add CSRF token
-    const csrfInput = document.createElement('input');
-    csrfInput.type = 'hidden';
-    csrfInput.name = 'csrf_token';
-    csrfInput.value = '{{ csrf_token() }}';
-    form.appendChild(csrfInput);
-
-    ids.forEach(id => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'record_ids';
-      input.value = id;
-      form.appendChild(input);
+  function toggleSelectAll(checkbox) {
+    const checkboxes = document.querySelectorAll('.record-checkbox');
+    checkboxes.forEach(cb => {
+      cb.checked = checkbox.checked;
     });
-
-    document.body.appendChild(form);
-    form.submit();
+    updateBatchDeleteBtn();
   }
-}
+
+  function updateBatchDeleteBtn() {
+    const checkboxes = document.querySelectorAll('.record-checkbox:checked');
+    const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+    if (checkboxes.length > 0) {
+      batchDeleteBtn.style.display = 'inline-block';
+      batchDeleteBtn.textContent = `批量删除 (${checkboxes.length})`;
+      batchDeleteBtn.innerHTML = `<i class="fas fa-trash me-1"></i>批量删除 (${checkboxes.length})`;
+    } else {
+      batchDeleteBtn.style.display = 'none';
+    }
+
+    // 更新全选复选框状态
+    const allCheckboxes = document.querySelectorAll('.record-checkbox');
+    const selectAllCheckbox = document.getElementById('selectAll');
+    if (selectAllCheckbox) {
+      selectAllCheckbox.checked = allCheckboxes.length > 0 && checkboxes.length === allCheckboxes.length;
+    }
+  }
+
+  function batchDelete() {
+    const checkboxes = document.querySelectorAll('.record-checkbox:checked');
+    if (checkboxes.length === 0) {
+      alert('请至少选择一条记录');
+      return;
+    }
+
+    const ids = Array.from(checkboxes).map(cb => cb.value);
+    if (confirm(`确定要删除选中的 ${ids.length} 条培训记录吗？此操作不可恢复！`)) {
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = "{{ url_for('training.batch_delete_records') }}";
+
+      // Add CSRF token
+      const csrfInput = document.createElement('input');
+      csrfInput.type = 'hidden';
+      csrfInput.name = 'csrf_token';
+      csrfInput.value = '{{ csrf_token() }}';
+      form.appendChild(csrfInput);
+
+      ids.forEach(id => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'record_ids';
+        input.value = id;
+        form.appendChild(input);
+      });
+
+      document.body.appendChild(form);
+      form.submit();
+    }
+  }
 </script>
 {% endif %}
 {% endblock %}

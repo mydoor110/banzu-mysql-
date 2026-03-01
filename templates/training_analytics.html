@@ -234,26 +234,24 @@
 
       switch (tabName) {
         case 'overview':
-          problemTypeChart = echarts.init(document.getElementById('problemTypeChart'));
-          projectDisqualifiedChart = echarts.init(document.getElementById('projectDisqualifiedChart'));
+          // 使用 ChartRegistry 渲染，不再手动 init
           if (cachedData) {
-            renderProblemTypeChart(cachedData);
-            renderProjectDisqualifiedChart(cachedData);
+            renderOverviewCharts(cachedData);
           }
           break;
         case 'project':
-          projectCountChart = echarts.init(document.getElementById('projectCountChart'));
+          // projectCountChart 用 ChartRegistry，wordCloudChart 保留独立渲染
           wordCloudChart = echarts.init(document.getElementById('wordCloudChart'));
           if (cachedData) {
-            renderProjectCountChart(cachedData);
+            renderProjectCharts(cachedData);
             renderWordCloudChart(cachedData);
           }
           break;
         case 'personnel':
-          personCountChart = echarts.init(document.getElementById('personCountChart'));
+          // personCountChart 用 ChartRegistry，其余保留独立
           keyPersonnelTrendChart = echarts.init(document.getElementById('keyPersonnelTrendChart'));
           if (cachedData) {
-            renderPersonCountChart(cachedData);
+            renderPersonnelCharts(cachedData);
             renderTeamRank(cachedData);
             renderKeyPersonnelTrend(cachedData);
           }
@@ -319,22 +317,14 @@
       const apiUrl = `{{ url_for('training.api_data') }}?${params.toString()}`;
 
       // Show loading for initialized charts only
-      if (problemTypeChart) problemTypeChart.showLoading();
-      if (projectDisqualifiedChart) projectDisqualifiedChart.showLoading();
-      if (projectCountChart) projectCountChart.showLoading();
       if (wordCloudChart) wordCloudChart.showLoading();
-      if (personCountChart) personCountChart.showLoading();
       if (keyPersonnelTrendChart) keyPersonnelTrendChart.showLoading();
 
       fetch(apiUrl)
         .then(response => response.json())
         .then(data => {
           // Hide loading for initialized charts
-          if (problemTypeChart) problemTypeChart.hideLoading();
-          if (projectDisqualifiedChart) projectDisqualifiedChart.hideLoading();
-          if (projectCountChart) projectCountChart.hideLoading();
           if (wordCloudChart) wordCloudChart.hideLoading();
-          if (personCountChart) personCountChart.hideLoading();
           if (keyPersonnelTrendChart) keyPersonnelTrendChart.hideLoading();
 
           // Cache data for lazy loading
@@ -343,28 +333,23 @@
           // Update KPIs (always visible)
           updateKpis(data);
 
-          // Render charts for currently active tab
+          // Render charts for currently active tab (using ChartRegistry)
           if (tabsInitialized.overview) {
-            renderProblemTypeChart(data);
-            renderProjectDisqualifiedChart(data);
+            renderOverviewCharts(data);
           }
           if (tabsInitialized.project) {
-            renderProjectCountChart(data);
+            renderProjectCharts(data);
             renderWordCloudChart(data);
           }
           if (tabsInitialized.personnel) {
-            renderPersonCountChart(data);
+            renderPersonnelCharts(data);
             renderTeamRank(data);
             renderKeyPersonnelTrend(data);
           }
         })
         .catch(error => {
           // Hide loading for all initialized charts
-          if (problemTypeChart) try { problemTypeChart.hideLoading(); } catch (e) { }
-          if (projectDisqualifiedChart) try { projectDisqualifiedChart.hideLoading(); } catch (e) { }
-          if (projectCountChart) try { projectCountChart.hideLoading(); } catch (e) { }
           if (wordCloudChart) try { wordCloudChart.hideLoading(); } catch (e) { }
-          if (personCountChart) try { personCountChart.hideLoading(); } catch (e) { }
           if (keyPersonnelTrendChart) try { keyPersonnelTrendChart.hideLoading(); } catch (e) { }
           console.error('Error fetching chart data:', error);
         });
@@ -376,85 +361,7 @@
       document.getElementById('kpi-disqualified-count').textContent = disqualifiedCount;
     }
 
-    function renderPersonCountChart(data) {
-      if (!personCountChart) return;
 
-      // Aggregate counts by person: {name: {qualified: 0, disqualified: 0}}
-      const personStats = {};
-      data.forEach(record => {
-        const name = record.name;
-        if (!personStats[name]) {
-          personStats[name] = { qualified: 0, disqualified: 0, total: 0 };
-        }
-        personStats[name].total++;
-        if (record.is_qualified === 0) {
-          personStats[name].disqualified++;
-        } else {
-          personStats[name].qualified++;
-        }
-      });
-
-      // Sort by total counts descending
-      const sortedData = Object.entries(personStats).sort((a, b) => b[1].total - a[1].total);
-      const names = sortedData.map(item => item[0]);
-      const qualifiedCounts = sortedData.map(item => item[1].qualified);
-      const disqualifiedCounts = sortedData.map(item => item[1].disqualified);
-
-      const option = {
-        title: { text: '人员实操次数统计（点击红色条查看失格详情）', left: 'center', textStyle: { fontSize: 14 } },
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: { type: 'shadow' },
-          formatter: function (params) {
-            let tooltip = `<strong>${params[0].name}</strong><br/>`;
-            let total = 0;
-            params.forEach(param => {
-              tooltip += `${param.marker} ${param.seriesName}: ${param.value}<br/>`;
-              total += param.value;
-            });
-            tooltip += `<strong>总实操次数: ${total}次</strong>`;
-            return tooltip;
-          }
-        },
-        legend: { top: '10%' },
-        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-        xAxis: { type: 'category', data: names, axisLabel: { interval: 0, rotate: 30 } },
-        yAxis: { type: 'value', name: '次数' },
-        series: [
-          {
-            name: '未失格次数',
-            type: 'bar',
-            stack: 'total',
-            data: qualifiedCounts,
-            itemStyle: { color: '#5470c6' }, // Blue
-            barWidth: '60%',
-            label: { show: qualifiedCounts.some(v => v > 0), position: 'inside' }
-          },
-          {
-            name: '失格次数',
-            type: 'bar',
-            stack: 'total',
-            data: disqualifiedCounts,
-            itemStyle: { color: '#F53F3F' }, // Red (Bootstrap Danger)
-            barWidth: '60%',
-            label: { show: disqualifiedCounts.some(v => v > 0), position: 'inside' }
-          }
-        ],
-        dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 0 }]
-      };
-
-      // Remove previous click listeners to avoid duplicates
-      personCountChart.off('click');
-
-      // Add click listener
-      personCountChart.on('click', function (params) {
-        if (params.seriesName === '失格次数' && params.value > 0) {
-          showDisqualifiedDetails(params.name);
-        }
-      });
-
-      personCountChart.setOption(option);
-    }
 
     // Function to show Disqualification Modal
     function showDisqualifiedDetails(personName) {
@@ -492,208 +399,65 @@
       modal.show();
     }
 
-    function renderProblemTypeChart(data) {
-      if (!problemTypeChart) return;
+    // ══════ ChartRegistry 统一渲染入口 ══════
+    // 预处理培训数据（与 ChartRegistry 中 preprocessor 一致）
+    function getProcessedData(data) {
+      return ChartRegistry.preprocess('training', data);
+    }
 
-      // 统计所有记录的问题类型（包括合格和不合格）
-      const problemCount = {};
-      const qualifiedCount = {}; // 记录每种类型的合格数
+    // 总览 Tab：问题类型分布 + 失格项目统计
+    function renderOverviewCharts(data) {
+      const processed = getProcessedData(data);
+      // 问题类型分布 → training_problem_type
+      const container1 = document.getElementById('problemTypeChart');
+      if (container1) {
+        // 销毁旧实例
+        const old1 = echarts.getInstanceByDom(container1);
+        if (old1) old1.dispose();
+        problemTypeChart = ChartRegistry.renderToContainer('training', 'training_problem_type', data, container1, processed);
+      }
+      // 失格项目统计 → training_project_top10
+      const container2 = document.getElementById('projectDisqualifiedChart');
+      if (container2) {
+        const old2 = echarts.getInstanceByDom(container2);
+        if (old2) old2.dispose();
+        projectDisqualifiedChart = ChartRegistry.renderToContainer('training', 'training_project_top10', data, container2, processed);
+      }
+    }
 
-      data.forEach(record => {
-        const type = record.problem_type || '无问题';
-        problemCount[type] = (problemCount[type] || 0) + 1;
+    // 项目分析 Tab：各实操项目总次数
+    function renderProjectCharts(data) {
+      const processed = getProcessedData(data);
+      const container = document.getElementById('projectCountChart');
+      if (container) {
+        const old = echarts.getInstanceByDom(container);
+        if (old) old.dispose();
+        projectCountChart = ChartRegistry.renderToContainer('training', 'training_project_count_top20', data, container, processed);
+      }
+    }
 
-        if (record.is_qualified === 1) {
-          qualifiedCount[type] = (qualifiedCount[type] || 0) + 1;
+    // 人员分析 Tab：人员实操次数统计
+    function renderPersonnelCharts(data) {
+      const processed = getProcessedData(data);
+      const container = document.getElementById('personCountChart');
+      if (container) {
+        const old = echarts.getInstanceByDom(container);
+        if (old) old.dispose();
+        const chartInstance = ChartRegistry.renderToContainer('training', 'training_person_count', data, container, processed);
+        personCountChart = chartInstance;
+        // 保留点击失格条查看详情的交互
+        if (chartInstance) {
+          chartInstance.off('click');
+          chartInstance.on('click', function (params) {
+            if (params.seriesName === '失格次数' && params.value > 0) {
+              showDisqualifiedDetails(params.name);
+            }
+          });
         }
-      });
-
-      // 转换为图表数据，并添加合格率信息
-      const chartData = Object.entries(problemCount).map(([name, value]) => {
-        const qualified = qualifiedCount[name] || 0;
-        const qualifiedRate = ((qualified / value) * 100).toFixed(1);
-        return {
-          name: name,
-          value: value,
-          qualifiedRate: qualifiedRate,
-          qualified: qualified
-        };
-      });
-
-      const option = {
-        title: { text: '问题类型分布（全部记录）', left: 'center', textStyle: { fontSize: 14 } },
-        tooltip: {
-          trigger: 'item',
-          formatter: function (params) {
-            return `${params.seriesName}<br/>${params.name}: ${params.value}次 (${params.percent}%)<br/>合格: ${params.data.qualified}次 (${params.data.qualifiedRate}%)`;
-          }
-        },
-        legend: { orient: 'vertical', left: 'left', top: '10%', type: 'scroll' },
-        series: [{
-          name: '问题类型',
-          type: 'pie',
-          radius: '65%',
-          center: ['50%', '60%'],
-          data: chartData,
-          emphasis: {
-            itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' }
-          },
-          label: {
-            formatter: '{b}\n{c}次 ({d}%)'
-          }
-        }]
-      };
-      problemTypeChart.setOption(option);
+      }
     }
 
-    function renderProjectDisqualifiedChart(data) {
-      if (!projectDisqualifiedChart) return;
 
-      const disqualifiedData = data.filter(r => r.is_qualified === 0);
-      const projectCount = {};
-      disqualifiedData.forEach(record => {
-        const project = record.project_name || '未分类';
-        projectCount[project] = (projectCount[project] || 0) + 1;
-      });
-      const sortedData = Object.entries(projectCount).sort((a, b) => a[1] - b[1]);
-      const projects = sortedData.map(item => item[0]);
-      const counts = sortedData.map(item => item[1]);
-
-      const option = {
-        title: { text: '各个实操项目失格次数统计', left: 'center', textStyle: { fontSize: 14 } },
-        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-        xAxis: { type: 'value', boundaryGap: [0, 0.01] },
-        yAxis: { type: 'category', data: projects },
-        series: [{
-          name: '失格次数',
-          type: 'bar',
-          data: counts,
-          label: { show: true, position: 'right' }
-        }]
-      };
-      projectDisqualifiedChart.setOption(option);
-    }
-
-    function renderProjectCountChart(data) {
-      if (!projectCountChart) return;
-
-      // 统计所有项目的总次数（包括合格和不合格）
-      const projectCount = {};
-      data.forEach(record => {
-        const project = record.project_name || '未分类';
-        projectCount[project] = (projectCount[project] || 0) + 1;
-      });
-
-      // 按次数降序排列，只取前20个
-      const sortedData = Object.entries(projectCount).sort((a, b) => b[1] - a[1]).slice(0, 20);
-      const projects = sortedData.map(item => item[0]);
-      const counts = sortedData.map(item => item[1]);
-
-      // Top 10 高亮处理
-      const itemStyleData = counts.map((count, index) => {
-        if (index < 10) {
-          // Top 10 使用渐变色高亮
-          return {
-            value: count,
-            itemStyle: {
-              color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                { offset: 0, color: '#4A90E2' },
-                { offset: 1, color: '#67B7DC' }
-              ])
-            }
-          };
-        } else {
-          // 其余弱化
-          return {
-            value: count,
-            itemStyle: {
-              color: '#95a5a6'
-            }
-          };
-        }
-      });
-
-      const option = {
-        title: {
-          text: '各实操项目总次数统计 (Top 20)',
-          subtext: 'Top 10 蓝色高亮 | 降序排列',
-          left: 'center',
-          textStyle: { fontSize: 14 }
-        },
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: { type: 'shadow' },
-          formatter: function (params) {
-            const param = params[0];
-            const rank = sortedData.findIndex(item => item[0] === param.name) + 1;
-            return `排名 #${rank}<br/>${param.name}: ${param.value}次`;
-          }
-        },
-        grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          top: '15%',
-          containLabel: true
-        },
-        xAxis: {
-          type: 'value',
-          boundaryGap: [0, 0.01],
-          name: '次数',
-          nameLocation: 'end',
-          nameTextStyle: {
-            padding: [0, 0, 0, 10]
-          }
-        },
-        yAxis: {
-          type: 'category',
-          data: projects,
-          axisLabel: {
-            formatter: function (value) {
-              // 长文本截断并显示省略号
-              return value.length > 18 ? value.substring(0, 18) + '...' : value;
-            }
-          }
-        },
-        series: [{
-          name: '培训次数',
-          type: 'bar',
-          data: itemStyleData,
-          barWidth: '60%',
-          label: {
-            show: true,
-            position: 'right',
-            formatter: '{c}次',
-            fontSize: 11
-          },
-          emphasis: {
-            focus: 'self',
-            itemStyle: {
-              shadowBlur: 10,
-              shadowColor: 'rgba(0, 0, 0, 0.3)'
-            }
-          }
-        }],
-        dataZoom: projects.length > 15 ? [
-          {
-            type: 'inside',
-            yAxisIndex: 0,
-            start: 0,
-            end: 100
-          },
-          {
-            type: 'slider',
-            yAxisIndex: 0,
-            start: 0,
-            end: 100,
-            width: 12,
-            right: 5
-          }
-        ] : []
-      };
-      projectCountChart.setOption(option);
-    }
 
     function renderWordCloudChart(data) {
       if (!wordCloudChart) return;

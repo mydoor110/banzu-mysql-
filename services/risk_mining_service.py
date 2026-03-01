@@ -9,6 +9,7 @@ B. Anomaly Detection (Isolation Forest)
 C. Text Mining (NLP keyword extraction)
 D. Survival Analysis (Kaplan-Meier for violation prediction)
 """
+import calendar
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple, Any
@@ -105,8 +106,8 @@ class RiskMiningService:
         Get performance records within date range.
 
         Args:
-            start_date: Start date (YYYY-MM format)
-            end_date: End date (YYYY-MM format)
+            start_date: Start date (YYYY-MM-DD format)
+            end_date: End date (YYYY-MM-DD format)
 
         Returns:
             DataFrame with performance records
@@ -114,8 +115,9 @@ class RiskMiningService:
         conn = get_db()
         cur = conn.cursor()
 
-        start_year, start_month = map(int, start_date.split('-'))
-        end_year, end_month = map(int, end_date.split('-'))
+        # 绩效记录按 year/month 列存储，从标准日期中提取 year 和 month
+        start_year, start_month = map(int, start_date[:7].split('-'))
+        end_year, end_month = map(int, end_date[:7].split('-'))
 
         query = """
             SELECT emp_no, name, year, month, score, grade
@@ -140,8 +142,8 @@ class RiskMiningService:
         Get safety inspection records.
 
         Args:
-            start_date: Start date (YYYY-MM-DD or YYYY-MM format)
-            end_date: End date
+            start_date: Start date (YYYY-MM-DD format)
+            end_date: End date (YYYY-MM-DD format)
 
         Returns:
             DataFrame with safety records
@@ -149,15 +151,9 @@ class RiskMiningService:
         conn = get_db()
         cur = conn.cursor()
 
-        # Handle YYYY-MM format
-        if len(start_date) == 7:
-            start_date = f"{start_date}-01"
-        if len(end_date) == 7:
-            end_date = f"{end_date}-31"
-
         query = """
             SELECT id, category, inspection_date, hazard_description,
-                   inspected_person, responsible_team, assessment
+                   inspected_person, responsible_team, assessment, employee_id
             FROM safety_inspection_records
             WHERE inspection_date >= %s AND inspection_date <= %s
         """
@@ -176,19 +172,14 @@ class RiskMiningService:
         Get training records with disqualified flag.
 
         Args:
-            start_date: Start date (YYYY-MM-DD or YYYY-MM format)
-            end_date: End date
+            start_date: Start date (YYYY-MM-DD format)
+            end_date: End date (YYYY-MM-DD format)
 
         Returns:
             DataFrame with training records
         """
         conn = get_db()
         cur = conn.cursor()
-
-        if len(start_date) == 7:
-            start_date = f"{start_date}-01"
-        if len(end_date) == 7:
-            end_date = f"{end_date}-31"
 
         query = """
             SELECT id, emp_no, name, training_date, problem_type,
@@ -313,7 +304,9 @@ class RiskMiningService:
 
         Args:
             employees_df: DataFrame with employee data including solo_driving_date
-            violations_df: DataFrame with violation records
+            violations_df: DataFrame with violation records.
+                           Must contain 'employee_id' column (primary key path).
+                           May contain 'name' column as historical fallback.
 
         Returns:
             List of dicts with time and probability
@@ -345,10 +338,14 @@ class RiskMiningService:
 
             employees_df['driving_years'] = employees_df.apply(calc_driving_years, axis=1)
 
-            # Check if employee has any violation (event occurred)
-            # violations_df should have 'name' column (already renamed from inspected_person)
-            violation_emps = set(violations_df['name'].dropna().unique()) if 'name' in violations_df.columns else set()
-            employees_df['has_violation'] = employees_df['name'].isin(violation_emps).astype(int)
+            # [4B] employee_id 主路径：优先用 employee_id 归属违章事件
+            if 'employee_id' in violations_df.columns:
+                violation_emp_ids = set(violations_df['employee_id'].dropna().unique())
+                employees_df['has_violation'] = employees_df['id'].isin(violation_emp_ids).astype(int)
+            else:
+                # [4B-FALLBACK] name 仅历史兼容：当 violations_df 无 employee_id 列时退化到 name 匹配
+                violation_names = set(violations_df['name'].dropna().unique()) if 'name' in violations_df.columns else set()
+                employees_df['has_violation'] = employees_df['name'].isin(violation_names).astype(int)
 
             # Filter valid data
             valid_df = employees_df.dropna(subset=['driving_years'])
@@ -416,42 +413,88 @@ class RiskMiningService:
         conn = get_db()
         cur = conn.cursor()
 
-        # 先获取员工姓名
-        cur.execute("SELECT name FROM employees WHERE emp_no = %s", (emp_no,))
+        # 先获取员工 id 和姓名
+        cur.execute("SELECT id, name FROM employees WHERE emp_no = %s", (emp_no,))
         row = cur.fetchone()
         if not row:
             return []
 
+        emp_id = row['id']
         emp_name = row['name']
 
-        # 处理日期格式（YYYY-MM 转换为 YYYY-MM-DD）
-        if start_date and len(start_date) == 7:
-            start_date = f"{start_date}-01"
-        if end_date and len(end_date) == 7:
-            end_date = f"{end_date}-31"
-
-        # 获取违章记录（添加 id 排序确保顺序稳定）
+        # [4B] employee_id 主路径，inspected_person 仅历史兼容 fallback
         if start_date and end_date:
             cur.execute("""
                 SELECT inspection_date as date,
                        hazard_description as issue,
                        assessment as score
                 FROM safety_inspection_records
-                WHERE inspected_person = %s
+                WHERE (employee_id = %s OR (employee_id IS NULL AND inspected_person = %s))
                   AND inspection_date >= %s AND inspection_date <= %s
                 ORDER BY inspection_date DESC, id DESC
                 LIMIT %s
-            """, (emp_name, start_date, end_date, limit))
+            """, (emp_id, emp_name, start_date, end_date, limit))
         else:
             cur.execute("""
                 SELECT inspection_date as date,
                        hazard_description as issue,
                        assessment as score
                 FROM safety_inspection_records
-                WHERE inspected_person = %s
+                WHERE (employee_id = %s OR (employee_id IS NULL AND inspected_person = %s))
                 ORDER BY inspection_date DESC, id DESC
                 LIMIT %s
-            """, (emp_name, limit))
+            """, (emp_id, emp_name, limit))
+
+        return [dict(row) for row in cur.fetchall()]
+
+    @classmethod
+    def _get_all_violations(cls, emp_no: str,
+                            start_date: str = None, end_date: str = None) -> List[Dict]:
+        """
+        获取员工全量违章记录（用于 AI 诊断缓存键和数据上下文）。
+
+        与 _get_recent_violations 的区别：不做条数限制，确保 all_violations
+        键名与实际数据语义一致。
+
+        Args:
+            emp_no: 员工工号
+            start_date: 开始日期 (YYYY-MM-DD 格式)
+            end_date: 结束日期 (YYYY-MM-DD 格式)
+
+        Returns:
+            全量违章记录列表，每条包含 date, issue, score 字段
+        """
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("SELECT id, name FROM employees WHERE emp_no = %s", (emp_no,))
+        row = cur.fetchone()
+        if not row:
+            return []
+
+        emp_id = row['id']
+        emp_name = row['name']
+
+        # [4B] employee_id 主路径，inspected_person 仅历史兼容 fallback（临时兼容，不可长期依赖）
+        if start_date and end_date:
+            cur.execute("""
+                SELECT inspection_date as date,
+                       hazard_description as issue,
+                       assessment as score
+                FROM safety_inspection_records
+                WHERE (employee_id = %s OR (employee_id IS NULL AND inspected_person = %s))
+                  AND inspection_date >= %s AND inspection_date <= %s
+                ORDER BY inspection_date DESC, id DESC
+            """, (emp_id, emp_name, start_date, end_date))
+        else:
+            cur.execute("""
+                SELECT inspection_date as date,
+                       hazard_description as issue,
+                       assessment as score
+                FROM safety_inspection_records
+                WHERE (employee_id = %s OR (employee_id IS NULL AND inspected_person = %s))
+                ORDER BY inspection_date DESC, id DESC
+            """, (emp_id, emp_name))
 
         return [dict(row) for row in cur.fetchall()]
 
@@ -472,48 +515,43 @@ class RiskMiningService:
         conn = get_db()
         cur = conn.cursor()
 
-        # 先获取员工姓名
-        cur.execute("SELECT name FROM employees WHERE emp_no = %s", (emp_no,))
+        # 先获取员工 id 和姓名
+        cur.execute("SELECT id, name FROM employees WHERE emp_no = %s", (emp_no,))
         row = cur.fetchone()
         if not row:
             return []
 
+        emp_id = row['id']
         emp_name = row['name']
 
-        # 处理日期格式（YYYY-MM 转换为 YYYY-MM-DD）
-        if start_date and len(start_date) == 7:
-            start_date = f"{start_date}-01"
-        if end_date and len(end_date) == 7:
-            end_date = f"{end_date}-31"
-
-        # 获取严重违章记录（包含3分、双倍、红线等关键词，添加 id 排序确保顺序稳定）
+        # [4B] employee_id 主路径，inspected_person 仅历史兼容 fallback
         if start_date and end_date:
             cur.execute("""
                 SELECT inspection_date as date,
                        hazard_description as issue,
                        assessment as score
                 FROM safety_inspection_records
-                WHERE inspected_person = %s
+                WHERE (employee_id = %s OR (employee_id IS NULL AND inspected_person = %s))
                   AND inspection_date >= %s AND inspection_date <= %s
                   AND (assessment LIKE '%%3分%%'
                        OR assessment LIKE '%%双倍%%'
                        OR assessment LIKE '%%红线%%'
                        OR assessment LIKE '%%严重%%')
                 ORDER BY inspection_date DESC, id DESC
-            """, (emp_name, start_date, end_date))
+            """, (emp_id, emp_name, start_date, end_date))
         else:
             cur.execute("""
                 SELECT inspection_date as date,
                        hazard_description as issue,
                        assessment as score
                 FROM safety_inspection_records
-                WHERE inspected_person = %s
+                WHERE (employee_id = %s OR (employee_id IS NULL AND inspected_person = %s))
                   AND (assessment LIKE '%%3分%%'
                        OR assessment LIKE '%%双倍%%'
                        OR assessment LIKE '%%红线%%'
                        OR assessment LIKE '%%严重%%')
                 ORDER BY inspection_date DESC, id DESC
-            """, (emp_name,))
+            """, (emp_id, emp_name))
 
         return [dict(row) for row in cur.fetchall()]
 
@@ -533,12 +571,6 @@ class RiskMiningService:
         """
         conn = get_db()
         cur = conn.cursor()
-
-        # 处理日期格式（YYYY-MM 转换为 YYYY-MM-DD）
-        if start_date and len(start_date) == 7:
-            start_date = f"{start_date}-01"
-        if end_date and len(end_date) == 7:
-            end_date = f"{end_date}-31"
 
         # 添加 id 排序确保顺序稳定
         if start_date and end_date:
@@ -575,8 +607,8 @@ class RiskMiningService:
         Main entry point: Perform comprehensive risk analysis.
 
         Args:
-            start_date: Start date (YYYY-MM format), defaults to 12 months ago
-            end_date: End date (YYYY-MM format), defaults to current month
+            start_date: Start date (YYYY-MM-DD format), defaults to 12 months ago
+            end_date: End date (YYYY-MM-DD format), defaults to current month
             department_path: Optional department filter
             enable_ai_diagnosis: Whether to enable AI diagnosis for high-risk employees
 
@@ -587,12 +619,14 @@ class RiskMiningService:
             - survival_curve: Kaplan-Meier survival data
             - summary: Summary statistics
         """
-        # Set default date range (last 12 months)
+        # Set default date range (last 12 months) — YYYY-MM-DD format
         if end_date is None:
-            end_date = datetime.now().strftime('%Y-%m')
+            now = datetime.now()
+            last_day = calendar.monthrange(now.year, now.month)[1]
+            end_date = datetime(now.year, now.month, last_day).strftime('%Y-%m-%d')
         if start_date is None:
             start = datetime.now() - timedelta(days=365)
-            start_date = start.strftime('%Y-%m')
+            start_date = datetime(start.year, start.month, 1).strftime('%Y-%m-%d')
 
         # 1. Load all data
         employees_df = cls._get_employee_data(department_path)
@@ -617,12 +651,13 @@ class RiskMiningService:
 
         # 检查各DataFrame是否有数据和必要的列
         has_perf_data = not performance_df.empty and 'emp_no' in performance_df.columns
-        has_safety_data = not safety_df.empty and 'inspected_person' in safety_df.columns
+        has_safety_data = not safety_df.empty and ('employee_id' in safety_df.columns or 'inspected_person' in safety_df.columns)
         has_training_data = not training_df.empty and 'emp_no' in training_df.columns
 
         for _, emp in employees_df.iterrows():
             emp_no = emp['emp_no']
             name = emp['name']
+            emp_id = emp['id']  # employees 表的主键 id
 
             # Performance metrics
             if has_perf_data:
@@ -635,9 +670,16 @@ class RiskMiningService:
             perf_var = float(np.var(perf_scores)) if len(perf_scores) > 1 else 0.0
             perf_slope = cls._calculate_performance_slope(perf_scores)
 
-            # Safety metrics (match by name since safety records may not have emp_no)
+            # [4B] employee_id 主路径，inspected_person 仅历史兼容 fallback
             if has_safety_data:
-                emp_safety = safety_df[safety_df['inspected_person'] == name]
+                if 'employee_id' in safety_df.columns:
+                    emp_safety = safety_df[
+                        (safety_df['employee_id'] == emp_id) |
+                        (safety_df['employee_id'].isna() & (safety_df['inspected_person'] == name))
+                    ]
+                else:
+                    # [4B-FALLBACK] 无 employee_id 列时退化到 inspected_person
+                    emp_safety = safety_df[safety_df['inspected_person'] == name]
                 safety_count = len(emp_safety)
             else:
                 safety_count = 0
@@ -737,6 +779,7 @@ class RiskMiningService:
             if enable_ai_diagnosis and ai_diagnosis_count < AIConfig.MAX_DIAGNOSES_PER_RUN:
                 if AIDiagnosisService.should_trigger_diagnosis(row['risk_score'], percentile):
                     # 构建完整的risk_data，包含详细记录用于5维度分析
+                    # [4B] all_violations 是标准输入键，与 _build_cache_key / _build_data_context 对齐
                     risk_data = {
                         # 基础统计数据
                         'performance_slope': row['performance_slope'],
@@ -746,9 +789,8 @@ class RiskMiningService:
                         'is_anomaly': row['is_anomaly'],
                         'anomaly_score': row['anomaly_score'],
                         'risk_factors': row['risk_factors'],
-                        # 详细记录用于AI诊断（使用日期范围过滤）
-                        'recent_violations': cls._get_recent_violations(row['emp_no'], 10, start_date, end_date),
-                        'severe_violations': cls._get_severe_violations(row['emp_no'], start_date, end_date),
+                        # 详细记录用于AI诊断（全量，不限条数，使用日期范围过滤）
+                        'all_violations': cls._get_all_violations(row['emp_no'], start_date, end_date),
                         'failed_training': cls._get_failed_training(row['emp_no'], start_date, end_date)
                     }
 
@@ -800,15 +842,35 @@ class RiskMiningService:
         keyword_cloud = keyword_result.get('keyword_cloud', [])
 
         # 9. Survival analysis
-        # Combine safety and training violations for survival analysis
-        if not safety_df.empty and 'inspected_person' in safety_df.columns:
-            violations_df = safety_df[['inspected_person']].rename(columns={'inspected_person': 'name'})
+        # [4B] employee_id 主路径：构建 violations_df 以 employee_id 为主归属键
+        if not safety_df.empty and 'employee_id' in safety_df.columns:
+            # 直接使用 safety_df 的 employee_id 列
+            violations_df = safety_df[['employee_id']].copy()
+            # [4B-FALLBACK] 对于 employee_id 为空的记录，通过 inspected_person→name 查找 employee_id
+            if 'inspected_person' in safety_df.columns:
+                name_to_id = dict(zip(employees_df['name'], employees_df['id']))
+                mask_null = violations_df['employee_id'].isna()
+                violations_df.loc[mask_null, 'employee_id'] = (
+                    safety_df.loc[mask_null, 'inspected_person'].map(name_to_id)
+                )
+            violations_df = violations_df.dropna(subset=['employee_id'])
+        elif not safety_df.empty and 'inspected_person' in safety_df.columns:
+            # [4B-FALLBACK] 无 employee_id 列时，通过 inspected_person→name 查找 employee_id
+            name_to_id = dict(zip(employees_df['name'], employees_df['id']))
+            violations_df = pd.DataFrame({
+                'employee_id': safety_df['inspected_person'].map(name_to_id)
+            }).dropna()
         else:
-            violations_df = pd.DataFrame(columns=['name'])
+            violations_df = pd.DataFrame(columns=['employee_id'])
 
         if not training_df.empty:
-            training_violations = training_df[training_df['is_disqualified'] == 1][['name']]
-            violations_df = pd.concat([violations_df, training_violations], ignore_index=True)
+            # 培训记录通过 emp_no 关联 employees 表获取 employee_id
+            empno_to_id = dict(zip(employees_df['emp_no'], employees_df['id']))
+            training_violations = training_df[training_df['is_disqualified'] == 1].copy()
+            training_violations_ids = pd.DataFrame({
+                'employee_id': training_violations['emp_no'].map(empno_to_id)
+            }).dropna()
+            violations_df = pd.concat([violations_df, training_violations_ids], ignore_index=True)
 
         survival_curve = cls._calculate_survival_curve(employees_df, violations_df)
 

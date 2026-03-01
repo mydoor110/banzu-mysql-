@@ -16,7 +16,7 @@ from werkzeug.utils import secure_filename
 from config.settings import APP_TITLE, EXPORT_DIR, UPLOAD_DIR
 from models.database import get_db
 from .decorators import login_required, role_required, manager_required, admin_required
-from .helpers import require_user_id, get_accessible_department_ids, build_department_filter, parse_date_filters, build_date_filter_sql, log_import_operation, validate_employee_access
+from .helpers import require_user_id, get_accessible_department_ids, build_department_filter, parse_time_range, build_date_filter_sql, log_import_operation, validate_employee_access
 
 # 创建 Blueprint
 safety_bp = Blueprint('safety', __name__, url_prefix='/safety')
@@ -312,69 +312,74 @@ def upload_inspection():
                 return redirect(url_for('safety.confirm_duplicates'))
 
             # ====== 第四阶段：无重名，直接导入（去重检查 + 权限验证）======
-            for record_data in records_to_import:
-                # 权限验证：检查被检查人所属部门是否可访问
-                inspected_person = record_data.get('inspected_person', '')
-                has_permission = True  # 默认有权限（如果没有被检查人）
+            # P1.3：使用 db_transaction 统一事务边界，整批原子提交
+            from models.db_transaction import db_transaction
+            with db_transaction() as txn_conn:
+                txn_cur = txn_conn.cursor()
+                for record_data in records_to_import:
+                    # 权限验证：检查被检查人所属部门是否可访问
+                    inspected_person = record_data.get('inspected_person', '')
+                    has_permission = True  # 默认有权限（如果没有被检查人）
+                    matched_employee_id = None  # 关联的 employee_id
 
-                if inspected_person:
-                    # 查询被检查人的部门
-                    cur.execute("""
-                        SELECT department_id FROM employees
-                        WHERE name = %s
-                        LIMIT 1
-                    """, (inspected_person,))
-                    emp_row = cur.fetchone()
+                    if inspected_person:
+                        # 查询被检查人的部门和 ID
+                        txn_cur.execute("""
+                            SELECT id, department_id FROM employees
+                            WHERE name = %s
+                            LIMIT 1
+                        """, (inspected_person,))
+                        emp_row = txn_cur.fetchone()
 
-                    if emp_row and emp_row['department_id']:
-                        emp_dept_id = emp_row['department_id']
-                        # 检查是否有权限访问该部门
-                        if emp_dept_id not in accessible_dept_ids:
-                            has_permission = False
-                            total_skipped_no_permission += 1
-                            continue
+                        if emp_row:
+                            matched_employee_id = emp_row['id']
+                            if emp_row['department_id']:
+                                emp_dept_id = emp_row['department_id']
+                                # 检查是否有权限访问该部门
+                                if emp_dept_id not in accessible_dept_ids:
+                                    has_permission = False
+                                    total_skipped_no_permission += 1
+                                    continue
 
-                # 检查是否已存在完全相同的记录（基于关键字段）
-                cur.execute("""
-                    SELECT COUNT(*) AS cnt FROM safety_inspection_records
-                    WHERE category = %s
-                    AND inspection_date = %s
-                    AND location = %s
-                    AND hazard_description = %s
-                """, (
-                    record_data['category'],
-                    record_data['inspection_date'],
-                    record_data['location'],
-                    record_data['hazard_description']
-                ))
+                    # 检查是否已存在完全相同的记录（基于关键字段）
+                    txn_cur.execute("""
+                        SELECT COUNT(*) AS cnt FROM safety_inspection_records
+                        WHERE category = %s
+                        AND inspection_date = %s
+                        AND location = %s
+                        AND hazard_description = %s
+                    """, (
+                        record_data['category'],
+                        record_data['inspection_date'],
+                        record_data['location'],
+                        record_data['hazard_description']
+                    ))
 
-                if cur.fetchone()['cnt'] > 0:
-                    # 已存在相同记录，跳过
-                    total_skipped += 1
-                    continue
+                    if txn_cur.fetchone()['cnt'] > 0:
+                        # 已存在相同记录，跳过
+                        total_skipped += 1
+                        continue
 
-                # 插入新记录
-                cur.execute("""
-                    INSERT INTO safety_inspection_records(
-                        category, inspection_date, location, hazard_description,
-                        corrective_measures, deadline_date, inspected_person,
-                        responsible_team, assessment, rectification_status,
-                        rectifier, work_type, responsibility_location,
-                        inspection_item, created_by, source_file
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    record_data['category'], record_data['inspection_date'],
-                    record_data['location'], record_data['hazard_description'],
-                    record_data['corrective_measures'], record_data['deadline_date'],
-                    record_data['inspected_person'], record_data['responsible_team'],
-                    record_data['assessment'], record_data['rectification_status'],
-                    record_data['rectifier'], record_data['work_type'],
-                    record_data['responsibility_location'], record_data['inspection_item'],
-                    uid, filename
-                ))
-                total_imported += 1
-
-            conn.commit()
+                    # 插入新记录（含 employee_id）
+                    txn_cur.execute("""
+                        INSERT INTO safety_inspection_records(
+                            category, inspection_date, location, hazard_description,
+                            corrective_measures, deadline_date, inspected_person,
+                            responsible_team, assessment, rectification_status,
+                            rectifier, work_type, responsibility_location,
+                            inspection_item, created_by, source_file, employee_id
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        record_data['category'], record_data['inspection_date'],
+                        record_data['location'], record_data['hazard_description'],
+                        record_data['corrective_measures'], record_data['deadline_date'],
+                        record_data['inspected_person'], record_data['responsible_team'],
+                        record_data['assessment'], record_data['rectification_status'],
+                        record_data['rectifier'], record_data['work_type'],
+                        record_data['responsibility_location'], record_data['inspection_item'],
+                        uid, filename, matched_employee_id
+                    ))
+                    total_imported += 1
 
             # 显示结果和记录日志
             total_rows = total_imported + total_skipped + total_skipped_no_permission
@@ -410,7 +415,6 @@ def upload_inspection():
         except Exception as e:
             error_msg = f"处理错误: {str(e)}"
             flash(error_msg, "danger")
-            conn.rollback()
 
             # 记录失败的导入操作
             log_import_operation(
@@ -498,9 +502,7 @@ def confirm_duplicates():
                 flash(f"请为 {person_name} 选择工号", "warning")
                 return redirect(url_for('safety.confirm_duplicates'))
 
-        # 执行导入
-        conn = get_db()
-        cur = conn.cursor()
+        # 执行导入 — P1.3：使用 db_transaction 统一事务边界
         uid = pending_data['uid']
         filename = pending_data['filename']
         records = pending_data['records']
@@ -513,80 +515,86 @@ def confirm_duplicates():
         total_skipped_no_permission = 0
 
         try:
-            for record_data in records:
-                inspected_person = record_data.get('inspected_person', '')
+            from models.db_transaction import db_transaction
+            with db_transaction() as txn_conn:
+                txn_cur = txn_conn.cursor()
+                for record_data in records:
+                    inspected_person = record_data.get('inspected_person', '')
+                    matched_employee_id = None  # 关联的 employee_id
 
-                # 如果这个人员有重名，使用用户选择的工号进行权限验证
-                if inspected_person in emp_no_selections:
-                    selected_emp_no = emp_no_selections[inspected_person]
-                    # 查询选中员工的部门，验证权限
-                    cur.execute("""
-                        SELECT department_id FROM employees
-                        WHERE emp_no = %s
-                    """, (selected_emp_no,))
-                    emp_row = cur.fetchone()
+                    # 如果这个人员有重名，使用用户选择的工号进行权限验证
+                    if inspected_person in emp_no_selections:
+                        selected_emp_no = emp_no_selections[inspected_person]
+                        # 查询选中员工的部门和 ID
+                        txn_cur.execute("""
+                            SELECT id, department_id FROM employees
+                            WHERE emp_no = %s
+                        """, (selected_emp_no,))
+                        emp_row = txn_cur.fetchone()
 
-                    if emp_row and emp_row['department_id']:
-                        emp_dept_id = emp_row['department_id']
-                        # 检查是否有权限访问该部门
-                        if emp_dept_id not in accessible_dept_ids:
-                            total_skipped_no_permission += 1
-                            continue
-                elif inspected_person:
-                    # 无重名情况，按名字查询部门验证权限
-                    cur.execute("""
-                        SELECT department_id FROM employees
-                        WHERE name = %s
-                        LIMIT 1
-                    """, (inspected_person,))
-                    emp_row = cur.fetchone()
+                        if emp_row:
+                            matched_employee_id = emp_row['id']
+                            if emp_row['department_id']:
+                                emp_dept_id = emp_row['department_id']
+                                # 检查是否有权限访问该部门
+                                if emp_dept_id not in accessible_dept_ids:
+                                    total_skipped_no_permission += 1
+                                    continue
+                    elif inspected_person:
+                        # 无重名情况，按名字查询部门和 ID 验证权限
+                        txn_cur.execute("""
+                            SELECT id, department_id FROM employees
+                            WHERE name = %s
+                            LIMIT 1
+                        """, (inspected_person,))
+                        emp_row = txn_cur.fetchone()
 
-                    if emp_row and emp_row['department_id']:
-                        emp_dept_id = emp_row['department_id']
-                        if emp_dept_id not in accessible_dept_ids:
-                            total_skipped_no_permission += 1
-                            continue
+                        if emp_row:
+                            matched_employee_id = emp_row['id']
+                            if emp_row['department_id']:
+                                emp_dept_id = emp_row['department_id']
+                                if emp_dept_id not in accessible_dept_ids:
+                                    total_skipped_no_permission += 1
+                                    continue
 
-                # 检查是否已存在完全相同的记录
-                cur.execute("""
-                    SELECT COUNT(*) AS cnt FROM safety_inspection_records
-                    WHERE category = %s
-                    AND inspection_date = %s
-                    AND location = %s
-                    AND hazard_description = %s
-                """, (
-                    record_data['category'],
-                    record_data['inspection_date'],
-                    record_data['location'],
-                    record_data['hazard_description']
-                ))
+                    # 检查是否已存在完全相同的记录
+                    txn_cur.execute("""
+                        SELECT COUNT(*) AS cnt FROM safety_inspection_records
+                        WHERE category = %s
+                        AND inspection_date = %s
+                        AND location = %s
+                        AND hazard_description = %s
+                    """, (
+                        record_data['category'],
+                        record_data['inspection_date'],
+                        record_data['location'],
+                        record_data['hazard_description']
+                    ))
 
-                if cur.fetchone()['cnt'] > 0:
-                    total_skipped += 1
-                    continue
+                    if txn_cur.fetchone()['cnt'] > 0:
+                        total_skipped += 1
+                        continue
 
-                # 插入记录
-                cur.execute("""
-                    INSERT INTO safety_inspection_records(
-                        category, inspection_date, location, hazard_description,
-                        corrective_measures, deadline_date, inspected_person,
-                        responsible_team, assessment, rectification_status,
-                        rectifier, work_type, responsibility_location,
-                        inspection_item, created_by, source_file
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    record_data['category'], record_data['inspection_date'],
-                    record_data['location'], record_data['hazard_description'],
-                    record_data['corrective_measures'], record_data['deadline_date'],
-                    record_data['inspected_person'], record_data['responsible_team'],
-                    record_data['assessment'], record_data['rectification_status'],
-                    record_data['rectifier'], record_data['work_type'],
-                    record_data['responsibility_location'], record_data['inspection_item'],
-                    uid, filename
-                ))
-                total_imported += 1
-
-            conn.commit()
+                    # 插入记录（含 employee_id）
+                    txn_cur.execute("""
+                        INSERT INTO safety_inspection_records(
+                            category, inspection_date, location, hazard_description,
+                            corrective_measures, deadline_date, inspected_person,
+                            responsible_team, assessment, rectification_status,
+                            rectifier, work_type, responsibility_location,
+                            inspection_item, created_by, source_file, employee_id
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        record_data['category'], record_data['inspection_date'],
+                        record_data['location'], record_data['hazard_description'],
+                        record_data['corrective_measures'], record_data['deadline_date'],
+                        record_data['inspected_person'], record_data['responsible_team'],
+                        record_data['assessment'], record_data['rectification_status'],
+                        record_data['rectifier'], record_data['work_type'],
+                        record_data['responsibility_location'], record_data['inspection_item'],
+                        uid, filename, matched_employee_id
+                    ))
+                    total_imported += 1
 
             # 清理临时文件和session
             cleanup_temp_file()
@@ -626,8 +634,7 @@ def confirm_duplicates():
             return redirect(url_for("safety.records"))
 
         except Exception as e:
-            error_msg = f"导入失败: {str(e)}"
-            conn.rollback()
+            error_msg = f"导入失败，已全部回滚：{str(e)}"
             flash(error_msg, "danger")
 
             # 记录失败的导入操作
@@ -685,7 +692,8 @@ def confirm_duplicates():
 def records():
     """安全检查记录列表和导出"""
     # 使用统一的日期筛选器
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     category_filter = request.args.get("category", "").strip()
     team_filter = request.args.get("team", "").strip()
@@ -696,11 +704,9 @@ def records():
     conn = get_db()
     cur = conn.cursor()
 
-    # 获取当前用户角色
-    user_id = session.get('user_id')
-    cur.execute("SELECT role FROM users WHERE id = %s", (user_id,))
-    row = cur.fetchone()
-    user_role = row['role'] if row else 'user'
+    # 获取当前用户角色（P1 统一出口）
+    from services.access_control_service import AccessControlService
+    user_role = AccessControlService.get_current_role() or 'user'
 
     # 使用部门过滤机制 - 通过inspected_person关联employees.name
     dept_ids = get_accessible_department_ids()
@@ -727,8 +733,8 @@ def records():
     base_query = f"""
         SELECT sr.*
         FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
     """
     params = dept_ids.copy()
 
@@ -761,24 +767,24 @@ def records():
     # 获取类别、车队和作业类型列表用于筛选
     cur.execute(f"""
         SELECT DISTINCT sr.category FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
         ORDER BY sr.category
     """, tuple(dept_ids))
     categories = [row['category'] for row in cur.fetchall() if row['category']]
 
     cur.execute(f"""
         SELECT DISTINCT sr.responsible_team FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
         ORDER BY sr.responsible_team
     """, tuple(dept_ids))
     teams = [row['responsible_team'] for row in cur.fetchall() if row['responsible_team']]
 
     cur.execute(f"""
         SELECT DISTINCT sr.work_type FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
           AND sr.work_type IS NOT NULL AND sr.work_type != ''
         ORDER BY sr.work_type
     """, tuple(dept_ids))
@@ -817,7 +823,8 @@ def analytics():
 def export():
     """导出安全检查记录到Excel"""
     # 使用统一的日期筛选器
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     category_filter = request.args.get("category", "").strip()
     team_filter = request.args.get("team", "").strip()
@@ -838,8 +845,8 @@ def export():
     base_query = f"""
         SELECT sr.*
         FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
     """
     params = dept_ids.copy()
 
@@ -918,19 +925,18 @@ def api_data():
     base_query = f"""
         SELECT sr.*
         FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
     """
     params = dept_ids.copy()
 
-    start_date = request.args.get("start_date")
-    if start_date:
-        base_query += " AND sr.inspection_date >= %s"
-        params.append(start_date)
-    end_date = request.args.get("end_date")
-    if end_date:
-        base_query += " AND sr.inspection_date <= %s"
-        params.append(end_date)
+    # 使用统一的日期筛选器
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range=None)
+    start_date, end_date = tr['start_date'], tr['end_date']
+    date_conditions, date_params = build_date_filter_sql('sr.inspection_date', start_date, end_date)
+    if date_conditions:
+        base_query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
 
     category = request.args.get("category")
     if category:
@@ -955,8 +961,7 @@ def api_data():
 @role_required('manager')
 def edit_record(record_id):
     """编辑安全检查记录（仅限部门管理员及以上权限）"""
-    conn = get_db()
-    cur = conn.cursor()
+    from models.db_transaction import db_transaction
 
     # 获取表单数据
     category = request.form.get('category', '').strip()
@@ -980,24 +985,33 @@ def edit_record(record_id):
         return redirect(url_for('safety.records'))
 
     try:
-        # 更新记录
-        cur.execute("""
-            UPDATE safety_inspection_records
-            SET category = %s, inspection_date = %s, location = %s,
-                hazard_description = %s, corrective_measures = %s,
-                deadline_date = %s, inspected_person = %s,
-                responsible_team = %s, assessment = %s,
-                rectification_status = %s, rectifier = %s,
-                work_type = %s, responsibility_location = %s,
-                inspection_item = %s
-            WHERE id = %s
-        """, (category, inspection_date, location, hazard_description,
-              corrective_measures, deadline_date, inspected_person,
-              responsible_team, assessment, rectification_status,
-              rectifier, work_type, responsibility_location,
-              inspection_item, record_id))
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            # 根据 inspected_person 反查 employee_id
+            matched_employee_id = None
+            if inspected_person:
+                cur.execute("""
+                    SELECT id FROM employees WHERE name = %s LIMIT 1
+                """, (inspected_person,))
+                emp_row = cur.fetchone()
+                if emp_row:
+                    matched_employee_id = emp_row['id']
 
-        conn.commit()
+            cur.execute("""
+                UPDATE safety_inspection_records
+                SET category = %s, inspection_date = %s, location = %s,
+                    hazard_description = %s, corrective_measures = %s,
+                    deadline_date = %s, inspected_person = %s,
+                    responsible_team = %s, assessment = %s,
+                    rectification_status = %s, rectifier = %s,
+                    work_type = %s, responsibility_location = %s,
+                    inspection_item = %s, employee_id = %s
+                WHERE id = %s
+            """, (category, inspection_date, location, hazard_description,
+                  corrective_measures, deadline_date, inspected_person,
+                  responsible_team, assessment, rectification_status,
+                  rectifier, work_type, responsibility_location,
+                  inspection_item, matched_employee_id, record_id))
         flash('安全检查记录已更新', 'success')
     except Exception as e:
         flash(f'更新失败: {e}', 'danger')
@@ -1009,13 +1023,11 @@ def edit_record(record_id):
 @role_required('manager')
 def delete_record(record_id):
     """删除安全检查记录（仅限部门管理员及以上权限）"""
-    conn = get_db()
-    cur = conn.cursor()
-
+    from models.db_transaction import db_transaction
     try:
-        # 删除记录
-        cur.execute("DELETE FROM safety_inspection_records WHERE id = %s", (record_id,))
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM safety_inspection_records WHERE id = %s", (record_id,))
         flash('安全检查记录已删除', 'success')
     except Exception as e:
         flash(f'删除失败: {e}', 'danger')
@@ -1027,8 +1039,7 @@ def delete_record(record_id):
 @role_required('manager')
 def batch_delete_records():
     """批量删除安全检查记录（仅限部门管理员及以上权限）"""
-    conn = get_db()
-    cur = conn.cursor()
+    from models.db_transaction import db_transaction
 
     record_ids = request.form.getlist('record_ids')
 
@@ -1037,10 +1048,10 @@ def batch_delete_records():
         return redirect(url_for('safety.records'))
 
     try:
-        # 批量删除记录
-        placeholders = ','.join(['%s'] * len(record_ids))
-        cur.execute(f"DELETE FROM safety_inspection_records WHERE id IN ({placeholders})", record_ids)
-        conn.commit()
+        with db_transaction() as conn:
+            cur = conn.cursor()
+            placeholders = ','.join(['%s'] * len(record_ids))
+            cur.execute(f"DELETE FROM safety_inspection_records WHERE id IN ({placeholders})", record_ids)
         flash(f'成功删除 {len(record_ids)} 条安全检查记录', 'success')
     except Exception as e:
         flash(f'批量删除失败: {e}', 'danger')
@@ -1069,14 +1080,15 @@ def api_analytics_severity_distribution():
         return jsonify([])
 
     # 使用统一的日期筛选函数
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT sr.assessment
         FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
         AND sr.assessment IS NOT NULL
         AND sr.assessment != ''
     """
@@ -1121,14 +1133,15 @@ def api_analytics_daily_trend():
         return jsonify({"dates": [], "counts": [], "scores": []})
 
     # 使用统一的日期筛选函数
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT sr.inspection_date, sr.assessment
         FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
         AND sr.assessment IS NOT NULL
         AND sr.assessment != ''
     """
@@ -1185,14 +1198,15 @@ def api_analytics_top_loss_items():
         return jsonify([])
 
     # 使用统一的日期筛选函数
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT sr.inspection_item, sr.assessment
         FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
         AND sr.inspection_item IS NOT NULL
         AND sr.inspection_item != ''
         AND sr.assessment IS NOT NULL
@@ -1242,7 +1256,8 @@ def api_analytics_personnel_risk_matrix():
         return jsonify([])
 
     # 使用统一的日期筛选函数
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
@@ -1251,8 +1266,8 @@ def api_analytics_personnel_risk_matrix():
             sr.responsible_team,
             sr.assessment
         FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
         AND sr.inspected_person IS NOT NULL
         AND sr.inspected_person != ''
         AND sr.assessment IS NOT NULL
@@ -1314,14 +1329,15 @@ def api_analytics_top_contributors():
         return jsonify({"names": [], "counts": []})
 
     # 使用统一的日期筛选函数
-    start_date, end_date = parse_date_filters('current_month')
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
 
     placeholders = ','.join(['%s'] * len(dept_ids))
     query = f"""
         SELECT sr.rectifier
         FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
         AND sr.rectifier IS NOT NULL
         AND sr.rectifier != ''
     """
@@ -1389,22 +1405,20 @@ def api_analytics_severity_drilldown():
             sr.location,
             sr.inspection_item
         FROM safety_inspection_records sr
-        LEFT JOIN employees e ON sr.inspected_person = e.name
-        WHERE (e.department_id IN ({placeholders}) OR sr.inspected_person IS NULL OR sr.inspected_person = '')
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
         AND sr.assessment IS NOT NULL
         AND sr.assessment != ''
     """
     params = list(dept_ids)
 
-    # 添加日期筛选
-    start_date = request.args.get('start_date')
-    if start_date:
-        query += " AND sr.inspection_date >= %s"
-        params.append(start_date)
-    end_date = request.args.get('end_date')
-    if end_date:
-        query += " AND sr.inspection_date <= %s"
-        params.append(end_date)
+    # 使用统一的日期筛选器
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range=None)
+    sd, ed = tr['start_date'], tr['end_date']
+    date_conditions, date_params = build_date_filter_sql('sr.inspection_date', sd, ed)
+    if date_conditions:
+        query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
 
     query += " ORDER BY sr.inspection_date DESC"
 

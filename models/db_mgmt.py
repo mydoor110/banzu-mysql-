@@ -89,6 +89,8 @@ class DBVersionManager:
     def _check_and_migrate(self):
         """
         Checks current DB version and applies migrations if needed.
+        采用逐版本写号策略：每完成一个版本的迁移后立即写入版本号，
+        确保迁移失败时版本号停在最后成功的位置。
         """
         # Check system_metadata for version
         db_version = 0
@@ -117,38 +119,45 @@ class DBVersionManager:
 
         if db_version < CURRENT_DB_VERSION:
             self._run_migrations(db_version, CURRENT_DB_VERSION)
-            
-            # Update version
-            self.cur.execute(
-                "INSERT INTO system_metadata (key_name, value) VALUES ('db_version', %s) "
-                "ON DUPLICATE KEY UPDATE value = %s",
-                (str(CURRENT_DB_VERSION), str(CURRENT_DB_VERSION))
-            )
-            print(f"[+] Database upgraded to version {CURRENT_DB_VERSION}")
+
+    def _update_version(self, version):
+        """将数据库版本号更新到指定版本"""
+        self.cur.execute(
+            "INSERT INTO system_metadata (key_name, value) VALUES ('db_version', %s) "
+            "ON DUPLICATE KEY UPDATE value = %s",
+            (str(version), str(version))
+        )
+        print(f"[+] Database version updated to {version}")
 
     def _run_migrations(self, start_ver, target_ver):
         """
         Executes specific migration logic based on version path.
+        采用逐版本写号：每完成一个版本迁移后立即写入该版本号。
+        如果某版本迁移失败，异常上抛，版本号停在最后成功的位置。
         """
         # Migration from 0 -> 1 (Fresh Install or Pre-versioning state)
         if start_ver < 1:
             print("[-] Running Migration v1 (Baseline Schema)...")
             self._migration_v1_baseline()
+            self._update_version(1)
             
         # Migration from 1 -> 2 (Current Updates)
         if start_ver < 2 and target_ver >= 2:
             print("[-] Running Migration v2 (Schema Updates)...")
             self._migration_v2_updates()
+            self._update_version(2)
 
         # Migration from 2 -> 3 (PPT Export Cache)
         if start_ver < 3 and target_ver >= 3:
             print("[-] Running Migration v3 (PPT Export Cache)...")
             self._migration_v3_ppt_cache()
+            self._update_version(3)
 
         # Migration from 3 -> 4 (Data Model Governance)
         if start_ver < 4 and target_ver >= 4:
             print("[-] Running Migration v4 (Data Model Governance)...")
             self._migration_v4_data_model()
+            self._update_version(4)
 
     def _migration_v1_baseline(self):
         """
@@ -180,22 +189,26 @@ class DBVersionManager:
 
     # Helper methods for migrations
     def _ensure_column(self, table_name, column_name, column_def):
+        """确保列存在，失败时抛出异常（致命错误）"""
         try:
             self.cur.execute(f"SHOW COLUMNS FROM {table_name} LIKE %s", (column_name,))
             if self.cur.fetchone() is None:
                 print(f"    + Adding column {table_name}.{column_name}")
                 self.cur.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}")
         except Exception as e:
-            print(f"[!] Error ensuring column {column_name}: {e}")
+            print(f"[!] FATAL: Failed to ensure column {table_name}.{column_name}: {e}")
+            raise  # 列新增失败是致命错误，不允许继续升级版本
 
     def _ensure_unique_index(self, table_name, index_name, columns):
+        """确保唯一索引存在，失败时抛出异常（致命错误）"""
         try:
             self.cur.execute(f"SHOW INDEX FROM {table_name} WHERE Key_name = %s", (index_name,))
             if self.cur.fetchone() is None:
                 print(f"    + Creating unique index {index_name} on {table_name}")
                 self.cur.execute(f"CREATE UNIQUE INDEX {index_name} ON {table_name}({columns})")
         except Exception as e:
-            print(f"[!] Error ensuring index {index_name}: {e}")
+            print(f"[!] FATAL: Failed to ensure index {index_name} on {table_name}: {e}")
+            raise  # 索引创建失败是致命错误，不允许继续升级版本
 
     def _ensure_foreign_key(self, table_name, constraint_name, foreign_key, references, on_delete="CASCADE"):
         """确保外键约束存在"""
@@ -226,12 +239,13 @@ class DBVersionManager:
             # 外键约束失败不是致命错误，记录但继续
 
     def _ensure_table(self, table_name, create_sql):
-        """幂等建表：若不存在则创建，完全安全可重复运行"""
+        """幂等建表：若不存在则创建，失败时抛出异常"""
         try:
             self.cur.execute(create_sql)
             print(f"    + Table {table_name} ensured")
         except Exception as e:
-            print(f"[!] Error ensuring table {table_name}: {e}")
+            print(f"[!] FATAL: Failed to ensure table {table_name}: {e}")
+            raise  # 建表失败是致命错误
 
     def _migration_v3_ppt_cache(self):
         """Add PPT export AI summary cache table"""
@@ -286,7 +300,7 @@ class DBVersionManager:
         except Exception as e:
             print(f"    [!] Backfill warning: {e}")
 
-        # === 3. 日期字段结构化 ===
+        # === 3. 日期字段结构化（Python 端逐行解析，避免 SQL 一刀切丢数据） ===
         date_migrations = [
             ('employees', 'birth_date'),
             ('employees', 'certification_date'),
@@ -298,9 +312,35 @@ class DBVersionManager:
             ('safety_inspection_records', 'deadline_date'),
         ]
 
+        import re
+
+        def _try_parse_date(val):
+            """将各种日期字符串标准化为 YYYY-MM-DD（与 scripts/migrate_date_fields.py 一致）"""
+            if not val:
+                return None
+            val = str(val).strip()
+            if not val:
+                return None
+            # 已是标准格式
+            if re.match(r'^\d{4}-\d{2}-\d{2}$', val):
+                return val
+            # yyyy-m-d / yyyy/m/d / yyyy.m.d / yyyy年m月d日
+            m = re.match(r'^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})[日]?$', val)
+            if m:
+                y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                if 1900 <= y <= 2100 and 1 <= mo <= 12 and 1 <= d <= 31:
+                    return f"{y:04d}-{mo:02d}-{d:02d}"
+            # yyyy年m月 / yyyy-m / yyyy/m（缺日，默认1号）
+            m = re.match(r'^(\d{4})[-/.年](\d{1,2})[月]?$', val)
+            if m:
+                y, mo = int(m.group(1)), int(m.group(2))
+                if 1900 <= y <= 2100 and 1 <= mo <= 12:
+                    return f"{y:04d}-{mo:02d}-01"
+            return None
+
         for table, field in date_migrations:
             try:
-                # 检查当前类型
+                # 检查当前类型，已是 DATE 则跳过
                 self.cur.execute("""
                     SELECT DATA_TYPE FROM information_schema.COLUMNS
                     WHERE TABLE_SCHEMA = DATABASE()
@@ -310,28 +350,35 @@ class DBVersionManager:
                 if row and row['DATA_TYPE'] == 'date':
                     continue  # 已是 DATE，跳过
 
-                # 先清洗：标准化日期格式
-                # 处理 yyyy年mm月dd日 → yyyy-mm-dd
+                # Python 端逐行解析，而非 SQL 一刀切
                 self.cur.execute(f"""
-                    UPDATE {table}
-                    SET {field} = NULL
-                    WHERE {field} IS NOT NULL
-                    AND {field} != ''
-                    AND {field} NOT REGEXP '^[0-9]{{4}}-[0-9]{{1,2}}-[0-9]{{1,2}}$'
-                    AND {field} NOT REGEXP '^[0-9]{{4}}/[0-9]{{1,2}}/[0-9]{{1,2}}$'
+                    SELECT id, {field} as val FROM {table}
+                    WHERE {field} IS NOT NULL AND {field} != ''
                 """)
-                nulled = self.cur.rowcount
+                rows = self.cur.fetchall()
 
-                # 将 yyyy/mm/dd 格式统一为 yyyy-mm-dd
-                self.cur.execute(f"""
-                    UPDATE {table}
-                    SET {field} = REPLACE({field}, '/', '-')
-                    WHERE {field} LIKE '%%/%%'
-                """)
+                cleaned = 0
+                nulled = 0
+                for r in rows:
+                    parsed = _try_parse_date(r['val'])
+                    if parsed:
+                        if parsed != str(r['val']).strip():
+                            self.cur.execute(
+                                f"UPDATE {table} SET {field} = %s WHERE id = %s",
+                                (parsed, r['id'])
+                            )
+                            cleaned += 1
+                    else:
+                        self.cur.execute(
+                            f"UPDATE {table} SET {field} = NULL WHERE id = %s",
+                            (r['id'],)
+                        )
+                        nulled += 1
 
                 # 执行 ALTER TABLE
-                not_null = ' NOT NULL' if field == 'training_date' or field == 'inspection_date' else ''
+                not_null = ' NOT NULL' if field in ('training_date', 'inspection_date') else ''
                 self.cur.execute(f"ALTER TABLE {table} MODIFY COLUMN {field} DATE{not_null}")
-                print(f"    + {table}.{field}: VARCHAR → DATE (cleared {nulled} unparseable)")
+                print(f"    + {table}.{field}: VARCHAR → DATE (标准化 {cleaned}, 置NULL {nulled})")
             except Exception as e:
                 print(f"    [!] {table}.{field} migration failed: {e}")
+

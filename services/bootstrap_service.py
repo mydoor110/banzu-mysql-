@@ -112,13 +112,13 @@ def init_algorithm_config():
             default_config = lenient_config
             default_preset_name = lenient_name
         cur.execute(
-            "INSERT INTO algorithm_active_config (id, based_on_preset, is_customized, config_data, updated_at) VALUES (1, %s, 0, %s, %s)",
+            "INSERT INTO algorithm_active_config (id, based_on_preset, is_customized, config_data, config_version, updated_at) VALUES (1, %s, 0, %s, 1, %s)",
             (default_preset_key, json.dumps(default_config, ensure_ascii=False), datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         )
 
-        # 记录初始化日志
+        # 记录初始化日志（含版本号）
         cur.execute(
-            "INSERT INTO algorithm_config_logs (action, preset_name, new_config, change_reason, changed_by, changed_by_name) VALUES ('INIT', %s, %s, '系统初始化', 1, 'system')",
+            "INSERT INTO algorithm_config_logs (action, preset_name, new_config, change_reason, changed_by, changed_by_name, config_version) VALUES ('INIT', %s, %s, '系统初始化', 1, 'system', 1)",
             (default_preset_name, json.dumps(default_config, ensure_ascii=False))
         )
 

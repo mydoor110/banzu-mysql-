@@ -10,7 +10,7 @@ from .decorators import admin_required
 
 # 创建 Blueprint  
 departments_bp = Blueprint('departments', __name__, url_prefix='/departments')
-APP_TITLE = "班组管理"
+APP_TITLE = "乘务数字化管理平台"
 
 @departments_bp.route('/', methods=['GET', 'POST'])
 @admin_required
