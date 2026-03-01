@@ -41,6 +41,21 @@ def ppt_export_page():
     return render_template('ppt_export.html', title='导出综合能力报告 PPT')
 
 
+@export_ppt_bp.route('/export/ppt/config')
+def ppt_export_config_page():
+    """PPT 导出新配置页（Phase 1 新建，与旧页面并行运行）"""
+    from flask import redirect, url_for, flash
+    if not session.get('logged_in'):
+        return redirect(url_for('auth.login'))
+
+    from services.access_control_service import AccessControlService
+    if not AccessControlService.has_permission('manager'):
+        flash('需要管理员权限才能使用导出功能', 'danger')
+        return redirect(url_for('personnel.dashboard'))
+
+    return render_template('ppt_export_config.html', title='配置 PPT 导出')
+
+
 def _get_user_info():
     """返回 (user_id, role, department_id)（P1 统一出口）"""
     from services.access_control_service import AccessControlService
