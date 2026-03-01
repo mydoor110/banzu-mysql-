@@ -589,7 +589,18 @@
                     id: 'safety_severity',
                     title: '安全问题扣分分值分布',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    pptEnhance: { type: 'decision_summary', summaryMode: 'severity' },
+                    pptEnhance: {
+                        type: 'decision_summary',
+                        summaryMode: 'severity',
+                        statsRule: { minScore: 3 },
+                        bulletsRule: {
+                            minScore: 4,
+                            fallbackMinScore: 3,
+                            maxItems: 5,
+                            sort: 'score_desc_date_desc',
+                            fields: ['date', 'person', 'problem', 'score']
+                        }
+                    },
                     chartLabels: {
                         scope: '安全问题记录', unit: '次',
                         sortRule: '按扣分分值分级', note: '3分及以上可下钻',
