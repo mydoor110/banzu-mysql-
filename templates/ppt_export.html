@@ -544,7 +544,23 @@
         allCharts.forEach(({ mod, mIdx, chartObj, iIdx, meta }) => {
             const checked = meta.defaultSelected ? 'checked' : '';
             const priorityBadge = meta.priority === 'high' ? '<span class="badge bg-success ms-1" style="font-size:0.65em;">推荐</span>' : '';
-            const hintHtml = meta.summaryHint ? `<div class="text-muted mt-1" style="font-size:0.75em;line-height:1.3;"><i class="fas fa-lightbulb me-1 text-warning"></i>${meta.summaryHint}</div>` : '';
+            // 优先用结构化 labels 渲染 chip 行，降级显示 summaryHint 文本
+            let hintHtml = '';
+            if (chartObj.labels) {
+                const lb = chartObj.labels;
+                const chipParts = [];
+                if (lb.scope) chipParts.push(`<span class="cl-chip cl-scope">🏷\u00a0${lb.scope}</span>`);
+                if (lb.unit) chipParts.push(`<span class="cl-chip cl-unit">单位：${lb.unit}</span>`);
+                if (lb.sampleN != null) chipParts.push(`<span class="cl-chip cl-n">N\u202f=\u202f${lb.sampleN}</span>`);
+                if (lb.extraLabel) chipParts.push(`<span class="cl-chip cl-extra">${lb.extraLabel}</span>`);
+                if (lb.range) chipParts.push(`<span class="cl-chip cl-range">${lb.range}</span>`);
+                if (lb.note) chipParts.push(`<span class="cl-chip cl-note">${lb.note}</span>`);
+                if (chipParts.length) {
+                    hintHtml = `<div class="chart-labels-bar" style="margin-top:6px;">${chipParts.join('')}</div>`;
+                }
+            } else if (meta.summaryHint) {
+                hintHtml = `<div class="text-muted mt-1" style="font-size:0.75em;line-height:1.3;"><i class="fas fa-lightbulb me-1 text-warning"></i>${meta.summaryHint}</div>`;
+            }
 
             const col = document.createElement('div');
             col.className = 'col-md-6 mb-3';
@@ -598,7 +614,16 @@
                 if (!finalSlidesMap[mod.title]) {
                     finalSlidesMap[mod.title] = { title: mod.title, images: [], note: mod.note };
                 }
-                finalSlidesMap[mod.title].images.push({ title: newTitle, image: chartObj.image });
+                finalSlidesMap[mod.title].images.push({
+                    title: newTitle,
+                    image: chartObj.image,
+                    hint: chartObj.hint || '',
+                    labels: chartObj.labels || null,
+                    // pptEnhance 元信息（后续经由 injectPptEnhanceData 填入）
+                    chartId: chartObj.chartId || null,
+                    moduleKey: chartObj.moduleKey || null,
+                    pptEnhance: chartObj.pptEnhance || null
+                });
             }
         });
 
@@ -633,6 +658,64 @@
             moduleSlides.forEach(mod => {
                 moduleChartCounts[mod.title] = (mod.images || []).length;
             });
+
+
+            // ─── PPT 增强数据注入（enhanceData & summaryData） ─────────────────────
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>正在构建 PPT 增强数据...';
+            // drilldown 日期参数统一使用 start_date/end_date（YYYY-MM-DD），精确匹配后端按日过滤
+            const _startDate = start.length === 7 ? start + '-01' : start;
+            const _endDateRaw = end.length === 7 ? end : end.substring(0, 7);
+            const _lastDay = new Date(new Date(_endDateRaw + '-01').getFullYear(), new Date(_endDateRaw + '-01').getMonth() + 1, 0).getDate();
+            const _endDate = _endDateRaw + '-' + String(_lastDay).padStart(2, '0');
+            const dateParams = `start_date=${_startDate}&end_date=${_endDate}`;
+            const decisionSummaryFetches = [];   // 收集并发 drilldown 任务
+
+            for (const modSlide of moduleSlides) {
+                for (const chartObj of modSlide.images) {
+                    const pe = chartObj.pptEnhance;
+                    if (!pe || !pe.type) continue;
+                    const cache = window.__pptCache && window.__pptCache[chartObj.moduleKey];
+
+                    if (pe.type === 'risk_matrix' && cache && cache.apiResp) {
+                        // 风险矩阵：从 apiResp[2] 提炼右上象限 Top5
+                        const matrixData = Array.isArray(cache.apiResp) ? cache.apiResp[2] : null;
+                        if (matrixData && matrixData.length > 0) {
+                            const vals = matrixData.map(m => Array.isArray(m.value) ? m.value : [m.count || 0, m.total_score || 0]);
+                            const avgX = vals.reduce((s, v) => s + v[0], 0) / vals.length;
+                            const avgY = vals.reduce((s, v) => s + v[1], 0) / vals.length;
+                            const topN = pe.annotateTopN || 5;
+                            chartObj.enhanceData = matrixData
+                                .filter((m, i) => vals[i][0] >= avgX && vals[i][1] >= avgY)
+                                .sort((a, b) => (b.value ? b.value[1] : b.total_score || 0) - (a.value ? a.value[1] : a.total_score || 0))
+                                .slice(0, topN)
+                                .map(m => ({
+                                    name: m.name, emp_no: m.emp_no || '',
+                                    team: m.team || '', department: m.department || '',
+                                    count: Array.isArray(m.value) ? m.value[0] : (m.count || 0),
+                                    total_score: Array.isArray(m.value) ? m.value[1] : (m.total_score || 0)
+                                }));
+                        }
+                    }
+
+                    else if (pe.type === 'trend' && cache) {
+                        // 趋势图：计算各序列的 latest/peak/average
+                        chartObj.enhanceData = buildTrendEnhanceData(pe, cache, chartObj.chartId);
+                    }
+
+                    else if (pe.type === 'decision_summary' && cache) {
+                        // 决策型摘要：异步拉取 drilldown，放到并发队列
+                        decisionSummaryFetches.push(
+                            buildDecisionSummaryData(chartObj, pe.summaryMode, cache, dateParams)
+                        );
+                    }
+                }
+            }
+
+            // 并发执行所有 decision_summary 数据拉取
+            if (decisionSummaryFetches.length > 0) {
+                await Promise.all(decisionSummaryFetches);
+            }
+            // ───────────────────────────────────────────────────────────────────────
 
             const body = {
                 theme: theme,
@@ -686,6 +769,18 @@
     // ── 各模块截图（由 ChartRegistry 驱动）─────────────────────────────────
 
     async function captureAllModules(start, end) {
+        // 先获取当前用户可访问基层部门数，用于 multi_dept 权限过滤
+        let deptCount = 0;
+        try {
+            const deptResp = await fetch('/personnel/api/analytics-data');
+            if (deptResp.ok) {
+                const deptData = await deptResp.json();
+                deptCount = deptData.accessible_dept_count || 0;
+            }
+        } catch (e) {
+            console.warn('[captureAllModules] 获取部门数失败:', e);
+        }
+
         const moduleConfigs = [
             { key: 'analytics', note: '基于人员基础档案数据统计分析' },
             { key: 'training', note: '重点关注员工各项培训及考核合格情况' },
@@ -695,8 +790,12 @@
         for (const cfg of moduleConfigs) {
             const mod = ChartRegistry.getModule(cfg.key);
             if (!mod) continue;
-            const images = await captureModuleCharts(cfg.key, start, end);
-            results.push({ title: mod.label, images, note: cfg.note });
+            const images = await captureModuleCharts(cfg.key, start, end, deptCount);
+            let note = cfg.note;
+            if (images.length === 0) {
+                note = deptCount === 0 ? '当前账号无可访问基层部门，无法生成数据' : '当前时间范围内无有效数据或图表被跳过';
+            }
+            results.push({ title: mod.label, images, note: note });
         }
 
         // 九宫格（特殊图表，不在 registry 中）
@@ -712,12 +811,28 @@
         return results;
     }
 
-    async function captureModuleCharts(moduleKey, start, end) {
+    async function captureModuleCharts(moduleKey, start, end, deptCount) {
         try {
             const mod = ChartRegistry.getModule(moduleKey);
             if (!mod) return [];
 
-            const params = new URLSearchParams({ start_month: start, end_month: end });
+            // 根据模块类型分流传递时间参数，避免后端 parse_time_range() 粒度校验误切
+            let params;
+            if (moduleKey === 'safety') {
+                const [startYear, startMonth] = start.split('-');
+                const [endYear, endMonth] = end.split('-');
+                const endMonthLastDay = new Date(endYear, endMonth, 0).getDate();
+                const endDateString = endMonthLastDay < 10 ? '0' + endMonthLastDay : endMonthLastDay;
+                params = new URLSearchParams({
+                    start_date: `${start}-01`,
+                    end_date: `${end}-${endDateString}`
+                });
+            } else {
+                params = new URLSearchParams({
+                    start_month: start,
+                    end_month: end
+                });
+            }
             let apiResp;
 
             if (mod.multiApi) {
@@ -736,10 +851,24 @@
 
             if (!apiResp) return [];
 
-            // 使用 ChartRegistry 离线渲染所有图表
-            const images = ChartRegistry.renderOfflineAll(moduleKey, apiResp);
+            // 缓存原始数据（供导出增强层使用）
+            // 注意：必须在离线渲染之前落地缓存，避免同一套缓存时序混乱或在渲染期丢失
+            window.__pptCache = window.__pptCache || {};
+            window.__pptCache[moduleKey] = {
+                apiResp: apiResp,
+                processed: ChartRegistry.preprocess(moduleKey, apiResp)
+            };
 
-            console.log(`[captureModuleCharts] ${moduleKey}: 生成 ${images.length} 张图表`);
+            // 使用 ChartRegistry 离线渲染所有图表（含 selfFetchUrl 异步图表 + 权限过滤）
+            var urlParams = params.toString();
+            const images = await ChartRegistry.renderOfflineAllAsync(moduleKey, apiResp, urlParams, deptCount);
+
+            console.log(`[captureModuleCharts] ${moduleKey}: 生成 ${images.length} 张图表`, {
+                urls: mod.multiApi ? mod.apiUrls : mod.apiUrl,
+                deptCount: deptCount,
+                apiResp: apiResp
+            });
+
             return images;
         } catch (e) {
             console.warn(`[captureModuleCharts] ${moduleKey} 失败:`, e);
@@ -808,12 +937,12 @@
 
             // 标题
             ctx.fillStyle = '#333';
-            ctx.font = 'bold 18px sans-serif';
+            ctx.font = 'bold 24px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('人才九宫格分布', W / 2, 30);
+            ctx.fillText('人才九宫格分布', W / 2, 35);
 
             // 网格区域
-            const padLeft = 50, padTop = 55, padRight = 20, padBottom = 45;
+            const padLeft = 60, padTop = 65, padRight = 30, padBottom = 55;
             const gridW = W - padLeft - padRight;
             const gridH = H - padTop - padBottom;
             const cellW = gridW / 3;
@@ -838,29 +967,29 @@
                     const label = gridLabels[key] || '';
                     const people = cells[key] || [];
                     ctx.fillStyle = '#333';
-                    ctx.font = 'bold 13px sans-serif';
+                    ctx.font = 'bold 18px sans-serif';
                     ctx.textAlign = 'center';
-                    ctx.fillText(label, x + cellW / 2, y + 22);
+                    ctx.fillText(label, x + cellW / 2, y + 30);
 
                     // 人数
                     ctx.fillStyle = '#666';
-                    ctx.font = '12px sans-serif';
-                    ctx.fillText(`${people.length}人`, x + cellW / 2, y + 40);
+                    ctx.font = '16px sans-serif';
+                    ctx.fillText(`${people.length}人`, x + cellW / 2, y + 55);
 
                     // 人员名单（紧凑排列，最多显示若干行）
                     ctx.fillStyle = '#555';
-                    ctx.font = '11px sans-serif';
-                    const maxNamesPerLine = Math.floor((cellW - 16) / 36) || 3;
+                    ctx.font = '16px sans-serif';
+                    const maxNamesPerLine = Math.floor((cellW - 20) / 45) || 3;
                     const nameLines = [];
                     for (let i = 0; i < people.length; i += maxNamesPerLine) {
                         nameLines.push(people.slice(i, i + maxNamesPerLine).join('  '));
                     }
-                    const maxLines = Math.floor((cellH - 55) / 16);
+                    const maxLines = Math.floor((cellH - 75) / 22);
                     nameLines.slice(0, maxLines).forEach((line, idx) => {
-                        ctx.fillText(line, x + cellW / 2, y + 58 + idx * 16);
+                        ctx.fillText(line, x + cellW / 2, y + 80 + idx * 22);
                     });
                     if (nameLines.length > maxLines) {
-                        ctx.fillText(`... 等${people.length}人`, x + cellW / 2, y + 58 + maxLines * 16);
+                        ctx.fillText(`... 等${people.length}人`, x + cellW / 2, y + 80 + maxLines * 22);
                     }
                 }
             }
@@ -868,26 +997,26 @@
             // Y轴标签
             ctx.save();
             ctx.fillStyle = '#666';
-            ctx.font = '12px sans-serif';
+            ctx.font = '16px sans-serif';
             ctx.textAlign = 'center';
-            ctx.translate(15, padTop + gridH / 2);
+            ctx.translate(20, padTop + gridH / 2);
             ctx.rotate(-Math.PI / 2);
             ctx.fillText('稳定度 + 学习能力 ↑', 0, 0);
             ctx.restore();
 
             // Y轴刻度
             ctx.fillStyle = '#999';
-            ctx.font = '11px sans-serif';
+            ctx.font = '15px sans-serif';
             ctx.textAlign = 'right';
-            ctx.fillText('高', padLeft - 8, padTop + cellH / 2 + 4);
-            ctx.fillText('中', padLeft - 8, padTop + cellH * 1.5 + 4);
-            ctx.fillText('低', padLeft - 8, padTop + cellH * 2.5 + 4);
+            ctx.fillText('高', padLeft - 10, padTop + cellH / 2 + 5);
+            ctx.fillText('中', padLeft - 10, padTop + cellH * 1.5 + 5);
+            ctx.fillText('低', padLeft - 10, padTop + cellH * 2.5 + 5);
 
             // X轴标签
             ctx.fillStyle = '#666';
-            ctx.font = '12px sans-serif';
+            ctx.font = '16px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('三维综合分（绩效 + 安全 + 培训）→', padLeft + gridW / 2, H - 8);
+            ctx.fillText('三维综合分（绩效 + 安全 + 培训）→', padLeft + gridW / 2, H - 10);
 
             // X轴刻度
             ctx.fillStyle = '#999';
@@ -983,6 +1112,196 @@
         div.innerHTML = `${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
         document.body.appendChild(div);
         setTimeout(() => div.remove(), 5000);
+    }
+
+    // ─── PPT 增强辅助函数 ──────────────────────────────────────────────────
+
+    /** 统一分值解析：把 "3分"/"3.0分"/数字 → 浮点数 */
+    function parseSeverityScore(label) {
+        if (typeof label === 'number') return label;
+        const m = String(label).match(/[\d.]+/);
+        return m ? parseFloat(m[0]) : 0;
+    }
+
+    /**
+     * 为趋势图构建 enhanceData
+     * @param {object} pe - pptEnhance 元信息
+     * @param {object} cache - __pptCache[moduleKey]
+     * @param {string} chartId - 图表 id
+     */
+    function buildTrendEnhanceData(pe, cache, chartId) {
+        if (!cache) return null;
+        const { apiResp, processed } = cache;
+        const seriesArr = [];
+
+        if (chartId === 'training_monthly_rate') {
+            // 单序列：合格率
+            const keys = processed && processed.monthKeys;
+            const monthMap = processed && processed.monthMap;
+            if (!keys || !monthMap) return null;
+            const yVals = keys.map(m => monthMap[m].total > 0 ? +(monthMap[m].qualified / monthMap[m].total * 100).toFixed(1) : 0);
+            seriesArr.push(_calcSeriesStat(keys, yVals, '合格率', '%'));
+
+        } else if (chartId === 'training_monthly_count') {
+            // 双序列：总人次、不合格人次
+            const keys = processed && processed.monthKeys;
+            const monthMap = processed && processed.monthMap;
+            if (!keys || !monthMap) return null;
+            const total = keys.map(m => monthMap[m].total);
+            const fail = keys.map(m => monthMap[m].total - monthMap[m].qualified);
+            seriesArr.push(_calcSeriesStat(keys, total, '总人次', '人次'));
+            seriesArr.push(_calcSeriesStat(keys, fail, '不合格人次', '人次'));
+
+        } else if (chartId === 'safety_daily_trend') {
+            // 双轴：违规次数、累计扣分
+            const raw = Array.isArray(apiResp) ? apiResp[3] : null;  // apiIndex: 3
+            if (!raw || !raw.dates) return null;
+            seriesArr.push(_calcSeriesStat(raw.dates, raw.counts, '违规次数', '次'));
+            seriesArr.push(_calcSeriesStat(raw.dates, raw.scores, '累计扣分', '分'));
+        }
+
+        return seriesArr.length ? { series: seriesArr } : null;
+    }
+
+    /** 单序列统计帮手：计算 latest/peak/average */
+    function _calcSeriesStat(xLabels, yVals, name, unit) {
+        const n = yVals.length;
+        if (!n) return { name, unit, latest: null, latestLabel: null, peak: null, peakLabel: null, average: null };
+        const latest = yVals[n - 1];
+        const latestLabel = xLabels[n - 1];
+        let peakIdx = 0;
+        yVals.forEach((v, i) => { if (v > yVals[peakIdx]) peakIdx = i; });
+        const avg = yVals.reduce((s, v) => s + v, 0) / n;
+        return {
+            name, unit,
+            latest: +latest.toFixed(1),
+            latestLabel,
+            peak: +yVals[peakIdx].toFixed(1),
+            peakLabel: xLabels[peakIdx],
+            average: +avg.toFixed(1)
+        };
+    }
+
+    /**
+     * 为决策型图表异步构建 summaryData（含 drilldown 拉取）
+     * 结果直接写入 chartObj.summaryData；空数据时不写入
+     */
+    async function buildDecisionSummaryData(chartObj, mode, cache, dateParams) {
+        try {
+            const { apiResp, processed } = cache;
+            const isMultiApi = Array.isArray(apiResp);
+            let stats = [], bullets = [], chartTitle = chartObj.title || '';
+
+            if (mode === 'severity') {
+                // 从 apiResp[0] 统计 ≥3 分问题数
+                const raw = isMultiApi ? apiResp[0] : apiResp;
+                if (!raw || !raw.length) return;
+                const threshold = 3;
+                const highCount = raw.filter(r => parseSeverityScore(r.name) >= threshold)
+                    .reduce((s, r) => s + (r.value || 0), 0);
+                if (highCount === 0) return;
+                // 分别拉 score=3/4/5 再聚合 bullets
+                const scoreList = raw.map(r => parseSeverityScore(r.name))
+                    .filter(s => s >= threshold);
+                const uniqueScores = [...new Set(scoreList)];
+                const dResults = await Promise.all(
+                    uniqueScores.map(s => fetch(`/safety/api/analytics/severity-drilldown?score=${s}&${dateParams}`)
+                        .then(r => r.ok ? r.json() : null).catch(() => null))
+                );
+                const allProblems = [];
+                dResults.forEach(dr => {
+                    if (dr && dr.problems) allProblems.push(...dr.problems);
+                });
+                allProblems.sort((a, b) => b.score - a.score);
+                const persons = [...new Set(allProblems.map(p => p.inspectedPerson).filter(Boolean))];
+                const depts = [...new Set(allProblems.map(p => p.department).filter(Boolean))];
+                const teams = [...new Set(allProblems.map(p => p.team).filter(Boolean))];
+                stats = [
+                    { label: `≥${threshold}分问题数`, value: String(highCount) },
+                    { label: '涉及人员数', value: String(persons.length) },
+                    { label: '涉及部门/班组', value: `${depts.length}/${teams.length}` }
+                ];
+                bullets = allProblems.slice(0, 3).map(
+                    p => `${p.date || ''}  ${p.inspectedPerson || ''}  ${p.inspectionItem || p.hazardDescription || ''}  -${p.score}分`
+                );
+
+            } else if (mode === 'top_loss') {
+                const raw = isMultiApi ? apiResp[1] : apiResp;
+                const extracted = raw && raw.items
+                    ? raw.items.map((name, i) => ({ name, score: raw.scores[i] || 0 }))
+                    : [];
+                if (!extracted.length) return;
+                const top1 = extracted[0];
+                const dr = await fetch(`/safety/api/analytics/top-loss-drilldown?item=${encodeURIComponent(top1.name)}&${dateParams}`)
+                    .then(r => r.ok ? r.json() : null).catch(() => null);
+                const problems = dr && dr.problems ? dr.problems : [];
+                const persons = [...new Set(problems.map(p => p.inspectedPerson).filter(Boolean))];
+                const depts = [...new Set(problems.map(p => p.department).filter(Boolean))];
+                const teams = [...new Set(problems.map(p => p.team).filter(Boolean))];
+                stats = [
+                    { label: 'Top1 问题项', value: top1.name },
+                    { label: '涉及人员数', value: String(persons.length) },
+                    { label: '涉及部门/班组', value: `${depts.length}/${teams.length}` }
+                ];
+                bullets = problems.slice(0, 3).map(
+                    p => `${p.date || ''}  ${p.inspectedPerson || ''}  ${p.hazardDescription || ''}  -${p.score}分`
+                );
+
+            } else if (mode === 'top_frequency') {
+                const raw = isMultiApi ? apiResp[5] : apiResp;
+                const extracted = raw && raw.items
+                    ? raw.items.map((name, i) => ({ name, count: raw.counts[i] || 0 }))
+                    : [];
+                if (!extracted.length) return;
+                const top1 = extracted[0];
+                const dr = await fetch(`/safety/api/analytics/top-frequency-drilldown?item=${encodeURIComponent(top1.name)}&${dateParams}`)
+                    .then(r => r.ok ? r.json() : null).catch(() => null);
+                const problems = dr && dr.problems ? dr.problems : [];
+                const persons = [...new Set(problems.map(p => p.inspectedPerson).filter(Boolean))];
+                const depts = [...new Set(problems.map(p => p.department).filter(Boolean))];
+                const teams = [...new Set(problems.map(p => p.team).filter(Boolean))];
+                stats = [
+                    { label: 'Top1 高频问题', value: top1.name },
+                    { label: '累计发生次数', value: String(top1.count) },
+                    { label: '涉及部门/班组', value: `${depts.length}/${teams.length}` }
+                ];
+                bullets = problems.slice(0, 3).map(
+                    p => `${p.date || ''}  ${p.inspectedPerson || ''}  ${p.hazardDescription || ''}  -${p.score}分`
+                );
+
+            } else if (mode === 'project_top10') {
+                // extractData 返回 [[project, count], ...]
+                const proj = processed;
+                if (!proj) return;
+                // 重新调用 extractData
+                const mod = ChartRegistry.getModule(chartObj.moduleKey);
+                if (!mod) return;
+                const chartDef = mod.charts.find(c => c.id === chartObj.chartId);
+                if (!chartDef) return;
+                const extracted = chartDef.extractData(apiResp, processed);
+                if (!extracted || !extracted.length) return;
+                const top1Name = extracted[0][0], top1Count = extracted[0][1];
+                const dr = await fetch(`/training/api/analytics/project-drilldown?project=${encodeURIComponent(top1Name)}&${dateParams}`)
+                    .then(r => r.ok ? r.json() : null).catch(() => null);
+                const records = dr ? (dr.rows || dr.records || []) : [];
+                const persons = [...new Set(records.map(p => p.name || p.empNo).filter(Boolean))];
+                const teams = [...new Set(records.map(p => p.team).filter(Boolean))];
+                stats = [
+                    { label: 'Top1 失格项目', value: top1Name },
+                    { label: '不合格次数', value: String(top1Count) },
+                    { label: '涉及人员数', value: String(persons.length) }
+                ];
+                bullets = records.slice(0, 3).map(
+                    p => `${p.date || ''}  ${p.name || p.empNo || ''}  ${p.team || ''}  ${p.specificProblem || p.problemType || ''}`
+                );
+            }
+
+            if (stats.length) {
+                chartObj.summaryData = { mode, chartTitle, stats, bullets: bullets.length ? bullets : ['暂无典型问题记录'] };
+            }
+        } catch (e) {
+            console.warn('[buildDecisionSummaryData] 构建摘要失败:', chartObj.chartId, e);
+        }
     }
 
     // ─── 初始化 ────────────────────────────────────────────────────────────

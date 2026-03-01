@@ -13,9 +13,10 @@
 
   <!-- Bootstrap 5 (Local) -->
   <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
-  <!-- Font Awesome (Local) -->
-  <link href="{{ url_for('static', filename='fontawesome/css/all.min.css') }}" rel="stylesheet">
+  <!-- Font Awesome (Local SVG JS) -->
+  <script defer src="{{ url_for('static', filename='fontawesome/js/all.min.js') }}"></script>
   <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/chart-labels.css') }}" rel="stylesheet">
   <style>
     /* Page transition */
     .app-body {
@@ -138,7 +139,7 @@
               <i class="fas fa-chart-line"></i>绩效管理
             </a>
           </li>
-          {% if g.get('user_ctx', {}).get('role') == 'admin' %}
+          {% if g.get('user_ctx') and g.user_ctx.get('role') == 'admin' %}
           <li class="nav-item dropdown">
             {% set admin_endpoints = ["admin_users", "departments", "department_detail", "backup_management"] %}
             <a class="nav-link dropdown-toggle {% if request.endpoint in admin_endpoints %}active{% endif %}" href="#"
@@ -225,7 +226,8 @@
       <div class="row">
         <div class="col-md-4">
           <h5><i class="fas fa-info-circle me-2"></i>关于系统</h5>
-          <p class="text-muted">乘务数字化管理平台 v1.0</p>
+          <p class="text-muted" style="text-align: justify; padding-right: 15px;">
+            乘务数字化管理平台是一款致力于提升乘务管理效率，集人员、安全、培训与绩效管理为一体的全面数字化管理系统。</p>
           <p class="small text-muted">© 2026 乘务数字化管理平台 版权所有</p>
         </div>
         <div class="col-md-4">
@@ -240,8 +242,9 @@
         <div class="col-md-4">
           <h5><i class="fas fa-phone-alt me-2"></i>联系信息</h5>
           <p class="text-muted">
-            <i class="fas fa-envelope me-1"></i>admin@example.com<br>
-            <i class="fas fa-building me-1"></i>信息技术部门
+            <i class="fas fa-user me-1"></i>王工<br>
+            <i class="fas fa-mobile-alt me-1"></i>17537101591<br>
+            <i class="fas fa-envelope me-1"></i>82537192@qq.com
           </p>
         </div>
       </div>

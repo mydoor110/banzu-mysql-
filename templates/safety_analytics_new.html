@@ -166,7 +166,7 @@
                 <div class="col-lg-6 mb-4">
                     <div class="chart-card">
                         <div class="chart-title">
-                            问题严重度分布
+                            扣分分值分布
                             <small class="text-muted ms-2">(点击分数段查看人员详情)</small>
                         </div>
                         <div class="chart-container" id="chartSeverityDistribution"></div>
@@ -174,7 +174,8 @@
                 </div>
                 <div class="col-lg-6 mb-4">
                     <div class="chart-card">
-                        <div class="chart-title">高频失分项目 Top 10</div>
+                        <div class="chart-title">高损失扣分项 TOP10<small class="text-muted ms-2 fw-normal">（按累计扣分排序）</small>
+                        </div>
                         <div class="chart-container" id="chartTopLossItems"></div>
                     </div>
                 </div>
@@ -192,7 +193,7 @@
                 </div>
                 <div class="col-12 mb-4">
                     <div class="chart-card">
-                        <div class="chart-title">问题发现/整改能手榜 Top 10</div>
+                        <div class="chart-title">整改工作量 TOP10</div>
                         <div class="chart-container" id="chartTopContributors"></div>
                     </div>
                 </div>
@@ -204,7 +205,7 @@
             <div class="row">
                 <div class="col-12 mb-4">
                     <div class="chart-card">
-                        <div class="chart-title">高频失分项目详细分析</div>
+                        <div class="chart-title">高损失扣分项详细分析</div>
                         <div class="chart-container" id="chartTopLossItemsDetailed" style="min-height: 500px;"></div>
                     </div>
                 </div>
@@ -216,7 +217,7 @@
             <div class="row">
                 <div class="col-12 mb-4">
                     <div class="chart-card">
-                        <div class="chart-title">每日违规趋势（双轴图）</div>
+                        <div class="chart-title">安全问题日趋势</div>
                         <div class="chart-container" id="chartDailyTrend" style="min-height: 400px;"></div>
                     </div>
                 </div>
@@ -224,27 +225,7 @@
         </div>
     </div>
 
-    <!-- 问题详情模态框 -->
-    <div class="modal fade" id="problemDrilldownModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="drilldownModalTitle">问题详情</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body" id="drilldownModalBody">
-                    <div class="text-center py-4">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">加载中...</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-                </div>
-            </div>
-        </div>
-    </div>
+
 </div>
 {% endblock %}
 
@@ -264,6 +245,9 @@
     // 缓存的安全分析数据（一次请求，多处复用）
     let cachedSafetyData = null;
 
+    // 当前用户可访问基层部门数（由后端传入）
+    var DEPT_COUNT = {{ accessible_dept_count }};
+
     // 获取当前筛选参数
     function getFilterParams() {
         if (dateFilter) {
@@ -282,14 +266,26 @@
     async function initCharts() {
         try {
             const params = getFilterParams();
-            // 并发请求所有 API，只请求一次
-            const [severityData, dailyData, itemsData, personnelData, contributorsData] = await Promise.all([
+            // 并发请求所有 API
+            const fetchPromises = [
                 fetch(`/safety/api/analytics/severity-distribution?${params}`).then(r => r.json()),
                 fetch(`/safety/api/analytics/daily-trend?${params}`).then(r => r.json()),
                 fetch(`/safety/api/analytics/top-loss-items?${params}`).then(r => r.json()),
                 fetch(`/safety/api/analytics/personnel-risk-matrix?${params}`).then(r => r.json()),
-                fetch(`/safety/api/analytics/top-contributors?${params}`).then(r => r.json())
-            ]);
+                fetch(`/safety/api/analytics/top-contributors?${params}`).then(r => r.json()),
+                fetch(`/safety/api/analytics/top-frequency-items?${params}`).then(r => r.json()),
+            ];
+
+            // 多部门对比 API：仅当 deptCount >= 2 时请求（与 filterByVisibility 一致）
+            if (DEPT_COUNT >= 2) {
+                fetchPromises.push(
+                    fetch(`/safety/api/analytics/dept-issue-compare?${params}`).then(r => r.json()),
+                    fetch(`/safety/api/analytics/dept-risk-compare?${params}`).then(r => r.json())
+                );
+            }
+
+            const results = await Promise.all(fetchPromises);
+            const [severityData, dailyData, itemsData, personnelData, contributorsData, frequencyData] = results;
 
             // 缓存数据，供 KPI 和后续交互使用
             cachedSafetyData = { severityData, dailyData, itemsData, personnelData, contributorsData };
@@ -300,6 +296,12 @@
             renderTopLossItems(itemsData);
             renderPersonnelRiskMatrix(personnelData);
             renderTopContributors(contributorsData);
+            renderTopFrequencyItems(frequencyData);
+
+            // 渲染多部门对比图表（filterByVisibility 权限控制）
+            if (DEPT_COUNT >= 2) {
+                renderMultiDeptCharts(results[6], results[7]);
+            }
 
             // 用同一份数据更新 KPI（不再重复请求）
             updateKPIFromCache();
@@ -309,7 +311,53 @@
         }
     }
 
-    // 图表A：问题严重度分布（饼图 - ChartRegistry）
+    // 渲染多部门对比图表（动态创建容器）
+    function renderMultiDeptCharts(deptIssueData, deptRiskData) {
+        var visibleCharts = ChartRegistry.filterByVisibility('safety', DEPT_COUNT);
+        visibleCharts.forEach(function (chartDef) {
+            if (chartDef.visibility !== 'multi_dept') return;
+
+            var containerId = 'dynamic-chart-' + chartDef.id;
+            if (!document.getElementById(containerId)) {
+                var wrapper = document.createElement('div');
+                wrapper.className = 'col-lg-6 mb-4';
+                wrapper.innerHTML = '<div class="chart-card">' +
+                    '<div class="chart-title">' + chartDef.title + '</div>' +
+                    '<div class="chart-container" id="' + containerId + '"></div></div>';
+                // 追加到总览 tab
+                var targetRow = document.querySelector('#overview .row');
+                if (targetRow) targetRow.appendChild(wrapper);
+            }
+
+            var dom = document.getElementById(containerId);
+            if (!dom) return;
+
+            // 根据 chartDef.apiIndex 选择对应数据
+            var resp = null;
+            if (chartDef.apiIndex === 6) resp = deptIssueData;
+            else if (chartDef.apiIndex === 7) resp = deptRiskData;
+
+            if (resp) {
+                ChartRegistry.renderToContainer('safety', chartDef.id, resp, dom, null, getCurrentDateParams());
+            }
+        });
+    }
+
+    // 获取当前日期的对象形式（供注册表结构化标签及下钻使用）
+    function getCurrentDateParams() {
+        var p = getFilterParams();
+        var sp = new URLSearchParams(p);
+        return { start_date: sp.get('start_date') || '', end_date: sp.get('end_date') || '' };
+    }
+
+    // 安全模块统一下钻上下文生成器
+    function _safetyDrilldownCtx() {
+        return {
+            getDateParams: getCurrentDateParams
+        };
+    }
+
+    // 图表A：问题严重度分布（ChartRegistry）
     function renderSeverityDistribution(data) {
         const chartDom = document.getElementById('chartSeverityDistribution');
         if (charts.severityDistribution) {
@@ -323,189 +371,15 @@
             return;
         }
 
-        const chartInstance = ChartRegistry.renderToContainer('safety', 'safety_severity', data, chartDom);
+        const chartInstance = ChartRegistry.renderToContainer('safety', 'safety_severity', data, chartDom, null, getCurrentDateParams());
         charts.severityDistribution = chartInstance;
 
-        // 保留点击事件 - 下钻查看人员详情
+        // 统一下钻绑定
         if (chartInstance) {
-            chartInstance.on('click', function (params) {
-                if (params.data && params.data.name) {
-                    handleSeverityDrilldown(params.data.name);
-                }
+            ChartRegistry.bindDrilldown('safety', 'safety_severity', chartInstance, {
+                getDateParams: getCurrentDateParams
             });
         }
-    }
-
-    // 处理严重度下钻
-    async function handleSeverityDrilldown(scoreLabel) {
-        const params = getFilterParams();
-        const url = `/safety/api/analytics/severity-drilldown?score=${encodeURIComponent(scoreLabel)}&${params}`;
-
-        try {
-            const response = await fetch(url);
-            const result = await response.json();
-
-            if (!result.canDrilldown) {
-                // 不支持下钻，显示提示信息
-                showDrilldownMessage(scoreLabel, result.message, result.problemCount || 0);
-            } else {
-                // 支持下钻，展示问题详情
-                showProblemDetails(result);
-            }
-        } catch (error) {
-            console.error('下钻查询失败:', error);
-            alert('查询失败，请重试');
-        }
-    }
-
-    // 显示不支持下钻的提示信息
-    function showDrilldownMessage(scoreLabel, message, count) {
-        const modalElement = document.getElementById('problemDrilldownModal');
-        if (!modalElement) {
-            console.error('模态框元素不存在');
-            return;
-        }
-
-        // 清理之前的模态框实例
-        const existingModal = bootstrap.Modal.getInstance(modalElement);
-        if (existingModal) {
-            try {
-                existingModal.dispose();
-            } catch (e) {
-                console.warn('清理模态框实例失败:', e);
-            }
-        }
-
-        // 清理可能残留的backdrop
-        cleanupModalBackdrop();
-
-        document.getElementById('drilldownModalTitle').textContent = `${scoreLabel} - 问题统计`;
-        document.getElementById('drilldownModalBody').innerHTML = `
-            <div class="alert alert-warning">
-                <h5><i class="bi bi-info-circle"></i> ${message}</h5>
-                <p class="mb-0">该分数段共有 <strong>${count}</strong> 条问题记录，由于数量过多，暂不支持查看详细列表。</p>
-            </div>
-        `;
-
-        // 使用setTimeout确保DOM更新完成
-        setTimeout(() => {
-            try {
-                const modal = new bootstrap.Modal(modalElement, {
-                    backdrop: true,
-                    keyboard: true,
-                    focus: true
-                });
-                modal.show();
-            } catch (e) {
-                console.error('显示模态框失败:', e);
-            }
-        }, 100);
-    }
-
-    // 显示问题详情
-    function showProblemDetails(result) {
-        const modalElement = document.getElementById('problemDrilldownModal');
-        if (!modalElement) {
-            console.error('模态框元素不存在');
-            return;
-        }
-
-        // 清理之前的模态框实例
-        const existingModal = bootstrap.Modal.getInstance(modalElement);
-        if (existingModal) {
-            try {
-                existingModal.dispose();
-            } catch (e) {
-                console.warn('清理模态框实例失败:', e);
-            }
-        }
-
-        // 清理可能残留的backdrop
-        cleanupModalBackdrop();
-
-        document.getElementById('drilldownModalTitle').textContent =
-            `${result.scoreLabel} - 问题详情 (共${result.problemCount}条)`;
-
-        let html = `
-            <div class="alert alert-info mb-3">
-                <i class="bi bi-info-circle"></i> ${result.message}
-            </div>
-            <div class="table-responsive">
-                <table class="table table-hover table-bordered table-sm">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width: 40px;">序号</th>
-                            <th style="width: 90px;">检查日期</th>
-                            <th style="width: 80px;">被检查人</th>
-                            <th style="width: 100px;">责任车队</th>
-                            <th style="width: 80px;">地点</th>
-                            <th>存在隐患和问题</th>
-                            <th style="width: 120px;">整改措施</th>
-                            <th style="width: 80px;">整改状态</th>
-                            <th style="width: 60px;">扣分</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-
-        result.problems.forEach((problem, index) => {
-            // 根据整改状态设置不同的徽章颜色
-            let statusBadgeClass = 'bg-warning';
-            if (problem.rectificationStatus.includes('已整改')) {
-                statusBadgeClass = 'bg-success';
-            } else if (problem.rectificationStatus.includes('未整改')) {
-                statusBadgeClass = 'bg-danger';
-            }
-
-            html += `
-                <tr>
-                    <td class="text-center">${index + 1}</td>
-                    <td>${problem.date}</td>
-                    <td><strong>${problem.inspectedPerson}</strong></td>
-                    <td>${problem.team}</td>
-                    <td>${problem.location}</td>
-                    <td>
-                        <div class="text-truncate" style="max-width: 300px;" title="${problem.hazardDescription}">
-                            ${problem.hazardDescription}
-                        </div>
-                        ${problem.inspectionItem ? `<div class="text-muted small mt-1">检查项目: ${problem.inspectionItem}</div>` : ''}
-                    </td>
-                    <td>
-                        <div class="text-truncate" style="max-width: 200px;" title="${problem.correctiveMeasures}">
-                            ${problem.correctiveMeasures}
-                        </div>
-                    </td>
-                    <td>
-                        <span class="badge ${statusBadgeClass}">${problem.rectificationStatus}</span>
-                    </td>
-                    <td class="text-center">
-                        <span class="badge bg-danger">${problem.score}</span>
-                    </td>
-                </tr>
-            `;
-        });
-
-        html += `
-                    </tbody>
-                </table>
-            </div>
-        `;
-
-        document.getElementById('drilldownModalBody').innerHTML = html;
-
-        // 使用setTimeout确保DOM更新完成
-        setTimeout(() => {
-            try {
-                const modal = new bootstrap.Modal(modalElement, {
-                    backdrop: true,
-                    keyboard: true,
-                    focus: true
-                });
-                modal.show();
-            } catch (e) {
-                console.error('显示模态框失败:', e);
-            }
-        }, 100);
     }
 
     // 图表B：每日违规趋势（双轴图 - ChartRegistry）
@@ -522,7 +396,7 @@
             return;
         }
 
-        charts.dailyTrend = ChartRegistry.renderToContainer('safety', 'safety_daily_trend', data, chartDom);
+        charts.dailyTrend = ChartRegistry.renderToContainer('safety', 'safety_daily_trend', data, chartDom, null, getCurrentDateParams());
     }
 
     // 图表C：高频失分项目 Top 10（横向条形图 - ChartRegistry）
@@ -549,8 +423,13 @@
             return;
         }
 
-        charts.topLossItems = ChartRegistry.renderToContainer('safety', 'safety_top_loss', data, chartDom1);
-        charts.topLossItemsDetailed = ChartRegistry.renderToContainer('safety', 'safety_top_loss', data, chartDom2);
+        charts.topLossItems = ChartRegistry.renderToContainer('safety', 'safety_top_loss', data, chartDom1, null, getCurrentDateParams());
+        charts.topLossItemsDetailed = ChartRegistry.renderToContainer('safety', 'safety_top_loss', data, chartDom2, null, getCurrentDateParams());
+
+        // 统一下钻绑定
+        var drillCtx = _safetyDrilldownCtx();
+        if (charts.topLossItems) ChartRegistry.bindDrilldown('safety', 'safety_top_loss', charts.topLossItems, drillCtx);
+        if (charts.topLossItemsDetailed) ChartRegistry.bindDrilldown('safety', 'safety_top_loss', charts.topLossItemsDetailed, drillCtx);
     }
 
     // 图表D：人员风险矩阵（散点图 - ChartRegistry）
@@ -567,7 +446,14 @@
             return;
         }
 
-        charts.personnelRiskMatrix = ChartRegistry.renderToContainer('safety', 'safety_risk_matrix', data, chartDom);
+        charts.personnelRiskMatrix = ChartRegistry.renderToContainer('safety', 'safety_risk_matrix', data, chartDom, null, getCurrentDateParams());
+
+        // 统一下钻绑定（navigate 行为，需传入 rawData）
+        if (charts.personnelRiskMatrix) {
+            ChartRegistry.bindDrilldown('safety', 'safety_risk_matrix', charts.personnelRiskMatrix, {
+                rawData: data
+            });
+        }
 
         // 更新高风险人员数量 KPI
         const avgX = data.reduce((sum, d) => sum + d.value[0], 0) / data.length;
@@ -590,10 +476,47 @@
             return;
         }
 
-        charts.topContributors = ChartRegistry.renderToContainer('safety', 'safety_top_contributors', data, chartDom);
+        charts.topContributors = ChartRegistry.renderToContainer('safety', 'safety_top_contributors', data, chartDom, null, getCurrentDateParams());
+    }
+
+    // 图表F：高频问题项 TOP10（横向条形图 - ChartRegistry）
+    function renderTopFrequencyItems(data) {
+        var containerId = 'chartTopFrequencyItems';
+        var chartDom = document.getElementById(containerId);
+        // 动态创建容器（追加到项目分析 tab）
+        if (!chartDom) {
+            var wrapper = document.createElement('div');
+            wrapper.className = 'col-12 mb-4';
+            wrapper.innerHTML = '<div class="chart-card">' +
+                '<div class="chart-title">高频问题项 TOP10（按发生次数排序）</div>' +
+                '<div class="chart-container" id="' + containerId + '" style="min-height: 500px;"></div></div>';
+            var targetRow = document.querySelector('#items .row');
+            if (targetRow) targetRow.appendChild(wrapper);
+            chartDom = document.getElementById(containerId);
+        }
+        if (!chartDom) return;
+
+        if (charts.topFrequency) {
+            charts.topFrequency.dispose();
+            charts.topFrequency = null;
+        }
+        chartDom.innerHTML = '';
+
+        if (!data || !data.items || data.items.length === 0) {
+            chartDom.innerHTML = '<div class="no-data-message">暂无数据</div>';
+            return;
+        }
+
+        charts.topFrequency = ChartRegistry.renderToContainer('safety', 'safety_top_frequency', data, chartDom, null, getCurrentDateParams());
+
+        // 统一下钻绑定
+        if (charts.topFrequency) {
+            ChartRegistry.bindDrilldown('safety', 'safety_top_frequency', charts.topFrequency, _safetyDrilldownCtx());
+        }
     }
 
     // 更新KPI指标（从缓存数据计算，不再重复请求）
+
     function updateKPIFromCache() {
         if (!cachedSafetyData) return;
         try {
@@ -651,34 +574,9 @@
         });
     });
 
-    // 清理可能残留的模态框backdrop
-    function cleanupModalBackdrop() {
-        // 使用setTimeout确保在Bootstrap完成操作后再清理
-        setTimeout(() => {
-            // 移除所有残留的backdrop
-            const backdrops = document.querySelectorAll('.modal-backdrop');
-            backdrops.forEach(backdrop => {
-                if (backdrop && backdrop.parentNode) {
-                    backdrop.parentNode.removeChild(backdrop);
-                }
-            });
-            // 移除body上的modal相关class和样式
-            if (document.body.classList.contains('modal-open')) {
-                document.body.classList.remove('modal-open');
-            }
-            if (document.body.style.overflow) {
-                document.body.style.removeProperty('overflow');
-            }
-            if (document.body.style.paddingRight) {
-                document.body.style.removeProperty('padding-right');
-            }
-        }, 150);
-    }
 
     // 页面加载完成后初始化
     document.addEventListener('DOMContentLoaded', function () {
-        // 清理可能残留的backdrop
-        cleanupModalBackdrop();
 
         // 初始化日期筛选器
         dateFilter = new DateFilterHelper({
@@ -701,11 +599,6 @@
         document.getElementById('resetBtn').addEventListener('click', function () {
             dateFilter.reset();
             initCharts();
-        });
-
-        // 监听模态框隐藏事件，确保backdrop被清理
-        document.getElementById('problemDrilldownModal').addEventListener('hidden.bs.modal', function () {
-            cleanupModalBackdrop();
         });
     });
 </script>

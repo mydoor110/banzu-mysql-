@@ -852,9 +852,11 @@ def records():
 @login_required
 def analytics():
     """培训统计分析和图表"""
+    dept_ids = get_accessible_department_ids()
     return render_template(
         "training_analytics.html",
         title=f"培训统计 | {APP_TITLE}",
+        accessible_dept_count=len(dept_ids) if dept_ids else 0,
     )
 
 
@@ -1095,7 +1097,8 @@ def api_data():
     params = dept_params.copy()
 
     # 使用统一的日期筛选器
-    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    # 允许 day 和 month 两种粒度（PPT 导出页面传 start_month/end_month）
+    tr = parse_time_range(request.args, ['day', 'month'], default_grain='day', default_range='current_month')
     start_date, end_date = tr['start_date'], tr['end_date']
     date_conditions, date_params = build_date_filter_sql('tr.training_date', start_date, end_date)
     if date_conditions:
@@ -1847,3 +1850,185 @@ def archived_projects():
         title=f'归档项目 | {APP_TITLE}',
         projects=projects
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 重构新增 API — 独立接口，不修改 /api/data 返回结构
+# ═══════════════════════════════════════════════════════════════════════
+
+@training_bp.route('/api/analytics/dept-rate-compare')
+@login_required
+def api_analytics_dept_rate_compare():
+    """各部门培训合格率对比（独立 API）
+
+    返回: [{name: '部门A', rate: 92.3, total: 50, qualified: 46}, ...]
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    where_clause, _, dept_params = build_department_filter('tr')
+
+    query = f"""
+        SELECT d.name AS dept_name,
+               COUNT(*) AS total,
+               SUM(CASE WHEN tr.is_qualified = 1 THEN 1 ELSE 0 END) AS qualified
+        FROM training_records tr
+        LEFT JOIN employees e ON tr.emp_no = e.emp_no
+        LEFT JOIN departments d ON e.department_id = d.id
+        WHERE {where_clause}
+    """
+    params = dept_params.copy()
+
+    tr = parse_time_range(request.args, ['day', 'month'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
+    date_conditions, date_params = build_date_filter_sql('tr.training_date', start_date, end_date)
+    if date_conditions:
+        query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
+
+    query += " GROUP BY d.name HAVING total > 0 ORDER BY dept_name"
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+
+    result = []
+    for row in rows:
+        if row['dept_name']:
+            rate = round(row['qualified'] / row['total'] * 100, 1) if row['total'] > 0 else 0
+            result.append({
+                "name": row['dept_name'],
+                "rate": rate,
+                "total": row['total'],
+                "qualified": row['qualified']
+            })
+
+    # 单部门保护：当前时间范围内参与对比的部门 < 2 时不生成对比图
+    if len(result) < 2:
+        return jsonify([])
+
+    return jsonify(result)
+
+
+@training_bp.route('/api/analytics/project-drilldown')
+@login_required
+def api_analytics_project_drilldown():
+    """不合格培训项目下钻 — 查看某个项目的具体不合格记录"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    project_name = request.args.get('project', '').strip()
+    if not project_name:
+        return jsonify({"canDrilldown": False, "message": "缺少项目参数"})
+
+    where_clause, join_clause, dept_params = build_department_filter('tr')
+
+    query = f"""
+        SELECT tr.id, tr.emp_no, tr.name, tr.team_name,
+               tr.training_date, tr.problem_type, tr.specific_problem,
+               tr.corrective_measures, tr.assessor, tr.score,
+               tp.name AS project_name
+        FROM training_records tr
+        LEFT JOIN training_projects tp ON tr.project_id = tp.id
+        {join_clause}
+        WHERE {where_clause}
+        AND tr.is_qualified = 0
+        AND tp.name = %s
+    """
+    params = dept_params.copy() + [project_name]
+
+    tr = parse_time_range(request.args, ['day', 'month'], default_grain='day', default_range=None)
+    sd, ed = tr['start_date'], tr['end_date']
+    date_conditions, date_params = build_date_filter_sql('tr.training_date', sd, ed)
+    if date_conditions:
+        query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
+
+    query += " ORDER BY tr.training_date DESC"
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+
+    records = []
+    for row in rows:
+        records.append({
+            "id": row['id'],
+            "empNo": row['emp_no'] or "",
+            "name": row['name'] or "未知",
+            "team": row['team_name'] or "未知",
+            "date": str(row['training_date']) if row['training_date'] else "",
+            "problemType": row['problem_type'] or "",
+            "specificProblem": row['specific_problem'] or "",
+            "correctiveMeasures": row['corrective_measures'] or "",
+            "assessor": row['assessor'] or "",
+            "score": row['score'],
+            "projectName": row['project_name'] or project_name
+        })
+
+    return jsonify({
+        "canDrilldown": True,
+        "project": project_name,
+        "problemCount": len(records),
+        "problems": records,
+        "message": f"找到 {len(records)} 条不合格记录"
+    })
+
+
+@training_bp.route('/api/analytics/person-disqualified-drilldown')
+@login_required
+def api_analytics_person_disqualified_drilldown():
+    """失格人员下钻 — 查看某人的全部不合格记录"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    person_name = request.args.get('name', '').strip()
+    if not person_name:
+        return jsonify({"canDrilldown": False, "message": "缺少人员参数"})
+
+    where_clause, join_clause, dept_params = build_department_filter('tr')
+
+    query = f"""
+        SELECT tr.id, tr.emp_no, tr.name, tr.team_name,
+               tr.training_date, tr.problem_type, tr.specific_problem,
+               tr.corrective_measures, tr.assessor, tr.score,
+               tp.name AS project_name
+        FROM training_records tr
+        LEFT JOIN training_projects tp ON tr.project_id = tp.id
+        {join_clause}
+        WHERE {where_clause}
+        AND tr.is_qualified = 0
+        AND tr.name = %s
+    """
+    params = dept_params.copy() + [person_name]
+
+    tr = parse_time_range(request.args, ['day', 'month'], default_grain='day', default_range=None)
+    sd, ed = tr['start_date'], tr['end_date']
+    date_conditions, date_params = build_date_filter_sql('tr.training_date', sd, ed)
+    if date_conditions:
+        query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
+
+    query += " ORDER BY tr.training_date DESC"
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+
+    records = []
+    for row in rows:
+        records.append({
+            "id": row['id'],
+            "empNo": row['emp_no'] or "",
+            "name": row['name'] or person_name,
+            "team": row['team_name'] or "未知",
+            "date": str(row['training_date']) if row['training_date'] else "",
+            "problemType": row['problem_type'] or "",
+            "specificProblem": row['specific_problem'] or "",
+            "correctiveMeasures": row['corrective_measures'] or "",
+            "assessor": row['assessor'] or "",
+            "score": row['score'],
+            "projectName": row['project_name'] or ""
+        })
+
+    return jsonify({
+        "canDrilldown": True,
+        "person": person_name,
+        "problemCount": len(records),
+        "problems": records,
+        "message": f"找到 {len(records)} 条不合格记录"
+    })

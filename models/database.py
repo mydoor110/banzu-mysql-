@@ -8,6 +8,7 @@ import os
 import pymysql
 from pymysql.cursors import DictCursor
 from threading import local
+import logging
 from config.settings import DatabaseConfig
 
 # Thread-local storage for database connections
@@ -62,12 +63,11 @@ def init_database():
 
         # 提交所有更改（主要是版本信息等 DML 操作）
         conn.commit()
-        print("[+] Database changes committed successfully")
+        logging.info("数据库初始化变更已提交")
         return conn
 
     except Exception as e:
-        print(f"\n[!] Fatal Error: Database initialization failed!")
-        print(f"[!] Error: {e}")
+        logging.error("数据库初始化失败: %s", e)
         conn.rollback()
         raise  # 重新抛出，让应用层处理
 
@@ -120,7 +120,7 @@ def _create_indexes(cur):
             if cur.fetchone() is None:
                 cur.execute(f"CREATE INDEX {index_name} ON {table_name}({columns})")
         except Exception as e:
-            print(f"Warning: Could not create index: {e}")
+            logging.warning("索引创建失败 %s.%s: %s", table_name, index_name, e)
 
 
 def bootstrap_data():
@@ -223,9 +223,9 @@ C. **状态型异常** (State Anomaly): 近期家庭变故、疲劳或情绪波�
             [(c['key'], c['title'], c['instruction'], c['instruction']) for c in default_configs]
         )
         conn.commit()
-        print(f"Initialized {len(default_configs)} AI analysis configs")
+        logging.info("AI 分析配置初始化完成: %d 条", len(default_configs))
     except Exception as e:
-        print(f"Error initializing AI analysis configs: {e}")
+        logging.warning("AI 分析配置初始化失败: %s", e)
 
 
 def bootstrap_stopwords():
@@ -299,9 +299,9 @@ def bootstrap_stopwords():
             [(word,) for word in default_stopwords]
         )
         conn.commit()
-        print(f"Initialized {len(default_stopwords)} default stopwords")
+        logging.info("停用词初始化完成: %d 个", len(default_stopwords))
     except Exception as e:
-        print(f"Error initializing stopwords: {e}")
+        logging.warning("停用词初始化失败: %s", e)
 
 
 class DatabaseManager:

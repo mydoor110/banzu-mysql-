@@ -142,11 +142,20 @@
           // KPI 更新（不进 registry）
           updateKpis(data);
 
-          // 使用 ChartRegistry 渲染所有图表
-          var charts = ChartRegistry.getCharts('analytics');
-          charts.forEach(function (chartDef) {
-            if (!chartInstances[chartDef.id]) return;
-            ChartRegistry.renderToContainer('analytics', chartDef.id, data, chartInstances[chartDef.id]);
+          // 使用 filterByVisibility 过滤图表（页面与导出同一套权限规则）
+          var deptCount = data.accessible_dept_count || 1;
+          var visibleCharts = ChartRegistry.filterByVisibility('analytics', deptCount);
+          visibleCharts.forEach(function (chartDef) {
+            if (chartDef.selfFetchUrl) {
+              // selfFetchUrl 图表：自行拉取渲染
+              renderSelfFetchChart(chartDef);
+            } else if (chartInstances[chartDef.id]) {
+              // 静态容器图表：直接渲染
+              ChartRegistry.renderToContainer('analytics', chartDef.id, data, chartInstances[chartDef.id]);
+            } else {
+              // 动态容器图表（如 multi_dept 对比图，数据已在响应中）
+              renderDynamicChart(chartDef, data);
+            }
           });
         })
         .catch(function (error) {
@@ -156,6 +165,72 @@
           console.error('Error fetching analytics data:', error);
         });
     }
+
+    // selfFetchUrl 图表的页面渲染（动态创建容器 + 独立拉取）
+    function renderSelfFetchChart(chartDef) {
+      var containerId = 'dynamic-chart-' + chartDef.id;
+      var existing = document.getElementById(containerId);
+      if (!existing) {
+        // 动态创建卡片容器，追加到图表区域末尾
+        var wrapper = document.createElement('div');
+        wrapper.className = 'col-xl-6 col-lg-12';
+        wrapper.innerHTML = '<div class="card shadow-sm h-100"><div class="card-body">' +
+          '<div id="' + containerId + '" style="width:100%;min-height:400px;height:50vh;max-height:600px;"></div>' +
+          '</div></div>';
+        // 追加到最后一行的 .row 容器
+        var lastRow = document.querySelector('.row.g-4.mb-4:last-of-type');
+        if (lastRow) {
+          lastRow.appendChild(wrapper);
+        } else {
+          document.querySelector('.tab-content, .row.g-4').appendChild(wrapper);
+        }
+      }
+      var dom = document.getElementById(containerId);
+      if (!dom) return;
+      var chart = echarts.getInstanceByDom(dom) || echarts.init(dom);
+      chart.showLoading();
+      fetch(chartDef.selfFetchUrl)
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+          chart.hideLoading();
+          var extractedData = chartDef.extractData(resp, null);
+          if (!extractedData || (Array.isArray(extractedData) && extractedData.length === 0)) {
+            chart.clear();
+            return;
+          }
+          var option = chartDef.buildOption(extractedData, null);
+          if (chartDef.title && !option.title) {
+            option.title = { text: chartDef.title, left: 'center', textStyle: { fontSize: 15, fontWeight: 'bold' } };
+          }
+          chart.setOption(option, true);
+        })
+        .catch(function () { chart.hideLoading(); });
+    }
+
+    // 动态容器图表渲染（数据已在 API 响应中，无需单独拉取）
+    function renderDynamicChart(chartDef, data) {
+      var containerId = 'dynamic-chart-' + chartDef.id;
+      var existingWrapper = document.getElementById(containerId);
+      if (!existingWrapper) {
+        var wrapper = document.createElement('div');
+        wrapper.className = 'col-xl-6 col-lg-12';
+        wrapper.innerHTML = '<div class="card shadow-sm h-100"><div class="card-body">' +
+          '<div id="' + containerId + '" style="width:100%;min-height:400px;height:50vh;max-height:600px;"></div>' +
+          '</div></div>';
+        var lastRow = document.querySelector('.row.g-4.mb-4:last-of-type');
+        if (lastRow) lastRow.appendChild(wrapper);
+      }
+      var dom = document.getElementById(containerId);
+      if (!dom) return;
+      var chart = echarts.getInstanceByDom(dom) || echarts.init(dom);
+      var rendered = ChartRegistry.renderToContainer('analytics', chartDef.id, data, dom);
+      // 注册 resize 监听
+      if (rendered && !dom.__resizeRegistered) {
+        dom.__resizeRegistered = true;
+        window.addEventListener('resize', function () { rendered.resize(); });
+      }
+    }
+
 
     function updateKpis(data) {
       document.getElementById('kpi-total-count').textContent = data.total_count || 0;

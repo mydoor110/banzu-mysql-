@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 算法配置服务
-提供算法配置的读取、更新、校验等功能
+
+P2.1：业务编排层，SQL 已下沉到 repositories/algorithm_config_repo.py。
+写操作使用 get_db() 获取连接，由本层管理事务（commit/rollback）。
 """
 import json
 import math
@@ -10,16 +12,19 @@ import time
 from typing import Dict, Tuple, Optional, List
 from datetime import datetime
 from models.database import get_db
+from repositories.algorithm_config_repo import AlgorithmConfigRepo
+
+_repo = AlgorithmConfigRepo
 
 
 class AlgorithmConfigService:
     """算法配置服务 - 立即生效模式"""
 
-    # 配置缓存 — P1.4：改为按版本号驱动
+    # 配置缓存 — P1.4：按版本号驱动
     _cache: Optional[dict] = None
     _cache_time: float = 0
     _cache_ttl: int = 300  # 5分钟缓存
-    _cache_version: Optional[int] = None  # P1.4：替代 _cache_updated_at
+    _cache_version: Optional[int] = None
 
     @classmethod
     def get_active_config(cls) -> dict:
@@ -34,28 +39,21 @@ class AlgorithmConfigService:
         Raises:
             ValueError: 配置不存在或无效
         """
-        # P1.4：按版本号检查缓存
         current_time = time.time()
         if cls._cache is not None and (current_time - cls._cache_time) < cls._cache_ttl:
             try:
                 conn = get_db()
                 cur = conn.cursor()
-                cur.execute("""
-                    SELECT config_version FROM algorithm_active_config WHERE id = 1
-                """)
-                row = cur.fetchone()
-                if row and row.get('config_version') == cls._cache_version:
+                db_version = _repo.get_config_version(cur)
+                if db_version == cls._cache_version:
                     return cls._cache
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("配置缓存版本检查异常: %s", e)
 
-        # 从数据库读取
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("""
-            SELECT config_data, config_version FROM algorithm_active_config WHERE id = 1
-        """)
-        row = cur.fetchone()
+        row = _repo.get_active_config_data(cur)
 
         if not row:
             raise ValueError("系统配置未初始化，请联系管理员")
@@ -128,12 +126,7 @@ class AlgorithmConfigService:
 
         try:
             # 1. 查询预设方案
-            cur.execute("""
-                SELECT preset_name, config_data FROM algorithm_presets
-                WHERE preset_key = %s
-            """, (preset_key,))
-            preset_row = cur.fetchone()
-
+            preset_row = _repo.get_preset(cur, preset_key)
             if not preset_row:
                 return False, f"预设方案不存在: {preset_key}"
 
@@ -141,41 +134,25 @@ class AlgorithmConfigService:
             new_config_data = preset_row['config_data']
 
             # 2. 获取当前配置（用于日志）
-            cur.execute("""
-                SELECT config_data FROM algorithm_active_config WHERE id = 1
-            """)
-            current_row = cur.fetchone()
-            old_config_data = current_row['config_data'] if current_row else None
+            old_config_data = _repo.get_active_config_data_only(cur)
 
-            # 3. 更新当前配置（P1.4：版本号自增）
-            cur.execute("""
-                UPDATE algorithm_active_config
-                SET based_on_preset = %s, is_customized = 0, config_data = %s,
-                    updated_by = %s, updated_at = %s, config_version = config_version + 1
-                WHERE id = 1
-            """, (preset_key, new_config_data, user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            # 3. 更新当前配置（版本号自增）
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            new_version = _repo.update_active_apply_preset(cur, preset_key, new_config_data, user_id, now_str)
 
-            # 获取新版本号
-            cur.execute("SELECT config_version FROM algorithm_active_config WHERE id = 1")
-            new_version = cur.fetchone()['config_version']
-
-            # 4. 记录变更日志（含版本号）
+            # 4. 记录变更日志
             if not username:
-                cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
-                user_row = cur.fetchone()
-                username = user_row['username'] if user_row else f"用户{user_id}"
+                username = _repo.get_username(cur, user_id)
 
-            cur.execute("""
-                INSERT INTO algorithm_config_logs
-                (action, preset_name, old_config, new_config, change_reason, changed_by, changed_by_name, ip_address, config_version)
-                VALUES ('APPLY_PRESET', %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (preset_name, old_config_data, new_config_data, reason, user_id, username, ip_address, new_version))
+            _repo.insert_log(
+                cur, action='APPLY_PRESET', config_version=new_version,
+                preset_name=preset_name, old_config=old_config_data,
+                new_config=new_config_data, change_reason=reason,
+                changed_by=user_id, changed_by_name=username, ip_address=ip_address
+            )
 
             conn.commit()
-
-            # 5. 清除缓存
             cls.clear_cache()
-
             return True, f"成功应用预设方案: {preset_name}"
 
         except Exception as e:
@@ -207,42 +184,26 @@ class AlgorithmConfigService:
 
         try:
             # 2. 获取当前配置（用于日志）
-            cur.execute("""
-                SELECT config_data FROM algorithm_active_config WHERE id = 1
-            """)
-            current_row = cur.fetchone()
-            old_config_data = current_row['config_data'] if current_row else None
+            old_config_data = _repo.get_active_config_data_only(cur)
 
-            # 3. 更新当前配置（P1.4：版本号自增）
+            # 3. 更新当前配置（版本号自增）
             new_config_json = json.dumps(config_data, ensure_ascii=False)
-            cur.execute("""
-                UPDATE algorithm_active_config
-                SET based_on_preset = NULL, is_customized = 1, config_data = %s,
-                    updated_by = %s, updated_at = %s, config_version = config_version + 1
-                WHERE id = 1
-            """, (new_config_json, user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            new_version = _repo.update_active_custom(cur, new_config_json, user_id, now_str)
 
-            # 获取新版本号
-            cur.execute("SELECT config_version FROM algorithm_active_config WHERE id = 1")
-            new_version = cur.fetchone()['config_version']
-
-            # 4. 记录变更日志（含版本号）
+            # 4. 记录变更日志
             if not username:
-                cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
-                user_row = cur.fetchone()
-                username = user_row['username'] if user_row else f"用户{user_id}"
+                username = _repo.get_username(cur, user_id)
 
-            cur.execute("""
-                INSERT INTO algorithm_config_logs
-                (action, old_config, new_config, change_reason, changed_by, changed_by_name, ip_address, config_version)
-                VALUES ('CUSTOM_UPDATE', %s, %s, %s, %s, %s, %s, %s)
-            """, (old_config_data, new_config_json, reason, user_id, username, ip_address, new_version))
+            _repo.insert_log(
+                cur, action='CUSTOM_UPDATE', config_version=new_version,
+                old_config=old_config_data, new_config=new_config_json,
+                change_reason=reason, changed_by=user_id,
+                changed_by_name=username, ip_address=ip_address
+            )
 
             conn.commit()
-
-            # 5. 清除缓存
             cls.clear_cache()
-
             return True, "成功更新自定义配置"
 
         except Exception as e:
@@ -261,12 +222,7 @@ class AlgorithmConfigService:
         cur = conn.cursor()
 
         try:
-            cur.execute("""
-                SELECT preset_name, config_data FROM algorithm_presets
-                WHERE preset_key = %s
-            """, (preset_key,))
-            preset_row = cur.fetchone()
-
+            preset_row = _repo.get_preset(cur, preset_key)
             if not preset_row:
                 return False, f"预设方案不存在: {preset_key}"
 
@@ -274,42 +230,27 @@ class AlgorithmConfigService:
             old_config_data = preset_row['config_data']
             new_config_json = json.dumps(config_data, ensure_ascii=False)
 
-            cur.execute("""
-                UPDATE algorithm_presets
-                SET config_data = %s
-                WHERE preset_key = %s
-            """, (new_config_json, preset_key))
+            _repo.update_preset_config(cur, preset_key, new_config_json)
 
             if not username:
-                cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
-                user_row = cur.fetchone()
-                username = user_row['username'] if user_row else f"用户{user_id}"
+                username = _repo.get_username(cur, user_id)
 
-            # P1.4：预设更新不直接影响 active_config 版本号，
-            # 但如果当前正在使用该预设则需要同步版本
-            cur.execute("""
-                SELECT based_on_preset, is_customized, config_version FROM algorithm_active_config WHERE id = 1
-            """)
-            active_row = cur.fetchone()
+            # 如当前正在使用该预设则同步 active_config
+            active_row = _repo.get_active_preset_status(cur)
             log_version = active_row['config_version'] if active_row else 0
             if active_row and active_row['based_on_preset'] == preset_key and int(active_row['is_customized'] or 0) == 0:
-                cur.execute("""
-                    UPDATE algorithm_active_config
-                    SET config_data = %s, updated_at = %s, config_version = config_version + 1
-                    WHERE id = 1
-                """, (new_config_json, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-                cur.execute("SELECT config_version FROM algorithm_active_config WHERE id = 1")
-                log_version = cur.fetchone()['config_version']
+                now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                log_version = _repo.update_active_sync_preset(cur, new_config_json, now_str)
 
-            cur.execute("""
-                INSERT INTO algorithm_config_logs
-                (action, preset_name, old_config, new_config, change_reason, changed_by, changed_by_name, ip_address, config_version)
-                VALUES ('UPDATE_PRESET', %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (preset_name, old_config_data, new_config_json, reason, user_id, username, ip_address, log_version))
+            _repo.insert_log(
+                cur, action='UPDATE_PRESET', config_version=log_version,
+                preset_name=preset_name, old_config=old_config_data,
+                new_config=new_config_json, change_reason=reason,
+                changed_by=user_id, changed_by_name=username, ip_address=ip_address
+            )
 
             conn.commit()
             cls.clear_cache()
-
             return True, f"成功更新预设方案: {preset_name}"
 
         except Exception as e:
@@ -324,13 +265,7 @@ class AlgorithmConfigService:
         cur = conn.cursor()
 
         try:
-            cur.execute("""
-                SELECT action, preset_name, old_config, new_config
-                FROM algorithm_config_logs
-                WHERE id = %s
-            """, (log_id,))
-            log_row = cur.fetchone()
-
+            log_row = _repo.get_log_by_id(cur, log_id)
             if not log_row:
                 return False, "日志不存在"
 
@@ -339,14 +274,8 @@ class AlgorithmConfigService:
 
             preset_name = log_row['preset_name']
             old_config_data = log_row['old_config']
-            current_config_data = log_row['new_config']
 
-            cur.execute("""
-                SELECT preset_key, config_data FROM algorithm_presets
-                WHERE preset_name = %s
-            """, (preset_name,))
-            preset_row = cur.fetchone()
-
+            preset_row = _repo.get_preset_by_name(cur, preset_name)
             if not preset_row:
                 return False, f"预设方案不存在: {preset_name}"
 
@@ -354,42 +283,27 @@ class AlgorithmConfigService:
             preset_current = preset_row['config_data']
 
             # 回滚预设配置
-            cur.execute("""
-                UPDATE algorithm_presets
-                SET config_data = %s
-                WHERE preset_key = %s
-            """, (old_config_data, preset_key))
+            _repo.update_preset_config(cur, preset_key, old_config_data)
 
             # 如当前配置正在使用该预设，则同步应用
-            cur.execute("""
-                SELECT based_on_preset, is_customized, config_version FROM algorithm_active_config WHERE id = 1
-            """)
-            active_row = cur.fetchone()
-            # P1.4：回滚时版本号处理——始终记录版本号，预设被使用时自增
+            active_row = _repo.get_active_preset_status(cur)
             log_version = active_row['config_version'] if active_row else 0
             if active_row and active_row['based_on_preset'] == preset_key and int(active_row['is_customized'] or 0) == 0:
-                cur.execute("""
-                    UPDATE algorithm_active_config
-                    SET config_data = %s, updated_by = %s, updated_at = %s, config_version = config_version + 1
-                    WHERE id = 1
-                """, (old_config_data, user_id, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-                cur.execute("SELECT config_version FROM algorithm_active_config WHERE id = 1")
-                log_version = cur.fetchone()['config_version']
+                now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                log_version = _repo.update_active_sync_preset(cur, old_config_data, now_str, user_id)
 
             if not username:
-                cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
-                user_row = cur.fetchone()
-                username = user_row['username'] if user_row else f"用户{user_id}"
+                username = _repo.get_username(cur, user_id)
 
-            cur.execute("""
-                INSERT INTO algorithm_config_logs
-                (action, preset_name, old_config, new_config, change_reason, changed_by, changed_by_name, ip_address, config_version)
-                VALUES ('ROLLBACK_PRESET', %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (preset_name, preset_current, old_config_data, reason, user_id, username, ip_address, log_version))
+            _repo.insert_log(
+                cur, action='ROLLBACK_PRESET', config_version=log_version,
+                preset_name=preset_name, old_config=preset_current,
+                new_config=old_config_data, change_reason=reason,
+                changed_by=user_id, changed_by_name=username, ip_address=ip_address
+            )
 
             conn.commit()
             cls.clear_cache()
-
             return True, f"已回滚预设方案: {preset_name}"
 
         except Exception as e:
@@ -554,7 +468,6 @@ class AlgorithmConfigService:
                     return False, f"重大违规红线超出范围 [1, 50]: {threshold}"
 
             # 4. 培训配置校验
-            # 4. 培训配置校验
             training = config_data["training"]
             if "penalty_rules" in training:
                 # 校验绝对失格
@@ -637,17 +550,10 @@ class AlgorithmConfigService:
         conn = get_db()
         cur = conn.cursor()
 
-        cur.execute("""
-            SELECT
-                id, action, preset_name, change_reason,
-                changed_by, changed_by_name, changed_at, ip_address, config_version
-            FROM algorithm_config_logs
-            ORDER BY changed_at DESC
-            LIMIT %s OFFSET %s
-        """, (limit, offset))
+        rows = _repo.get_logs(cur, limit, offset)
 
         logs = []
-        for row in cur.fetchall():
+        for row in rows:
             logs.append({
                 "id": row['id'],
                 "action": row['action'],
@@ -657,7 +563,7 @@ class AlgorithmConfigService:
                 "changed_by_name": row['changed_by_name'],
                 "changed_at": row['changed_at'],
                 "ip_address": row['ip_address'],
-                "config_version": row.get('config_version')  # P1.4
+                "config_version": row.get('config_version')
             })
 
         return logs
@@ -668,14 +574,7 @@ class AlgorithmConfigService:
         conn = get_db()
         cur = conn.cursor()
 
-        cur.execute("""
-            SELECT
-                id, action, preset_name, change_reason, changed_by, changed_by_name,
-                changed_at, ip_address, old_config, new_config
-            FROM algorithm_config_logs
-            WHERE id = %s
-        """, (log_id,))
-        row = cur.fetchone()
+        row = _repo.get_log_by_id(cur, log_id)
         if not row:
             return None
 
@@ -707,19 +606,14 @@ class AlgorithmConfigService:
         conn = get_db()
         cur = conn.cursor()
 
-        cur.execute("""
-            SELECT based_on_preset, is_customized, updated_at, config_version
-            FROM algorithm_active_config
-            WHERE id = 1
-        """)
-        row = cur.fetchone()
+        row = _repo.get_active_info(cur)
 
         if row:
             return {
                 "based_on_preset": row['based_on_preset'],
                 "is_customized": bool(row['is_customized']),
                 "updated_at": row['updated_at'],
-                "config_version": row.get('config_version', 0)  # P1.4
+                "config_version": row.get('config_version', 0)
             }
         else:
             return {
@@ -731,15 +625,10 @@ class AlgorithmConfigService:
 
     @classmethod
     def get_config_version(cls) -> int:
-        """获取当前配置版本号（轻量查询，不加载配置体）
-
-        P1.4：供需要快速获取版本号的场景使用。
-        """
+        """获取当前配置版本号（轻量查询，不加载配置体）"""
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT config_version FROM algorithm_active_config WHERE id = 1")
-        row = cur.fetchone()
-        return row['config_version'] if row else 0
+        return _repo.get_config_version(cur)
 
     @classmethod
     def get_presets(cls) -> List[dict]:
@@ -752,14 +641,10 @@ class AlgorithmConfigService:
         conn = get_db()
         cur = conn.cursor()
 
-        cur.execute("""
-            SELECT preset_key, preset_name, description, config_data
-            FROM algorithm_presets
-            ORDER BY id
-        """)
+        rows = _repo.get_all_presets(cur)
 
         presets = []
-        for row in cur.fetchall():
+        for row in rows:
             presets.append({
                 "preset_key": row['preset_key'],
                 "preset_name": row['preset_name'],
@@ -774,4 +659,4 @@ class AlgorithmConfigService:
         """清除配置缓存"""
         cls._cache = None
         cls._cache_time = 0
-        cls._cache_version = None  # P1.4：与缓存字段对齐
+        cls._cache_version = None

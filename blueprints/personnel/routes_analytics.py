@@ -218,6 +218,28 @@ def api_analytics_data():
                 "category": _categorize_stability(tenure, working)
             })
 
+    # 6. 部门对比数据（多部门时才有意义）
+    dept_rookie_compare = []
+    dept_backbone_compare = []
+    _display_depts = display_dept_ids if 'display_dept_ids' in locals() else []
+    if len(_display_depts) >= 2:
+        for dept_id in display_dept_ids:
+            dept_name = dept_info.get(dept_id, {}).get('name', '未知')
+            dept_drivers = [r for r in driver_rows if r.get("department_id") == dept_id]
+            total = len(dept_drivers)
+            if total == 0:
+                continue
+            rookie_count = sum(1 for r in dept_drivers
+                               if r.get("solo_driving_years") is not None and r["solo_driving_years"] < 1)
+            backbone_count = sum(1 for r in dept_drivers
+                                 if r.get("solo_driving_years") is not None and r["solo_driving_years"] >= 3)
+            dept_rookie_compare.append({
+                "name": dept_name, "rate": round(rookie_count / total * 100, 1), "count": rookie_count
+            })
+            dept_backbone_compare.append({
+                "name": dept_name, "count": backbone_count
+            })
+
     return jsonify({
         "risk_distribution": risk_levels,
         "team_power": team_power,
@@ -226,7 +248,10 @@ def api_analytics_data():
         "political_stats": political_stats,
         "stability_scatter": stability_scatter,
         "total_count": len(rows),
-        "driver_count": len(driver_rows)
+        "driver_count": len(driver_rows),
+        "accessible_dept_count": len(_display_depts),
+        "dept_rookie_compare": dept_rookie_compare,
+        "dept_backbone_compare": dept_backbone_compare
     })
 
 

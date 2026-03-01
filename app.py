@@ -169,9 +169,9 @@ def _register_user_context(application):
             row = cur.fetchone()
             if row:
                 g.user_ctx = dict(row)
-        except Exception:
-            # 用户上下文加载失败不阻塞请求
-            pass
+        except Exception as e:
+            # 用户上下文加载失败不阻塞请求，但记录 warning 以便排查
+            application.logger.warning("g.user_ctx 加载失败 user_id=%s: %s", user_id, e)
 
 
 # ==================== 数据库初始化 ====================

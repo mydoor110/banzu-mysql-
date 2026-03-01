@@ -8,7 +8,7 @@ from models.schema_defs import ALL_TABLES, VIEW_RECENT_IMPORTS
 
 # Current Database Schema Version
 # Increment this when making schema changes
-CURRENT_DB_VERSION = 4
+CURRENT_DB_VERSION = 5
 
 class DBVersionManager:
     def __init__(self, cursor=None):
@@ -158,6 +158,12 @@ class DBVersionManager:
             print("[-] Running Migration v4 (Data Model Governance)...")
             self._migration_v4_data_model()
             self._update_version(4)
+
+        # Migration from 4 -> 5 (Config Version Governance)
+        if start_ver < 5 and target_ver >= 5:
+            print("[-] Running Migration v5 (Config Version Governance)...")
+            self._migration_v5_config_version()
+            self._update_version(5)
 
     def _migration_v1_baseline(self):
         """
@@ -381,4 +387,25 @@ class DBVersionManager:
                 print(f"    + {table}.{field}: VARCHAR → DATE (标准化 {cleaned}, 置NULL {nulled})")
             except Exception as e:
                 print(f"    [!] {table}.{field} migration failed: {e}")
+
+    def _migration_v5_config_version(self):
+        """P1.4 配置版本治理：algorithm_active_config / algorithm_config_logs 新增 config_version"""
+        self._ensure_column(
+            'algorithm_active_config', 'config_version', 'INT NOT NULL DEFAULT 1'
+        )
+        self._ensure_column(
+            'algorithm_config_logs', 'config_version', 'INT DEFAULT NULL'
+        )
+        # 初始化版本号（基于现有日志数量推算）
+        try:
+            self.cur.execute("""
+                UPDATE algorithm_active_config
+                SET config_version = COALESCE(
+                    (SELECT COUNT(*) FROM algorithm_config_logs), 1
+                )
+                WHERE id = 1 AND config_version = 1
+            """)
+            print(f"    + config_version 初始化完成 (affected={self.cur.rowcount})")
+        except Exception as e:
+            print(f"    [!] config_version 初始化警告: {e}")
 

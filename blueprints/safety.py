@@ -312,6 +312,11 @@ def upload_inspection():
                 return redirect(url_for('safety.confirm_duplicates'))
 
             # ====== 第四阶段：无重名，直接导入（去重检查 + 权限验证）======
+            # ── 导入阶段设计原则 ──
+            # 重名确认发生在导入阶段（confirm_duplicates 流程）
+            # 一旦确认，安全记录落到 employee_id 外键
+            # 后续统计阶段默认依赖已确认后的 employee_id/emp_no
+            # 姓名仅作展示字段，工号(emp_no)用于统计唯一化
             # P1.3：使用 db_transaction 统一事务边界，整批原子提交
             from models.db_transaction import db_transaction
             with db_transaction() as txn_conn:
@@ -492,6 +497,7 @@ def confirm_duplicates():
             return redirect(url_for("safety.upload_inspection"))
 
         # 用户确认导入，获取选择的工号
+        # ── 设计原则：重名确认在导入阶段完成，后续统计依赖 employee_id/emp_no ──
         emp_no_selections = {}  # {person_name: selected_emp_no}
 
         for person_name in pending_data['duplicate_names'].keys():
@@ -812,9 +818,11 @@ def records():
 @login_required
 def analytics():
     """安全统计分析和图表"""
+    dept_ids = get_accessible_department_ids()
     return render_template(
         "safety_analytics_new.html",
         title=f"安全统计 | {APP_TITLE}",
+        accessible_dept_count=len(dept_ids) if dept_ids else 0,
     )
 
 
@@ -1264,7 +1272,8 @@ def api_analytics_personnel_risk_matrix():
         SELECT
             sr.inspected_person,
             sr.responsible_team,
-            sr.assessment
+            sr.assessment,
+            e.emp_no
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
         WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
@@ -1284,33 +1293,46 @@ def api_analytics_personnel_risk_matrix():
     cur.execute(query, tuple(params))
     rows = cur.fetchall()
 
-    # 按人员聚合
+    # ── 按 emp_no 唯一聚合（姓名仅展示，工号用于统计唯一化）──
+    #   有 emp_no → 按 emp_no 聚合
+    #   无 emp_no → 按 "__unmatched__" + inspected_person 兜底，不与正常人员合并
     personnel_data = {}
     for row in rows:
         person = row['inspected_person']
         team = row['responsible_team'] or "未知"
+        emp_no = row.get('emp_no') or ""
         score = extract_score_from_assessment(row['assessment'])
 
         if score > 0:
-            if person not in personnel_data:
-                personnel_data[person] = {
+            if emp_no:
+                agg_key = emp_no  # 正常人员按工号聚合
+            else:
+                agg_key = f"__unmatched__{person}"  # 未匹配人员按姓名兜底
+
+            if agg_key not in personnel_data:
+                personnel_data[agg_key] = {
+                    "name": person,
                     "team": team,
+                    "emp_no": emp_no,
+                    "matched": bool(emp_no),
                     "count": 0,
                     "total_score": 0
                 }
-            personnel_data[person]["count"] += 1
-            personnel_data[person]["total_score"] += score
+            personnel_data[agg_key]["count"] += 1
+            personnel_data[agg_key]["total_score"] += score
 
     # 转换为散点图格式
     result = []
-    for person, data in personnel_data.items():
+    for agg_key, data in personnel_data.items():
         # 规范化分值显示：整数显示为整数,小数保留一位
         total_score = data["total_score"]
         normalized_score = int(total_score) if total_score == int(total_score) else round(total_score, 1)
 
         result.append({
-            "name": person,
+            "name": data["name"],
             "team": data["team"],
+            "emp_no": data["emp_no"],
+            "matched": data["matched"],  # True=可跳转, False=未匹配工号
             "value": [data["count"], normalized_score]  # [X轴违规次数, Y轴累计扣分]
         })
 
@@ -1403,9 +1425,11 @@ def api_analytics_severity_drilldown():
             sr.assessment,
             sr.rectification_status,
             sr.location,
-            sr.inspection_item
+            sr.inspection_item,
+            d.name AS dept_name
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
+        LEFT JOIN departments d ON e.department_id = d.id
         WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
         AND sr.assessment IS NOT NULL
         AND sr.assessment != ''
@@ -1437,6 +1461,7 @@ def api_analytics_severity_drilldown():
                 "date": row['inspection_date'],
                 "inspectedPerson": row['inspected_person'] or "未知",
                 "team": row['responsible_team'] or "未知",
+                "department": row['dept_name'] or "未知部门",
                 "hazardDescription": row['hazard_description'] or "",
                 "correctiveMeasures": row['corrective_measures'] or "",
                 "assessment": row['assessment'] or "",
@@ -1524,3 +1549,261 @@ def debug_check_user(emp_no):
     
     return "<br>".join(output)
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# 重构新增 API — 与 chart-registry.js apiUrls 索引严格对应
+# ═══════════════════════════════════════════════════════════════════════
+
+@safety_bp.route('/api/analytics/top-frequency-items')
+@login_required
+def api_analytics_top_frequency_items():
+    """图表：高频问题项 TOP10（按发生次数排序）— apiIndex: 5"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    dept_ids = get_accessible_department_ids()
+    if not dept_ids:
+        return jsonify({"items": [], "counts": []})
+
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
+
+    placeholders = ','.join(['%s'] * len(dept_ids))
+    query = f"""
+        SELECT sr.inspection_item, sr.assessment
+        FROM safety_inspection_records sr
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        AND sr.inspection_item IS NOT NULL
+        AND sr.inspection_item != ''
+        AND sr.assessment IS NOT NULL
+        AND sr.assessment != ''
+    """
+    params = list(dept_ids)
+
+    date_conditions, date_params = build_date_filter_sql('sr.inspection_date', start_date, end_date)
+    if date_conditions:
+        query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
+
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+
+    # 按检查项目统计发生次数（只要有有效扣分就计数）
+    item_counts = {}
+    for row in rows:
+        item = row['inspection_item']
+        score = extract_score_from_assessment(row['assessment'])
+        if score > 0:
+            item_counts[item] = item_counts.get(item, 0) + 1
+
+    sorted_items = sorted(item_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    result = {
+        "items": [item[0] for item in sorted_items],
+        "counts": [item[1] for item in sorted_items]
+    }
+    return jsonify(result)
+
+
+@safety_bp.route('/api/analytics/top-loss-drilldown')
+@login_required
+def api_analytics_top_loss_drilldown():
+    """高损失扣分项下钻 API — 查看某个检查项目的具体问题记录"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    dept_ids = get_accessible_department_ids()
+    if not dept_ids:
+        return jsonify({"canDrilldown": False, "message": "无权限访问数据"})
+
+    item_name = request.args.get('item', '').strip()
+    if not item_name:
+        return jsonify({"canDrilldown": False, "message": "缺少检查项目参数"})
+
+    placeholders = ','.join(['%s'] * len(dept_ids))
+    query = f"""
+        SELECT
+            sr.id, sr.inspection_date, sr.inspected_person,
+            sr.responsible_team, sr.hazard_description,
+            sr.corrective_measures, sr.assessment,
+            sr.rectification_status, sr.location, sr.inspection_item,
+            d.name AS dept_name
+        FROM safety_inspection_records sr
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        LEFT JOIN departments d ON e.department_id = d.id
+        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        AND sr.inspection_item = %s
+        AND sr.assessment IS NOT NULL AND sr.assessment != ''
+    """
+    params = list(dept_ids) + [item_name]
+
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range=None)
+    sd, ed = tr['start_date'], tr['end_date']
+    date_conditions, date_params = build_date_filter_sql('sr.inspection_date', sd, ed)
+    if date_conditions:
+        query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
+
+    query += " ORDER BY sr.inspection_date DESC"
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+
+    records = []
+    for row in rows:
+        score = extract_score_from_assessment(row['assessment'])
+        if score > 0:
+            records.append({
+                "id": row['id'],
+                "date": row['inspection_date'],
+                "inspectedPerson": row['inspected_person'] or "未知",
+                "team": row['responsible_team'] or "未知",
+                "department": row['dept_name'] or "未知部门",
+                "hazardDescription": row['hazard_description'] or "",
+                "correctiveMeasures": row['corrective_measures'] or "",
+                "assessment": row['assessment'] or "",
+                "rectificationStatus": row['rectification_status'] or "待整改",
+                "location": row['location'] or "",
+                "inspectionItem": row['inspection_item'] or "",
+                "score": int(score) if score == int(score) else round(score, 1)
+            })
+
+    return jsonify({
+        "canDrilldown": True,
+        "item": item_name,
+        "problemCount": len(records),
+        "problems": records,
+        "message": f"找到 {len(records)} 条问题记录"
+    })
+
+
+@safety_bp.route('/api/analytics/top-frequency-drilldown')
+@login_required
+def api_analytics_top_frequency_drilldown():
+    """高频问题项下钻 API — 复用 top-loss-drilldown 逻辑"""
+    return api_analytics_top_loss_drilldown()
+
+
+@safety_bp.route('/api/analytics/dept-issue-compare')
+@login_required
+def api_analytics_dept_issue_compare():
+    """各部门安全问题数对比 — apiIndex: 6
+
+    口径：只统计有效扣分记录（extract_score_from_assessment > 0），
+    与 safety_severity / safety_top_loss / safety_top_frequency 保持一致。
+    """
+    conn = get_db()
+    cur = conn.cursor()
+
+    dept_ids = get_accessible_department_ids()
+    if not dept_ids or len(dept_ids) < 2:
+        return jsonify([])
+
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
+
+    placeholders = ','.join(['%s'] * len(dept_ids))
+    query = f"""
+        SELECT d.name AS dept_name, sr.assessment
+        FROM safety_inspection_records sr
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        LEFT JOIN departments d ON e.department_id = d.id
+        WHERE e.department_id IN ({placeholders})
+        AND sr.assessment IS NOT NULL AND sr.assessment != ''
+    """
+    params = list(dept_ids)
+
+    date_conditions, date_params = build_date_filter_sql('sr.inspection_date', start_date, end_date)
+    if date_conditions:
+        query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
+
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+
+    # 应用层过滤：只统计有效扣分（与其他安全图表统一定义）
+    dept_counts = {}
+    for row in rows:
+        score = extract_score_from_assessment(row['assessment'])
+        if score > 0 and row['dept_name']:
+            dept_counts[row['dept_name']] = dept_counts.get(row['dept_name'], 0) + 1
+
+    result = [{"name": name, "count": count}
+              for name, count in sorted(dept_counts.items(), key=lambda x: x[1], reverse=True)]
+    return jsonify(result)
+
+
+@safety_bp.route('/api/analytics/dept-risk-compare')
+@login_required
+def api_analytics_dept_risk_compare():
+    """各部门高风险人员数对比 — apiIndex: 7
+
+    高风险定义：违规次数和累计扣分均高于全局平均值（右上象限）"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    dept_ids = get_accessible_department_ids()
+    if not dept_ids or len(dept_ids) < 2:
+        return jsonify([])
+
+    tr = parse_time_range(request.args, ['day'], default_grain='day', default_range='current_month')
+    start_date, end_date = tr['start_date'], tr['end_date']
+
+    placeholders = ','.join(['%s'] * len(dept_ids))
+    query = f"""
+        SELECT sr.inspected_person, sr.assessment, e.department_id,
+               d.name AS dept_name, e.emp_no
+        FROM safety_inspection_records sr
+        LEFT JOIN employees e ON sr.employee_id = e.id
+        LEFT JOIN departments d ON e.department_id = d.id
+        WHERE e.department_id IN ({placeholders})
+        AND sr.inspected_person IS NOT NULL AND sr.inspected_person != ''
+        AND sr.assessment IS NOT NULL AND sr.assessment != ''
+    """
+    params = list(dept_ids)
+
+    date_conditions, date_params = build_date_filter_sql('sr.inspection_date', start_date, end_date)
+    if date_conditions:
+        query += " AND " + " AND ".join(date_conditions)
+        params.extend(date_params)
+
+    cur.execute(query, tuple(params))
+    rows = cur.fetchall()
+
+    # 1) 按 emp_no 唯一聚合（与风险矩阵一致：工号统计，姓名展示）
+    #    有 emp_no → 按 emp_no 聚合
+    #    无 emp_no → 按 "__unmatched__" + 姓名 兜底，不与正常人员合并
+    person_data = {}
+    for row in rows:
+        emp_no = row.get('emp_no') or ""
+        person = row['inspected_person']
+        score = extract_score_from_assessment(row['assessment'])
+        if score > 0:
+            agg_key = emp_no if emp_no else f"__unmatched__{person}"
+            if agg_key not in person_data:
+                person_data[agg_key] = {
+                    "dept_name": row['dept_name'] or "未知",
+                    "count": 0, "total_score": 0
+                }
+            person_data[agg_key]["count"] += 1
+            person_data[agg_key]["total_score"] += score
+
+    if not person_data:
+        return jsonify([])
+
+    # 2) 计算全局平均值（象限线）
+    all_counts = [v["count"] for v in person_data.values()]
+    all_scores = [v["total_score"] for v in person_data.values()]
+    avg_count = sum(all_counts) / len(all_counts) if all_counts else 1
+    avg_score = sum(all_scores) / len(all_scores) if all_scores else 1
+
+    # 3) 统计每个部门的高风险人员数（右上象限）
+    dept_risk = {}
+    for agg_key, data in person_data.items():
+        if data["count"] >= avg_count and data["total_score"] >= avg_score:
+            dept = data["dept_name"]
+            dept_risk[dept] = dept_risk.get(dept, 0) + 1
+
+    result = [{"name": dept, "count": count}
+              for dept, count in sorted(dept_risk.items(), key=lambda x: x[1], reverse=True)]
+    return jsonify(result)

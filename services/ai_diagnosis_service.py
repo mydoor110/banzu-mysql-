@@ -169,7 +169,8 @@ class AIDiagnosisService:
             if AIConfigService.has_providers():
                 return None
         except Exception as e:
-            print(f"Failed to load AI config from database: {e}")
+            import logging
+            logging.getLogger(__name__).warning("AI配置加载失败: %s", e)
 
         # Fallback to environment variables for backward compatibility
         import os
@@ -206,7 +207,8 @@ class AIDiagnosisService:
                 'diagnosis'
             )
         except Exception as e:
-            print(f"Failed to log AI usage: {e}")
+            import logging
+            logging.getLogger(__name__).warning("AI用量日志记录失败: %s", e)
 
     @classmethod
     def _compute_data_hash(cls, data_context: str) -> str:
@@ -300,7 +302,8 @@ class AIDiagnosisService:
                 }
             return None
         except Exception as e:
-            print(f"Cache lookup failed: {e}")
+            import logging
+            logging.getLogger(__name__).warning("AI缓存查询失败: %s", e)
             return None
 
     @classmethod
@@ -332,7 +335,8 @@ class AIDiagnosisService:
             """, (emp_no, data_hash, time_window, ai_result, provider_name, model, tokens_used))
             conn.commit()
         except Exception as e:
-            print(f"Cache save failed: {e}")
+            import logging
+            logging.getLogger(__name__).warning("AI缓存保存失败: %s", e)
 
     @classmethod
     def should_trigger_diagnosis(
@@ -669,14 +673,6 @@ class AIDiagnosisService:
         Returns:
             DiagnosisResult with diagnosis text or error
         """
-        try:
-            import httpx
-        except ImportError:
-            return DiagnosisResult(
-                success=False,
-                error="httpx library not installed. Please install with: pip install httpx"
-            )
-
         # Get AI configuration from database
         config = cls._get_ai_config()
         if not config:
@@ -700,139 +696,40 @@ class AIDiagnosisService:
             data_context=data_context
         )
 
-        # Extract config values
         provider_id = config.get('id')
         provider_name = config.get('name', 'Unknown')
-        provider_type = config.get('provider_type', 'openai')
-        api_key = config['api_key']
         model = config.get('model', 'gpt-3.5-turbo')
-        base_url = config.get('base_url', 'https://api.openai.com/v1')
-        timeout = config.get('timeout', 30)
         # 5维度诊断需要更多token输出（JSON格式至少需要1500 tokens）
         max_tokens = max(config.get('max_tokens', 1500), 1500)
-        # Gemini 免费版 maxOutputTokens 上限约8192，超过会报错
-        if provider_type == 'gemini' and max_tokens > 8000:
-            max_tokens = 8000
-        temperature = config.get('temperature', 0.7)
-        extra_headers = config.get('extra_headers', {})
-
-        # Prepare request headers
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-
-        # Add extra headers from config
-        if extra_headers:
-            headers.update(extra_headers)
-
-        # Anthropic API uses different auth header
-        if provider_type == 'anthropic':
-            headers['x-api-key'] = api_key
-            del headers['Authorization']
-
-        # Gemini API - 不需要 Authorization header
-        if provider_type == 'gemini':
-            headers.pop('Authorization', None)
-
-        # 根据提供商类型构建不同的请求格式
-        if provider_type == 'gemini':
-            # Gemini API 格式
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": prompt}
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": temperature,
-                    "maxOutputTokens": max_tokens
-                }
-            }
-            endpoint = f"{base_url}/models/{model}:generateContent?key={api_key}"
-        else:
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": max_tokens,
-                "temperature": temperature
-            }
-            # Determine API endpoint
-            if provider_type == 'anthropic':
-                endpoint = f"{base_url}/messages"
-            else:
-                endpoint = f"{base_url}/chat/completions"
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(
-                    endpoint,
-                    headers=headers,
-                    json=payload
-                )
-                response.raise_for_status()
+            from adapters.ai_client import chat_async as ai_chat_async
 
-                data = response.json()
+            result = await ai_chat_async(config, prompt, max_tokens=max_tokens)
 
-                # Parse response based on provider
-                if provider_type == 'gemini':
-                    # Gemini 响应格式
-                    candidates = data.get('candidates', [{}])
-                    if candidates:
-                        parts = candidates[0].get('content', {}).get('parts', [{}])
-                        diagnosis = parts[0].get('text', '').strip() if parts else ''
-                    else:
-                        diagnosis = ''
-                    usage = data.get('usageMetadata', {})
-                    tokens_used = usage.get('totalTokenCount', 0)
-                elif provider_type == 'anthropic':
-                    diagnosis = data.get('content', [{}])[0].get('text', '').strip()
-                    tokens_used = data.get('usage', {}).get('input_tokens', 0) + \
-                                  data.get('usage', {}).get('output_tokens', 0)
-                else:
-                    diagnosis = data['choices'][0]['message']['content'].strip()
-                    tokens_used = data.get('usage', {}).get('total_tokens', 0)
-
-                # Log successful usage
-                cls._log_usage(provider_id, provider_name, model, tokens_used, True, None)
-
-                # Parse JSON response for structured result
-                parse_success, parsed_result, parse_error = cls._parse_diagnosis_response(diagnosis)
-
+            if result.success:
+                cls._log_usage(provider_id, provider_name, model, result.tokens_used, True, None)
+                parse_success, parsed_result, parse_error = cls._parse_diagnosis_response(result.text)
                 return DiagnosisResult(
                     success=True,
-                    diagnosis=diagnosis,
+                    diagnosis=result.text,
                     model_used=model,
-                    tokens_used=tokens_used,
+                    tokens_used=result.tokens_used,
                     provider_name=provider_name,
                     parsed_result=parsed_result if parse_success else None
                 )
+            else:
+                cls._log_usage(provider_id, provider_name, model, 0, False, result.error)
+                return DiagnosisResult(
+                    success=False,
+                    error=result.error,
+                    provider_name=provider_name
+                )
 
-        except httpx.HTTPStatusError as e:
-            error_msg = f"API请求失败: {e.response.status_code}"
-            try:
-                error_detail = e.response.json()
-                if 'error' in error_detail:
-                    error_msg = error_detail['error'].get('message', error_msg)
-            except Exception:
-                pass
-            cls._log_usage(provider_id, provider_name, model, 0, False, error_msg)
+        except ImportError:
             return DiagnosisResult(
                 success=False,
-                error=error_msg,
-                provider_name=provider_name
-            )
-        except httpx.RequestError as e:
-            error_msg = f"网络错误: {str(e)}"
-            cls._log_usage(provider_id, provider_name, model, 0, False, error_msg)
-            return DiagnosisResult(
-                success=False,
-                error=error_msg,
-                provider_name=provider_name
+                error="httpx library not installed. Please install with: pip install httpx"
             )
         except Exception as e:
             error_msg = f"未知错误: {str(e)}"
@@ -866,14 +763,6 @@ class AIDiagnosisService:
         Returns:
             DiagnosisResult with diagnosis text or error
         """
-        try:
-            import httpx
-        except ImportError:
-            return DiagnosisResult(
-                success=False,
-                error="httpx library not installed. Please install with: pip install httpx"
-            )
-
         # Get AI configuration from database
         config = cls._get_ai_config()
         if not config:
@@ -889,30 +778,25 @@ class AIDiagnosisService:
             )
 
         # ====== 缓存检查逻辑（省Token核心）======
-        # 使用稳定的缓存键计算哈希（只包含原始数据，排除动态计算值）
         cache_key = cls._build_cache_key(risk_data)
         data_hash = cls._compute_data_hash(cache_key)
 
-        # 查询缓存
         cached = cls._get_cached_result(emp_no, data_hash)
         if cached:
-            # 缓存命中！直接返回，消耗0 Token
             cached_diagnosis = cached['ai_result']
             parse_success, parsed_result, _ = cls._parse_diagnosis_response(cached_diagnosis)
             return DiagnosisResult(
                 success=True,
                 diagnosis=cached_diagnosis,
                 model_used=cached.get('model'),
-                tokens_used=0,  # 缓存命中不消耗token
+                tokens_used=0,
                 provider_name=cached.get('provider_name'),
                 parsed_result=parsed_result if parse_success else None,
-                source="cache"  # 标记数据来源为缓存
+                source="cache"
             )
 
         # ====== 缓存未命中，调用API ======
-        # 构建完整的数据上下文用于AI分析（从数据库动态加载分析要求）
         data_context = cls._build_data_context(risk_data)
-
         prompt = cls._build_prompt(
             emp_no=cls._anonymize_emp_no(emp_no),
             name=cls._anonymize_name(name),
@@ -920,151 +804,52 @@ class AIDiagnosisService:
             data_context=data_context
         )
 
-        # Extract config values
         provider_id = config.get('id')
         provider_name = config.get('name', 'Unknown')
-        provider_type = config.get('provider_type', 'openai')
-        api_key = config['api_key']
         model = config.get('model', 'gpt-3.5-turbo')
-        base_url = config.get('base_url', 'https://api.openai.com/v1')
-        timeout = config.get('timeout', 30)
-        # 5维度诊断需要更多token输出（JSON格式至少需要1500 tokens）
         max_tokens = max(config.get('max_tokens', 1500), 1500)
-        # Gemini 免费版 maxOutputTokens 上限约8192，超过会报错
-        if provider_type == 'gemini' and max_tokens > 8000:
-            max_tokens = 8000
-        temperature = config.get('temperature', 0.7)
-        extra_headers = config.get('extra_headers', {})
-
-        # Prepare request headers
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-
-        # Add extra headers from config
-        if extra_headers:
-            headers.update(extra_headers)
-
-        # Anthropic API uses different auth header
-        if provider_type == 'anthropic':
-            headers['x-api-key'] = api_key
-            del headers['Authorization']
-
-        # Gemini API - 不需要 Authorization header
-        if provider_type == 'gemini':
-            headers.pop('Authorization', None)
-
-        # 根据提供商类型构建不同的请求格式
-        if provider_type == 'gemini':
-            # Gemini API 格式
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": prompt}
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "temperature": temperature,
-                    "maxOutputTokens": max_tokens
-                }
-            }
-            endpoint = f"{base_url}/models/{model}:generateContent?key={api_key}"
-        else:
-            payload = {
-                "model": model,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": max_tokens,
-                "temperature": temperature
-            }
-            # Determine API endpoint
-            if provider_type == 'anthropic':
-                endpoint = f"{base_url}/messages"
-            else:
-                endpoint = f"{base_url}/chat/completions"
 
         try:
-            with httpx.Client(timeout=timeout) as client:
-                response = client.post(
-                    endpoint,
-                    headers=headers,
-                    json=payload
-                )
-                response.raise_for_status()
+            from adapters.ai_client import chat as ai_chat
 
-                data = response.json()
+            result = ai_chat(config, prompt, max_tokens=max_tokens)
 
-                # Parse response based on provider
-                if provider_type == 'gemini':
-                    # Gemini 响应格式
-                    candidates = data.get('candidates', [{}])
-                    if candidates:
-                        parts = candidates[0].get('content', {}).get('parts', [{}])
-                        diagnosis = parts[0].get('text', '').strip() if parts else ''
-                    else:
-                        diagnosis = ''
-                    usage = data.get('usageMetadata', {})
-                    tokens_used = usage.get('totalTokenCount', 0)
-                elif provider_type == 'anthropic':
-                    diagnosis = data.get('content', [{}])[0].get('text', '').strip()
-                    tokens_used = data.get('usage', {}).get('input_tokens', 0) + \
-                                  data.get('usage', {}).get('output_tokens', 0)
-                else:
-                    diagnosis = data['choices'][0]['message']['content'].strip()
-                    tokens_used = data.get('usage', {}).get('total_tokens', 0)
-
-                # Log successful usage
-                cls._log_usage(provider_id, provider_name, model, tokens_used, True, None)
-
-                # Parse JSON response for structured result
-                parse_success, parsed_result, parse_error = cls._parse_diagnosis_response(diagnosis)
+            if result.success:
+                cls._log_usage(provider_id, provider_name, model, result.tokens_used, True, None)
+                parse_success, parsed_result, parse_error = cls._parse_diagnosis_response(result.text)
 
                 # ====== 保存到缓存（供下次复用）======
                 cls._save_to_cache(
                     emp_no=emp_no,
                     data_hash=data_hash,
                     time_window=time_window or "",
-                    ai_result=diagnosis,
+                    ai_result=result.text,
                     provider_name=provider_name,
                     model=model,
-                    tokens_used=tokens_used
+                    tokens_used=result.tokens_used
                 )
 
                 return DiagnosisResult(
                     success=True,
-                    diagnosis=diagnosis,
+                    diagnosis=result.text,
                     model_used=model,
-                    tokens_used=tokens_used,
+                    tokens_used=result.tokens_used,
                     provider_name=provider_name,
                     parsed_result=parsed_result if parse_success else None,
-                    source="api"  # 标记数据来源为新API调用
+                    source="api"
+                )
+            else:
+                cls._log_usage(provider_id, provider_name, model, 0, False, result.error)
+                return DiagnosisResult(
+                    success=False,
+                    error=result.error,
+                    provider_name=provider_name
                 )
 
-        except httpx.HTTPStatusError as e:
-            error_msg = f"API请求失败: {e.response.status_code}"
-            try:
-                error_detail = e.response.json()
-                if 'error' in error_detail:
-                    error_msg = error_detail['error'].get('message', error_msg)
-            except Exception:
-                pass
-            cls._log_usage(provider_id, provider_name, model, 0, False, error_msg)
+        except ImportError:
             return DiagnosisResult(
                 success=False,
-                error=error_msg,
-                provider_name=provider_name
-            )
-        except httpx.RequestError as e:
-            error_msg = f"网络错误: {str(e)}"
-            cls._log_usage(provider_id, provider_name, model, 0, False, error_msg)
-            return DiagnosisResult(
-                success=False,
-                error=error_msg,
-                provider_name=provider_name
+                error="httpx library not installed. Please install with: pip install httpx"
             )
         except Exception as e:
             error_msg = f"未知错误: {str(e)}"

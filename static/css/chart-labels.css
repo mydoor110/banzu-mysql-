@@ -1,0 +1,76 @@
+/* ══════════════════════════════════════════════════════════
+ * 图表结构化标签条样式 (chart-labels.css)
+ * 供 ChartRegistry.injectChartLabels() 使用
+ * ══════════════════════════════════════════════════════════ */
+
+.chart-labels-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 6px;
+    padding: 6px 4px 2px;
+    margin-top: 4px;
+    line-height: 1;
+}
+
+.cl-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+    border: 1px solid transparent;
+}
+
+/* 统计范围：蓝色系 */
+.cl-chip.cl-scope {
+    background: #e8f0fe;
+    color: #1a56db;
+    border-color: #c7d9fc;
+}
+
+/* 单位：灰蓝 */
+.cl-chip.cl-unit {
+    background: #f0f4ff;
+    color: #4a6fa5;
+    border-color: #d8e2f8;
+}
+
+/* 样本量 N：橙色系（突出强调） */
+.cl-chip.cl-n {
+    background: #fff3e0;
+    color: #c56a00;
+    border-color: #ffd399;
+    font-weight: 600;
+}
+
+/* extra 规模标签（对比图）：与 N 同色调淡化 */
+.cl-chip.cl-extra {
+    background: #fff8ef;
+    color: #b07030;
+    border-color: #ffe6b8;
+}
+
+/* 统计区间：青绿系 */
+.cl-chip.cl-range {
+    background: #e6faf8;
+    color: #0d7a6c;
+    border-color: #b2e9e2;
+}
+
+/* 排序规则：浅灰 */
+.cl-chip.cl-sort {
+    background: #f5f5f5;
+    color: #666;
+    border-color: #ddd;
+}
+
+/* 补充说明：浅紫 */
+.cl-chip.cl-note {
+    background: #f5f0ff;
+    color: #6b47b8;
+    border-color: #ddd0f8;
+    font-style: italic;
+}

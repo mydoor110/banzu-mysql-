@@ -98,6 +98,20 @@ class PPTExportService:
                     else:
                         self._add_single_image_slide(page_title, images[i], note)
 
+                    # 如果当前图表有 summaryData，紧接追加一页摘要页
+                    if i + 1 < len(images):
+                        # 双图: 得先检查左右两张都有无 summaryData
+                        for img_obj in [images[i], images[i + 1]]:
+                            sd = img_obj.get('summaryData') if isinstance(img_obj, dict) else None
+                            if sd:
+                                self._add_decision_summary_slide(img_obj, note)
+                    else:
+                        # 单图检查当前图
+                        img_obj = images[i]
+                        sd = img_obj.get('summaryData') if isinstance(img_obj, dict) else None
+                        if sd:
+                            self._add_decision_summary_slide(img_obj, note)
+
         # 九宫格页
         if nine_grid_image:
             self._add_single_image_slide("人才九宫格", nine_grid_image, "基于三维分的人才视图")
@@ -309,57 +323,285 @@ class PPTExportService:
         slide = self.prs.slides.add_slide(self._blank_layout)
         self._apply_background(slide)
         self._draw_slide_header(slide, title)
-        
+
+        top_offset = Inches(1.0)
+        if note:
+             self._add_textbox(slide, text=note, left=Inches(0.4), top=top_offset,
+                               width=SLIDE_WIDTH - Inches(0.8), height=Inches(0.25),
+                               font_size=Pt(9.5), color=COLOR_TEXT_MUTED)
+             top_offset += Inches(0.35)
+        else:
+             top_offset += Inches(0.1)
+
         img_b64 = chart_obj.get("image", "") if isinstance(chart_obj, dict) else chart_obj
         chart_title = chart_obj.get("title", "") if isinstance(chart_obj, dict) else ""
+        hint = chart_obj.get("hint", "") if isinstance(chart_obj, dict) else ""
+        ppt_enhance = chart_obj.get("pptEnhance") if isinstance(chart_obj, dict) else None
+        enhance_data = chart_obj.get("enhanceData") if isinstance(chart_obj, dict) else None
 
-        top_offset = Inches(1.1)
-        bottom_margin = Inches(0.8) if note else Inches(0.3)
+        # 计算增强内容所需的额外高度
+        extra_lines = 0
+        if enhance_data and isinstance(ppt_enhance, dict):
+            pe_type = ppt_enhance.get('type')
+            if pe_type == 'trend' and isinstance(enhance_data, dict):
+                extra_lines = len(enhance_data.get('series', []))
+            elif pe_type == 'risk_matrix' and isinstance(enhance_data, list):
+                extra_lines = min(len(enhance_data), 5) + 1  # 标题行 + 数据行
+
+        annotation_h = Inches(0.30) * extra_lines
+        bottom_margin = Inches(0.9) if hint else Inches(0.6)
+        if extra_lines:
+            bottom_margin = bottom_margin + annotation_h
+
         card_h = SLIDE_HEIGHT - top_offset - bottom_margin
         card_w = SLIDE_WIDTH - Inches(0.8)
         card_left = Inches(0.4)
-        
+
         self._draw_card(slide, card_left, top_offset, card_w, card_h, chart_title)
-        
+
         img_top = top_offset + (Inches(0.5) if chart_title else Inches(0.2))
         img_h = card_h - (Inches(0.7) if chart_title else Inches(0.4))
-        
+
         self._insert_image(slide, img_b64, card_left, img_top, card_w, img_h)
 
+        # ── PPT 增强渲染区 ─────────────────────────────────────────────────
+        y_ann = top_offset + card_h + Inches(0.06)
+        if enhance_data and isinstance(ppt_enhance, dict):
+            pe_type = ppt_enhance.get('type')
+
+            if pe_type == 'trend' and isinstance(enhance_data, dict):
+                for s in enhance_data.get('series', []):
+                    name = s.get('name', '')
+                    unit = s.get('unit', '')
+                    latest = s.get('latest')
+                    peak = s.get('peak')
+                    peak_lbl = s.get('peakLabel', '')
+                    avg = s.get('average')
+                    parts = []
+                    if latest is not None:
+                        parts.append(f"最新值: {latest}{unit}")
+                    if peak is not None:
+                        parts.append(f"峰值: {peak}{unit} ({peak_lbl})")
+                    if avg is not None:
+                        parts.append(f"均值: {avg}{unit}")
+                    line = f"📈 {name}  " + "   |   ".join(parts) if parts else ''
+                    if line:
+                        self._add_textbox(slide, text=line, left=card_left, top=y_ann,
+                                          width=card_w, height=Inches(0.26),
+                                          font_size=Pt(9), color=self.theme['text_main'])
+                        y_ann += Inches(0.28)
+
+            elif pe_type == 'risk_matrix' and isinstance(enhance_data, list) and enhance_data:
+                self._add_textbox(slide, text='⚠ 高风险人员名单（右上象限 Top5）',
+                                  left=card_left, top=y_ann, width=card_w, height=Inches(0.26),
+                                  font_size=Pt(9), bold=True, color=COLOR_DANGER)
+                y_ann += Inches(0.28)
+                for idx, person in enumerate(enhance_data[:5]):
+                    name = person.get('name', '')
+                    emp_no = person.get('emp_no', '')
+                    team = person.get('team', '')
+                    dept = person.get('department', '')
+                    count = person.get('count', 0)
+                    score = person.get('total_score', 0)
+                    loc = dept or team or '未知'
+                    emp_str = f"（{emp_no}）" if emp_no else ''
+                    line = f"{idx+1}. {name}{emp_str}  {loc}  违规{count}次  扣分{score}分"
+                    self._add_textbox(slide, text=line, left=card_left + Inches(0.25), top=y_ann,
+                                      width=card_w - Inches(0.25), height=Inches(0.25),
+                                      font_size=Pt(8.5), color=self.theme['text_main'])
+                    y_ann += Inches(0.27)
+
+        # ── hint 底部安全区 ────────────────────────────────────────────────
+        y_footer = y_ann + Inches(0.04)
+        if hint:
+            self._add_textbox(slide, text=f'\U0001f4ca {hint}', left=Inches(0.4), top=y_footer,
+                              width=card_w, height=Inches(0.30), font_size=Pt(9), color=COLOR_TEXT_MUTED)
+
+    def _add_decision_summary_slide(self, chart_obj, note: str = ""):
+        """决策型图表配套摘要页：一图一页，含 stats KPI + bullets 典型问题"""
+        if not isinstance(chart_obj, dict):
+            return
+        summary_data = chart_obj.get('summaryData')
+        if not summary_data or not isinstance(summary_data, dict):
+            return
+
+        chart_title = summary_data.get('chartTitle', chart_obj.get('title', '图表分析'))
+        stats = summary_data.get('stats', [])
+        bullets = summary_data.get('bullets', [])
+
+        slide = self.prs.slides.add_slide(self._blank_layout)
+        self._apply_background(slide)
+        self._draw_slide_header(slide, f"{chart_title} — 分析摘要")
+
+        body_top = Inches(1.0)
         if note:
-            self._add_textbox(slide, text=note, left=Inches(0.4), top=SLIDE_HEIGHT - Inches(0.6),
-                              width=card_w, height=Inches(0.4), font_size=Pt(10), color=self.theme['text_main'])
+             self._add_textbox(slide, text=note, left=Inches(0.3), top=body_top,
+                               width=SLIDE_WIDTH - Inches(0.6), height=Inches(0.25),
+                               font_size=Pt(9.5), color=COLOR_TEXT_MUTED)
+             body_top += Inches(0.35)
+
+        card_w = SLIDE_WIDTH - Inches(0.6)
+        card_left = Inches(0.3)
+
+        # ── KPI 卡片区（stats）──────────────────────────────────────────────
+        n_stats = len(stats)
+        if n_stats:
+            stat_card_w = (card_w - Inches(0.15) * (n_stats - 1)) / n_stats
+            stat_card_h = Inches(1.3)
+            for idx, stat in enumerate(stats):
+                x = card_left + idx * (stat_card_w + Inches(0.15))
+                bg = slide.shapes.add_shape(1, x, body_top, stat_card_w, stat_card_h)
+                bg.fill.solid()
+                bg.fill.fore_color.rgb = self.theme['card_bg']
+                bg.line.color.rgb = RGBColor(0xE2, 0xE8, 0xF0)
+                # 顶部色条
+                accent = slide.shapes.add_shape(1, x, body_top, stat_card_w, Pt(4))
+                accent.fill.solid()
+                accent.fill.fore_color.rgb = self.theme['header_bg']
+                accent.line.fill.background()
+                # 标签
+                self._add_textbox(slide, text=stat.get('label', ''),
+                                  left=x + Inches(0.1), top=body_top + Inches(0.18),
+                                  width=stat_card_w - Inches(0.2), height=Inches(0.35),
+                                  font_size=Pt(10), color=COLOR_TEXT_MUTED)
+                # 数值
+                self._add_textbox(slide, text=stat.get('value', '--'),
+                                  left=x + Inches(0.1), top=body_top + Inches(0.55),
+                                  width=stat_card_w - Inches(0.2), height=Inches(0.55),
+                                  font_size=Pt(22), bold=True, color=self.theme['text_main'])
+
+        bullets_top = body_top + Inches(1.55)
+        self._draw_card(slide, card_left, bullets_top,
+                        card_w, Inches(4.5), title='典型问题记录')
+        y_b = bullets_top + Inches(0.55)
+        if bullets:
+            for i, blt in enumerate(bullets[:5]):
+                bullet_text = f"{'①②③④⑤'[i]}  {blt}" if i < 5 else f"·  {blt}"
+                self._add_textbox(slide, text=bullet_text,
+                                  left=card_left + Inches(0.2), top=y_b,
+                                  width=card_w - Inches(0.4), height=Inches(0.45),
+                                  font_size=Pt(10), color=self.theme['text_main'],
+                                  word_wrap=True)
+                y_b += Inches(0.48)
+        else:
+             self._add_textbox(slide, text="暂无典型问题记录",
+                               left=card_left + Inches(0.2), top=y_b,
+                               width=card_w - Inches(0.4), height=Inches(0.45),
+                               font_size=Pt(10), color=COLOR_TEXT_MUTED,
+                               word_wrap=True)
 
     def _add_double_image_slide(self, title: str, chart_obj_left, chart_obj_right, note: str = ""):
         slide = self.prs.slides.add_slide(self._blank_layout)
         self._apply_background(slide)
         self._draw_slide_header(slide, title)
 
-        top_offset = Inches(1.1)
-        bottom_margin = Inches(0.8) if note else Inches(0.3)
+        top_offset = Inches(1.0)
+        if note:
+             self._add_textbox(slide, text=note, left=Inches(0.4), top=top_offset,
+                               width=SLIDE_WIDTH - Inches(0.8), height=Inches(0.25),
+                               font_size=Pt(9.5), color=COLOR_TEXT_MUTED)
+             top_offset += Inches(0.35)
+        else:
+             top_offset += Inches(0.1)
+
+        # 计算双侧最多需要的增强数据行数
+        def get_lines(co):
+            if not isinstance(co, dict): return 0
+            ed = co.get("enhanceData")
+            pe = co.get("pptEnhance")
+            if ed and isinstance(pe, dict):
+                t = pe.get('type')
+                if t == 'trend' and isinstance(ed, dict):
+                    return len(ed.get('series', []))
+                elif t == 'risk_matrix' and isinstance(ed, list):
+                    return min(len(ed), 5) + 1
+            return 0
+            
+        extra_lines = max(get_lines(chart_obj_left), get_lines(chart_obj_right))
+        annotation_h = Inches(0.30) * extra_lines
+        
+        def _get_hint(co): return co.get("hint", "") if isinstance(co, dict) else ""
+        has_hint = bool(_get_hint(chart_obj_left) or _get_hint(chart_obj_right))
+
+        bottom_margin = Inches(0.9) if has_hint else Inches(0.6)
+        if extra_lines:
+            bottom_margin += annotation_h
+
         card_h = SLIDE_HEIGHT - top_offset - bottom_margin
         card_w = (SLIDE_WIDTH - Inches(1.0)) / 2
         gap = Inches(0.2)
         
-        # Left
-        img_b64_L = chart_obj_left.get("image", "") if isinstance(chart_obj_left, dict) else chart_obj_left
-        title_L = chart_obj_left.get("title", "") if isinstance(chart_obj_left, dict) else ""
-        self._draw_card(slide, Inches(0.4), top_offset, card_w, card_h, title_L)
-        self._insert_image(slide, img_b64_L, Inches(0.4), top_offset + (Inches(0.5) if title_L else Inches(0.2)), 
-                           card_w, card_h - (Inches(0.7) if title_L else Inches(0.4)))
-                           
-        # Right
-        img_b64_R = chart_obj_right.get("image", "") if isinstance(chart_obj_right, dict) else chart_obj_right
-        title_R = chart_obj_right.get("title", "") if isinstance(chart_obj_right, dict) else ""
-        left_R = Inches(0.4) + card_w + gap
-        self._draw_card(slide, left_R, top_offset, card_w, card_h, title_R)
-        self._insert_image(slide, img_b64_R, left_R, top_offset + (Inches(0.5) if title_R else Inches(0.2)), 
-                           card_w, card_h - (Inches(0.7) if title_R else Inches(0.4)))
+        # 渲染卡片和图文框架
+        def render_half(co, c_left):
+            if not isinstance(co, dict):
+                co = {"image": co}
+            img_b64 = co.get("image", "")
+            c_title = co.get("title", "")
+            
+            self._draw_card(slide, c_left, top_offset, card_w, card_h, c_title)
+            img_top = top_offset + (Inches(0.5) if c_title else Inches(0.2))
+            img_h = card_h - (Inches(0.7) if c_title else Inches(0.4))
+            self._insert_image(slide, img_b64, c_left, img_top, card_w, img_h)
+            
+            # 并返回增强数据渲染所需要的起笔坐标
+            return co
 
-        if note:
-            self._add_textbox(slide, text=note, left=Inches(0.4), top=SLIDE_HEIGHT - Inches(0.6),
-                              width=SLIDE_WIDTH - Inches(0.8), height=Inches(0.4), 
-                              font_size=Pt(10), color=self.theme['text_main'])
+        co_L = render_half(chart_obj_left, Inches(0.4))
+        co_R = render_half(chart_obj_right, Inches(0.4) + card_w + gap)
+        
+        # ── PPT 增强渲染区（含 hint） ───────────────────────────────────────
+        y_ann_start = top_offset + card_h + Inches(0.06)
+        
+        for co, c_left in [(co_L, Inches(0.4)), (co_R, Inches(0.4) + card_w + gap)]:
+            ed = co.get('enhanceData')
+            pe = co.get('pptEnhance')
+            hint = co.get("hint", "")
+            
+            y_ann = y_ann_start
+            if ed and isinstance(pe, dict):
+                pe_type = pe.get('type')
+                
+                if pe_type == 'trend' and isinstance(ed, dict):
+                    for s in ed.get('series', []):
+                        name = s.get('name', '')
+                        unit = s.get('unit', '')
+                        latest = s.get('latest')
+                        peak = s.get('peak')
+                        peak_lbl = s.get('peakLabel', '')
+                        avg = s.get('average')
+                        parts = []
+                        if latest is not None: parts.append(f"最新: {latest}{unit}")
+                        if peak is not None: parts.append(f"峰值: {peak}{unit} ({peak_lbl})")
+                        if avg is not None: parts.append(f"均值: {avg}{unit}")
+                        line = f"📈 {name}  " + " | ".join(parts) if parts else ''
+                        if line:
+                            self._add_textbox(slide, text=line, left=c_left, top=y_ann,
+                                              width=card_w, height=Inches(0.26),
+                                              font_size=Pt(8.5), color=self.theme['text_main'])
+                            y_ann += Inches(0.28)
+                            
+                elif pe_type == 'risk_matrix' and isinstance(ed, list) and ed:
+                    self._add_textbox(slide, text='⚠ 高风险人员名单（右上象限 Top5）',
+                                      left=c_left, top=y_ann, width=card_w, height=Inches(0.26),
+                                      font_size=Pt(8.5), bold=True, color=COLOR_DANGER)
+                    y_ann += Inches(0.28)
+                    for idx, person in enumerate(ed[:5]):
+                        name = person.get('name', '')
+                        emp_no = person.get('emp_no', '')
+                        loc = person.get('department') or person.get('team') or '未知'
+                        count = person.get('count', 0)
+                        score = person.get('total_score', 0)
+                        emp_str = f"({emp_no})" if emp_no else ''
+                        line = f"{idx+1}. {name}{emp_str} {loc} 违规{count}次 扣分{score}分"
+                        self._add_textbox(slide, text=line, left=c_left + Inches(0.2), top=y_ann,
+                                          width=card_w - Inches(0.2), height=Inches(0.25),
+                                          font_size=Pt(8), color=self.theme['text_main'])
+                        y_ann += Inches(0.27)
+                        
+            if hint:
+                y_hint = y_ann_start + annotation_h if extra_lines else y_ann_start
+                self._add_textbox(slide, text=f'\U0001f4ca {hint}', left=c_left, top=y_hint,
+                                  width=card_w, height=Inches(0.35), font_size=Pt(8), color=COLOR_TEXT_MUTED)
 
     def _add_person_slide(self, person: dict):
         """

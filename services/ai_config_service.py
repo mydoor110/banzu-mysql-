@@ -553,11 +553,6 @@ class AIConfigService:
     @classmethod
     def test_provider(cls, provider_id: int) -> Tuple[bool, str, Optional[Dict]]:
         """测试AI提供商连接"""
-        try:
-            import httpx
-        except ImportError:
-            return False, 'httpx库未安装', None
-
         provider = cls.get_provider_by_id(provider_id)
         if not provider:
             return False, '提供商不存在', None
@@ -566,108 +561,30 @@ class AIConfigService:
             return False, 'API Key未配置', None
 
         try:
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f"Bearer {provider['api_key']}"
-            }
+            from adapters.ai_client import chat
 
-            # 添加额外headers
-            if provider['extra_headers']:
-                headers.update(provider['extra_headers'])
+            result = chat(provider, '请回复"连接成功"四个字',
+                          max_tokens=50, temperature=0.1)
 
-            # Anthropic 特殊处理
-            if provider['provider_type'] == 'anthropic':
-                headers['x-api-key'] = provider['api_key']
-                del headers['Authorization']
-
-            # Gemini 特殊处理 - 不需要 Authorization header
-            if provider['provider_type'] == 'gemini':
-                headers.pop('Authorization', None)
-
-            # 根据提供商类型构建不同的请求格式
-            if provider['provider_type'] == 'gemini':
-                # Gemini API 格式
-                payload = {
-                    'contents': [
-                        {
-                            'parts': [
-                                {'text': '请回复"连接成功"四个字'}
-                            ]
-                        }
-                    ],
-                    'generationConfig': {
-                        'temperature': 0.1,
-                        'maxOutputTokens': 50
-                    }
-                }
-                endpoint = f"{provider['base_url']}/models/{provider['model']}:generateContent?key={provider['api_key']}"
-            else:
-                payload = {
-                    'model': provider['model'],
-                    'messages': [
-                        {'role': 'user', 'content': '请回复"连接成功"四个字'}
-                    ],
-                    'max_tokens': 50,
-                    'temperature': 0.1
-                }
-                # Anthropic API格式不同
-                if provider['provider_type'] == 'anthropic':
-                    endpoint = f"{provider['base_url']}/messages"
-                else:
-                    endpoint = f"{provider['base_url']}/chat/completions"
-
-            with httpx.Client(timeout=provider['timeout']) as client:
-                response = client.post(endpoint, headers=headers, json=payload)
-                response.raise_for_status()
-
-                data = response.json()
-
-                # 解析响应
-                if provider['provider_type'] == 'gemini':
-                    # Gemini 响应格式
-                    candidates = data.get('candidates', [{}])
-                    if candidates:
-                        parts = candidates[0].get('content', {}).get('parts', [{}])
-                        reply = parts[0].get('text', '') if parts else ''
-                    else:
-                        reply = ''
-                    usage = data.get('usageMetadata', {})
-                    tokens = usage.get('totalTokenCount', 0)
-                elif provider['provider_type'] == 'anthropic':
-                    reply = data.get('content', [{}])[0].get('text', '')
-                    tokens = data.get('usage', {}).get('input_tokens', 0) + data.get('usage', {}).get('output_tokens', 0)
-                else:
-                    reply = data.get('choices', [{}])[0].get('message', {}).get('content', '')
-                    tokens = data.get('usage', {}).get('total_tokens', 0)
-
-                # 记录日志
-                cls.log_usage(provider_id, provider['name'], provider['model'], tokens, True, None, 'test')
-
+            if result.success:
+                cls.log_usage(provider_id, provider['name'], provider['model'],
+                              result.tokens_used, True, None, 'test')
                 return True, '连接成功', {
-                    'reply': reply.strip(),
-                    'tokens': tokens,
-                    'model': provider['model']
+                    'reply': result.text,
+                    'tokens': result.tokens_used,
+                    'model': result.model
                 }
+            else:
+                cls.log_usage(provider_id, provider['name'], provider['model'],
+                              0, False, result.error, 'test')
+                return False, result.error, None
 
-        except httpx.HTTPStatusError as e:
-            error_msg = f'HTTP错误: {e.response.status_code}'
-            try:
-                error_detail = e.response.json()
-                if 'error' in error_detail:
-                    error_msg = error_detail['error'].get('message', error_msg)
-            except Exception:
-                pass
-            cls.log_usage(provider_id, provider['name'], provider['model'], 0, False, error_msg, 'test')
-            return False, error_msg, None
-
-        except httpx.RequestError as e:
-            error_msg = f'网络错误: {str(e)}'
-            cls.log_usage(provider_id, provider['name'], provider['model'], 0, False, error_msg, 'test')
-            return False, error_msg, None
-
+        except ImportError:
+            return False, 'httpx库未安装', None
         except Exception as e:
             error_msg = f'未知错误: {str(e)}'
-            cls.log_usage(provider_id, provider['name'], provider['model'], 0, False, error_msg, 'test')
+            cls.log_usage(provider_id, provider['name'], provider['model'],
+                          0, False, error_msg, 'test')
             return False, error_msg, None
 
     @classmethod
