@@ -261,7 +261,7 @@
                 <select class="form-select" id="cfgTheme">
                     <option value="blue">蓝色（默认）</option>
                     <option value="dark">深色</option>
-                    <option value="green">绿色</option>
+                    <option value="simple">简约</option>
                 </select>
             </div>
             <div class="col-md-3 d-flex align-items-end">
@@ -937,7 +937,10 @@
 
             const resp = await fetch('/api/export/ppt', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': window.csrf_token || ''
+                },
                 body: JSON.stringify(body)
             });
 
