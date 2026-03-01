@@ -389,6 +389,72 @@
     </div>
 </div>
 
+<!-- ── 导出确认 Modal（Phase 2）── -->
+<div class="modal fade" id="confirmExportModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmModalLabel">
+                    <i class="fas fa-file-powerpoint me-2 text-primary"></i>确认导出
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 导出摘要 -->
+                <div class="row g-3 text-center mb-3">
+                    <div class="col-3">
+                        <div class="summary-stat">
+                            <div class="val" id="confirmChartCount">-</div>
+                            <div class="lbl">已选图表</div>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="summary-stat">
+                            <div class="val" id="confirmSummaryCount">-</div>
+                            <div class="lbl">摘要页数</div>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="summary-stat">
+                            <div class="val" id="confirmPageCount">-</div>
+                            <div class="lbl">预估总页数</div>
+                        </div>
+                    </div>
+                    <div class="col-3">
+                        <div class="summary-stat">
+                            <div class="val" id="confirmDateRange" style="font-size:1rem">-</div>
+                            <div class="lbl">时间范围</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 图表清单 -->
+                <div class="mb-2 fw-semibold small text-secondary">
+                    <i class="fas fa-list me-1"></i>导出图表清单
+                </div>
+                <div id="confirmChartList"
+                    style="max-height:260px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
+                    <!-- 由 JS 填充 -->
+                </div>
+
+                <div class="alert alert-info mt-3 mb-0 py-2 small">
+                    <i class="fas fa-info-circle me-1"></i>
+                    截图已完成，点击"确认导出"将立即生成 PPT 文件并下载。
+                    关键人员画像导出功能将在后续版本中提供。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-arrow-left me-1"></i>返回修改
+                </button>
+                <button type="button" class="btn btn-primary px-4" id="btnConfirmExport" onclick="doConfirmedExport()">
+                    <i class="fas fa-download me-2"></i>确认导出
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 进度遮罩 -->
 <div id="captureProgress">
     <div class="prog-title" id="progTitle">正在截图，请稍候...</div>
@@ -883,21 +949,15 @@
         const start = ExportConfig.startMonth;
         const end = ExportConfig.endMonth;
 
-        if (!start || !end) {
-            showToast('请先选择时间范围', 'warning');
-            return;
-        }
+        if (!start || !end) { showToast('请先选择时间范围', 'warning'); return; }
         const selectedCharts = Object.values(ExportConfig.chartConfigs).filter(c => c.selected);
-        if (!selectedCharts.length) {
-            showToast('请至少选择一张图表', 'warning');
-            return;
-        }
+        if (!selectedCharts.length) { showToast('请至少选择一张图表', 'warning'); return; }
 
         const btn = document.getElementById('btnStartExport');
         btn.disabled = true;
 
         try {
-            // Step 1：批量截图
+            // Step 1：批量截图（产出 window.__chartImageCache）
             await captureAllCharts(start, end);
 
             // Step 2：异步构建 decision_summary
@@ -907,35 +967,117 @@
                 await buildAllDecisionSummaries(start, end);
             }
 
-            // Step 3：组装 module_slides（Phase 1 旧结构）
-            setProgressText('正在打包 PPT...');
-            setProgressBar(92);
-            const moduleSlides = buildModuleSlidesFromCache();
+            setProgressBar(100);
+            setProgress(false);
 
-            if (!moduleSlides.length) {
-                throw new Error('截图结果为空，请检查时间范围是否有数据');
+            // Step 3：弹出确认 Modal（Phase 2 新增，不再直接 POST）
+            showConfirmModal();
+
+        } catch (e) {
+            setProgress(false);
+            showToast('截图失败：' + e.message, 'danger');
+            console.error('[startExport]', e);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    /* ── 填充并展示确认 Modal ── */
+    function showConfirmModal() {
+        const cache = window.__chartImageCache || {};
+        const modules = ChartRegistry.getModules ? ChartRegistry.getModules() : [];
+
+        // 统计
+        let chartCount = 0, summaryCount = 0;
+        let listHtml = '';
+        const moduleMetaMap = {
+            analytics: '人员分析', training: '培训分析', safety: '安全分析'
+        };
+
+        for (const mod of modules) {
+            const modLabel = moduleMetaMap[mod.key] || mod.key;
+            const chartsInMod = (mod.charts || []).filter(c => {
+                const cfg = ExportConfig.chartConfigs[c.id];
+                const img = cache[c.id];
+                return cfg && cfg.selected && img && img.image;
+            });
+            if (!chartsInMod.length) continue;
+
+            listHtml += `<div class="mb-2"><span class="badge bg-primary me-1">${modLabel}</span>`;
+            for (const c of chartsInMod) {
+                const img = cache[c.id];
+                const hasSummary = !!(img && img.summaryData);
+                chartCount++;
+                if (hasSummary) summaryCount++;
+                listHtml += `<span class="badge bg-light text-dark border me-1 mb-1" style="font-weight:400">
+                    ${c.title}${hasSummary ? ' <span class="badge bg-info text-dark" style="font-size:.65rem">摘要</span>' : ''}
+                </span>`;
+            }
+            listHtml += `</div>`;
+        }
+
+        const estimatedPages = Math.ceil(chartCount / 2) + summaryCount + 2; // 封面+末页
+
+        document.getElementById('confirmChartCount').textContent = chartCount;
+        document.getElementById('confirmSummaryCount').textContent = summaryCount;
+        document.getElementById('confirmPageCount').textContent = estimatedPages;
+
+        const start = ExportConfig.startMonth, end = ExportConfig.endMonth;
+        document.getElementById('confirmDateRange').textContent = start === end ? start : `${start}~${end.slice(5)}`;
+        document.getElementById('confirmChartList').innerHTML = listHtml || '<div class="text-muted small">无可用图表</div>';
+
+        const modal = new bootstrap.Modal(document.getElementById('confirmExportModal'));
+        modal.show();
+    }
+
+    /* ── 确认后 POST v2（Phase 2 新协议：raw_images + export_config → 后端 builder） ── */
+    async function doConfirmedExport() {
+        const btn = document.getElementById('btnConfirmExport');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>生成中...';
+
+        try {
+            const start = ExportConfig.startMonth;
+            const end = ExportConfig.endMonth;
+
+            // 从 __chartImageCache 构建 raw_images（key = chartId，全量传）
+            const rawImages = {};
+            for (const [chartId, imgObj] of Object.entries(window.__chartImageCache || {})) {
+                if (!imgObj || !imgObj.image) continue;
+                rawImages[chartId] = {
+                    image: imgObj.image,
+                    title: imgObj.title,
+                    hint: imgObj.hint || '',
+                    labels: imgObj.labels || null,
+                    moduleKey: imgObj.moduleKey,
+                    chartId: chartId,
+                    pptEnhance: imgObj.pptEnhance || null,
+                    enhanceData: imgObj.enhanceData || null,
+                    summaryData: imgObj.summaryData || null,
+                };
             }
 
-            // Step 4：POST 到后端
+            if (!Object.keys(rawImages).length) {
+                throw new Error('截图缓存为空，请重新截图');
+            }
+
             const body = {
-                theme: ExportConfig.theme,
                 start_month: start,
                 end_month: end,
-                module_slides: moduleSlides,
-                nine_grid_image: '',
-                key_persons: [],
+                theme: ExportConfig.theme,
+                export_config: {
+                    chartConfigs: ExportConfig.chartConfigs,
+                    appendSummaryGlobal: ExportConfig.appendSummaryGlobal,
+                    enhance: ExportConfig.enhance,
+                },
+                raw_images: rawImages,
+                key_persons: [],   // Phase 2 扩展：关键人员能力暂空
                 radar_images: {},
                 person_profiles: {},
-                summary_data: {
-                    total_persons: 0,
-                    key_persons_count: 0,
-                    module_chart_counts: Object.fromEntries(
-                        moduleSlides.map(m => [m.title, m.images.length])
-                    )
-                }
+                summary_data: null,
             };
 
-            const resp = await fetch('/api/export/ppt', {
+            const resp = await fetch('/api/export/ppt/v2', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -957,15 +1099,16 @@
             a.click();
             URL.revokeObjectURL(url);
 
-            setProgress(false);
+            // 关闭 Modal
+            bootstrap.Modal.getInstance(document.getElementById('confirmExportModal'))?.hide();
             showToast('PPT 已成功导出！', 'success');
 
         } catch (e) {
-            setProgress(false);
             showToast('导出失败：' + e.message, 'danger');
-            console.error('[startExport]', e);
+            console.error('[doConfirmedExport]', e);
         } finally {
             btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-download me-2"></i>确认导出';
         }
     }
 

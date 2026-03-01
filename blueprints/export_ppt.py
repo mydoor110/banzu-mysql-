@@ -207,3 +207,114 @@ def export_ppt():
         as_attachment=True,
         download_name=filename
     )
+
+
+@export_ppt_bp.route('/api/export/ppt/v2', methods=['POST'])
+def export_ppt_v2():
+    """
+    PPT 导出 v2 接口（Phase 2 新建）
+    接收新协议：export_config + raw_images → builder 组装 → PPTExportService
+    与旧 /api/export/ppt 并行，验证通过后切换配置页调用目标。
+
+    请求格式（JSON）：
+    {
+        "start_month": "2026-01",
+        "end_month":   "2026-02",
+        "theme":       "blue",
+        "export_config": {
+            "chartConfigs": { "<chartId>": { "selected": true, ... } },
+            "appendSummaryGlobal": true,
+            "enhance": { "trendEnabled": true, ... }
+        },
+        "raw_images": {
+            "<chartId>": {
+                "image": "<base64>", "title": "...", "hint": "...",
+                "moduleKey": "safety", "pptEnhance": {...},
+                "enhanceData": null, "summaryData": null
+            }
+        },
+        "key_persons":     [],
+        "radar_images":    {},
+        "person_profiles": {}
+    }
+    """
+    if not session.get('logged_in'):
+        return jsonify({'error': '请先登录'}), 401
+
+    user_id, role, dept_id = _get_user_info()
+    if role == 'user':
+        return jsonify({'error': '权限不足，需要管理员权限'}), 403
+
+    body = request.get_json(silent=True) or {}
+    start_month   = body.get('start_month', '')
+    end_month     = body.get('end_month', '')
+    theme         = body.get('theme', 'blue')
+    export_config = body.get('export_config') or {}
+    raw_images    = body.get('raw_images') or {}
+    key_emp_nos   = body.get('key_persons', [])
+    summary_data  = body.get('summary_data', None)
+
+    if not raw_images:
+        return jsonify({'error': '图像资产（raw_images）为空，请检查截图是否完成'}), 400
+
+    # ── 中间层：组装 module_slides ─────────────────────────────────────────────
+    from services.export_config_builder import build_module_slides_from_config
+    module_slides = build_module_slides_from_config(export_config, raw_images)
+
+    if not module_slides and not key_emp_nos:
+        return jsonify({'error': '没有选中任何图表，或截图数据为空'}), 400
+
+    # ── 权限过滤关键人员 ──────────────────────────────────────────────────────
+    from blueprints.helpers import month_range_to_dates
+    start_date_std, end_date_std = month_range_to_dates(start_month, end_month)
+
+    if role == 'manager' and dept_id:
+        key_emp_nos = [e for e in key_emp_nos if _belongs_to_dept(e, dept_id)]
+
+    # ── 构建关键人员数据 ───────────────────────────────────────────────────────
+    key_persons = []
+    person_profiles_from_frontend = body.get('person_profiles', {})
+
+    for emp_no in key_emp_nos:
+        profile = person_profiles_from_frontend.get(emp_no)
+        if not profile:
+            profile = _load_person_profile(emp_no, start_date_std, end_date_std)
+        emp_info = _get_employee_info(emp_no)
+        radar_img = body.get('radar_images', {}).get(emp_no, '')
+        key_persons.append({
+            'name':        emp_info['name'],
+            'emp_no':      emp_no,
+            'department':  emp_info['department'],
+            'radar_image': radar_img,
+            'scores':      profile.get('scores', {}),
+            'details':     profile,
+        })
+
+    # ── 生成 PPT ──────────────────────────────────────────────────────────────
+    from services.ppt_export_service import PPTExportService
+
+    try:
+        svc = PPTExportService(theme_name=theme)
+        pptx_bytes = svc.generate(
+            start_date      = start_month,
+            end_date        = end_month,
+            module_slides   = module_slides,
+            nine_grid_image = '',
+            key_persons     = key_persons,
+            summary_data    = summary_data,
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'PPT生成失败：{e}'}), 500
+
+    date_tag = f"{start_month}_{end_month}".replace('-', '').replace('__', '_')
+    filename = f"人员综合能力报告_{date_tag}.pptx"
+
+    return send_file(
+        io.BytesIO(pptx_bytes),
+        mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        as_attachment=True,
+        download_name=filename
+    )
+
