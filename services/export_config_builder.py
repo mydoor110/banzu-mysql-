@@ -101,12 +101,19 @@ def build_module_slides_from_config(
             if not img_obj.get('image'):
                 continue  # 缺少图像数据，跳过
 
-            # 决定是否附加 summaryData
             pe = img_obj.get('pptEnhance') or {}
+
+            # ── 图表级 enhanceEnabled：用户对单张图关闭增强时清空 enhanceData ──
+            enhance_enabled: bool = cfg.get('enhanceEnabled', True)
+            enhance_data = img_obj.get('enhanceData') if enhance_enabled else None
+
+            # ── 图表级 appendSummary：结合全局开关共同决定是否保留 summaryData ──
+            # 规则：全局 OR 单图任意一个为 False → 清空
+            per_chart_summary: bool = cfg.get('appendSummary', True)
             summary_data = img_obj.get('summaryData')
             if pe.get('type') == 'decision_summary':
-                if not (append_summary_global and decision_summary_enabled):
-                    summary_data = None  # 配置关闭则清空
+                if not (append_summary_global and decision_summary_enabled and per_chart_summary):
+                    summary_data = None
 
             selected_for_module.append({
                 'title':       img_obj.get('title', chart_id),
@@ -116,7 +123,7 @@ def build_module_slides_from_config(
                 'chartId':     chart_id,
                 'moduleKey':   module_key,
                 'pptEnhance':  pe if pe else None,
-                'enhanceData': img_obj.get('enhanceData'),
+                'enhanceData': enhance_data,
                 'summaryData': summary_data,
             })
 

@@ -666,6 +666,14 @@
         ExportConfig.appendSummaryGlobal = true;
     }
 
+    /**
+     * calcEstimatedPages —— 与后端 estimate_page_count() 保持同一套规则
+     * 封面(1) + 图表页(双排 ceil) + 摘要页(每张有 summaryData 的图一页) + 末页(1)
+     */
+    function calcEstimatedPages(chartCount, summaryCount) {
+        return 1 + Math.ceil(chartCount / 2) + summaryCount + 1;
+    }
+
     /* ==========================================================
        配置摘要更新
        ========================================================== */
@@ -684,7 +692,8 @@
             }
         }
 
-        const estimatedPages = Math.ceil(selected.length / 2) + summaryCount + 4; // 封面+目录+摘要+末页
+        // 规则与后端 estimate_page_count() 保持一致：ceil(charts/2) + summaryPages + 封面(1) + 末页(1)
+        const estimatedPages = calcEstimatedPages(selected.length, summaryCount);
 
         document.getElementById('statSelectedCount').textContent = selected.length;
         document.getElementById('statSummaryCount').textContent = summaryCount;
@@ -1016,7 +1025,7 @@
             listHtml += `</div>`;
         }
 
-        const estimatedPages = Math.ceil(chartCount / 2) + summaryCount + 2; // 封面+末页
+        const estimatedPages = calcEstimatedPages(chartCount, summaryCount);
 
         document.getElementById('confirmChartCount').textContent = chartCount;
         document.getElementById('confirmSummaryCount').textContent = summaryCount;
