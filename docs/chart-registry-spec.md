@@ -23,7 +23,7 @@
 | 字段 | 类型 | 是否必须 | 说明 |
 |---|---|---|---|
 | `schema` | string | ✅ | 图表视觉类型，见下方 schema 分层表 |
-| `supportsPreview` | boolean | ✅ | 是否支持配置页缩略图预览（Phase 1 暂全部 `false`） |
+| `supportsPreview` | boolean | ✅ | **当前全部固定为 `false`（占位阶段）**。Phase 1 配置页上线后，已验证缩略图预览的图表再改为 `true`；新增图表在预览能力就绪前也应填 `false` |
 | `supportsSummary` | boolean | ✅ | 是否支持摘要页（须配合 `pptEnhance.type = 'decision_summary'`） |
 | `supportsManualBullets` | boolean | ✅ | 是否支持人工选题（仅 `supportsSummary: true` 的图表可以为 `true`） |
 
@@ -31,11 +31,12 @@
 
 | 字段 | 类型 | 是否必须 | 说明 |
 |---|---|---|---|
-| `apiIndex` | number | ✅ | 当前模块的 `apis[]` 数组中对应的接口下标 |
+| `apiIndex` | number | ⚠️ 条件必填 | 普通图 / 多接口图必填，指向模块 `apis[]` 下标；**selfFetchUrl 图不填**（见下） |
 | `extractData` | function | ✅ | 从 apiResp 中提取本图所需数据的函数 |
 | `buildOption` | function | ✅ | 生成 ECharts option 对象的函数 |
 | `chartLabels` | object | ✅（exportable=true 时） | 图表导出补充信息，见下方 chartLabels 结构 |
 | `summaryHint` | string | ⚠️ 推荐 | PPT 图表副标题，为空则不展示 |
+| `selfFetchUrl` | string | ⚠️ 条件必填 | 图表自行拉取数据的 URL（不走模块 apis[]），与 `apiIndex` 二选一 |
 
 ### 1.4 drilldown 字段（可选，按需配置）
 
@@ -98,7 +99,8 @@ chartLabels: {
 □ supportsPreview = false（Phase 1 阶段固定）
 □ supportsSummary 已确定（decision_summary 类型为 true，其余 false）
 □ supportsManualBullets 已确定（同 supportsSummary）
-□ apiIndex 已指向正确的 apis[] 下标
+□ apiIndex 已指向正确的 apis[] 下标（selfFetchUrl 图跳过此项，改填 selfFetchUrl）
+□ selfFetchUrl 已填写（仅 selfFetchUrl 图）
 □ extractData 函数已实现并通过测试
 □ buildOption 函数已实现，图表可正常渲染
 □ chartLabels 已填写（至少 scope/unit 不为空）
@@ -106,6 +108,7 @@ chartLabels: {
 □ 如需下钻：drilldown/drilldownUrl/clickBehavior/drilldownParamBuilder/drilldownColumns 已实现
 □ 如需 PPT 增强：pptEnhance 已按增强类型配置
 □ 如支持摘要（supportsSummary=true）：pptEnhance.statsRule / bulletsRule 已配置
+□ supportsPreview = false（占位阶段；图表可在配置页正常预览后再切换为 true）
 □ 如支持人工选题（supportsManualBullets=true）：candidateProvider 已实现（Phase 3 补）
 ```
 
