@@ -11,8 +11,11 @@
 <style>
     /* ── 页面整体 ── */
     .config-container {
-        max-width: 1200px;
+        max-width: 1400px;
+        /* 加宽以适应左右布局 */
         margin: 0 auto;
+        padding-bottom: 40px;
+        /* 页面底部留白，替代原生悬浮栏 */
     }
 
     /* ── 区块卡片 ── */
@@ -22,13 +25,13 @@
         border-radius: 12px;
         padding: 24px;
         margin-bottom: 20px;
-        box-shadow: 0 1px 4px rgba(0, 0, 0, .06);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, .03);
     }
 
     .config-card-title {
-        font-size: 1rem;
+        font-size: 1.05rem;
         font-weight: 700;
-        color: #165DFF;
+        color: #1e293b;
         margin-bottom: 18px;
         display: flex;
         align-items: center;
@@ -36,30 +39,44 @@
     }
 
     .config-card-title .badge-num {
-        background: #165DFF;
-        color: #fff;
-        border-radius: 50%;
+        background: #e0e7ff;
+        color: #4338ca;
+        border-radius: 6px;
         width: 24px;
         height: 24px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: .8em;
+        font-size: .85em;
+        font-weight: 700;
         flex-shrink: 0;
+    }
+
+    /* ── 右侧侧栏（Sticky）── */
+    .sticky-sidebar {
+        /* Desktop 端固定，移动端自然堆叠 */
+        top: 24px;
+        z-index: 10;
+    }
+
+    @media (min-width: 992px) {
+        .sticky-sidebar {
+            position: sticky;
+        }
     }
 
     /* ── 图表选择区 ── */
     .module-group {
-        margin-bottom: 20px;
+        margin-bottom: 24px;
     }
 
     .module-label {
-        font-size: .85rem;
-        font-weight: 600;
-        color: #475569;
-        margin-bottom: 10px;
-        padding-bottom: 6px;
-        border-bottom: 2px solid #e2e8f0;
+        font-size: .9rem;
+        font-weight: 700;
+        color: #334155;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #f1f5f9;
         display: flex;
         align-items: center;
         gap: 6px;
@@ -67,80 +84,157 @@
 
     .chart-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: 10px;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
     }
 
+    /* 图表卡片（资源实体） */
     .chart-card {
-        border: 2px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 12px 14px;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 12px;
+        background: #fff;
         cursor: pointer;
-        transition: all .18s;
+        transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
         display: flex;
-        align-items: flex-start;
-        gap: 10px;
-        background: #fafafa;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
     }
 
     .chart-card:hover {
-        border-color: #93c5fd;
-        background: #f0f7ff;
+        border-color: #cbd5e1;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, .05);
+        transform: translateY(-2px);
     }
 
     .chart-card.selected {
         border-color: #165DFF;
-        background: #eff6ff;
-        box-shadow: 0 0 0 3px rgba(22, 93, 255, .1);
+        box-shadow: 0 4px 12px rgba(22, 93, 255, .08);
     }
 
-    .chart-card input[type=checkbox] {
-        flex-shrink: 0;
-        margin-top: 2px;
-        cursor: pointer;
+    /* 右上角选中标记 */
+    .chart-card .check-mark {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 22px;
+        height: 22px;
+        background: #165DFF;
+        color: #fff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        opacity: 0;
+        transform: scale(0.5);
+        transition: all .2s;
+        z-index: 2;
     }
 
+    .chart-card.selected .check-mark {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    /* 原生 checkbox 仅作状态源，视觉隐藏 */
+    .chart-card input[type=checkbox].chart-check {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* 预览图占位 */
+    .chart-preview-placeholder {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #f8fafc;
+        border-bottom: 1px solid #f1f5f9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #cbd5e1;
+        font-size: 24px;
+    }
+
+    .chart-card.selected .chart-preview-placeholder {
+        background: #f0f7ff;
+        color: #bfdbfe;
+    }
+
+    /* 卡片内容区 */
     .chart-card-body {
+        padding: 14px;
         flex: 1;
-        min-width: 0;
+        display: flex;
+        flex-direction: column;
     }
 
     .chart-card-title {
-        font-size: .88rem;
+        font-size: .95rem;
         font-weight: 600;
         color: #1e293b;
-        line-height: 1.35;
+        line-height: 1.4;
+        margin-bottom: 6px;
+        padding-right: 24px;
+        /* 留给 check-mark 的空间 */
     }
 
-    .chart-card-meta {
-        font-size: .76rem;
-        color: #64748b;
-        margin-top: 3px;
-    }
-
-    .priority-badge {
-        font-size: .68rem;
-        padding: 1px 7px;
-        border-radius: 99px;
-        font-weight: 600;
-        flex-shrink: 0;
-        align-self: flex-start;
-        margin-top: 2px;
-    }
-
-    .priority-high {
-        background: #fee2e2;
-        color: #dc2626;
-    }
-
-    .priority-medium {
-        background: #fef3c7;
-        color: #d97706;
-    }
-
-    .priority-low {
+    /* 结构化标签摘要区 */
+    .chart-card-labels {
+        font-size: .75rem;
+        color: #475569;
         background: #f1f5f9;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        display: inline-block;
+        align-self: flex-start;
+    }
+
+    /* 文字说明（summaryHint） */
+    .chart-card-meta {
+        font-size: .8rem;
         color: #64748b;
+        line-height: 1.5;
+        margin-bottom: 10px;
+        flex: 1;
+        /* 撑开中间，让标签靠底 */
+    }
+
+    /* 底部能力/优先级标签 */
+    .chart-card-footer {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border-top: 1px dashed #e2e8f0;
+        padding-top: 10px;
+        margin-top: auto;
+    }
+
+    .capsule-badge {
+        font-size: .7rem;
+        padding: 2px 8px;
+        border-radius: 99px;
+        font-weight: 500;
+    }
+
+    .badge-outline-primary {
+        border: 1px solid #bfdbfe;
+        color: #3b82f6;
+        background: #eff6ff;
+    }
+
+    .badge-outline-info {
+        border: 1px solid #cffafe;
+        color: #06b6d4;
+        background: #ecfeff;
+    }
+
+    .badge-outline-warning {
+        border: 1px solid #fef08a;
+        color: #d97706;
+        background: #fefce8;
     }
 
     /* ── 增强配置区 ── */
@@ -148,59 +242,63 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 10px 14px;
+        padding: 12px;
         border-radius: 8px;
-        background: #f8faff;
-        border: 1px solid #dbeafe;
+        background: #fafafa;
+        border: 1px solid #f1f5f9;
         margin-bottom: 8px;
+        transition: background .2s;
+    }
+
+    .enhance-row:hover {
+        background: #f8fafc;
     }
 
     .enhance-row label {
         margin-bottom: 0;
-        font-size: .88rem;
+        font-size: .9rem;
+        color: #334155;
     }
 
     .enhance-row .form-control-sm {
-        width: 80px;
+        width: 70px;
+        text-align: center;
     }
 
-    /* ── 配置摘要区 ── */
+    /* ── 导出摘要区 ── */
+    .summary-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
     .summary-stat {
-        background: #f1f5f9;
+        background: #f8fafc;
+        border: 1px solid #f1f5f9;
         border-radius: 8px;
-        padding: 14px 18px;
+        padding: 16px;
         display: flex;
         flex-direction: column;
-        align-items: center;
-    }
-
-    .summary-stat .val {
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: #165DFF;
-        line-height: 1;
+        align-items: flex-start;
+        /* 改为左对齐 */
     }
 
     .summary-stat .lbl {
-        font-size: .78rem;
+        font-size: .8rem;
         color: #64748b;
-        margin-top: 4px;
+        margin-bottom: 6px;
+        font-weight: 500;
     }
 
-    /* ── 底部操作栏 ── */
-    .action-bar {
-        position: sticky;
-        bottom: 0;
-        z-index: 100;
-        background: rgba(255, 255, 255, .95);
-        border-top: 1px solid #e2e8f0;
-        backdrop-filter: blur(4px);
-        padding: 14px 20px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-top: 24px;
+    .summary-stat .val {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0f172a;
+        line-height: 1;
+    }
+
+    .val-highlight {
+        color: #165DFF !important;
     }
 
     /* ── 进度条 ── */
@@ -209,22 +307,28 @@
         top: 0;
         left: 0;
         right: 0;
-        background: rgba(255, 255, 255, .97);
+        bottom: 0;
+        background: rgba(255, 255, 255, .95);
         z-index: 9999;
-        padding: 40px 24px;
-        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         display: none;
+        /* JS 控制 */
     }
 
     #captureProgress .prog-title {
-        font-size: 1.1rem;
+        font-size: 1.25rem;
         font-weight: 600;
-        margin-bottom: 16px;
+        margin-bottom: 24px;
+        color: #1e293b;
     }
 
     #captureProgress .progress {
-        max-width: 420px;
-        margin: 0 auto;
+        width: 100%;
+        max-width: 480px;
+        height: 10px;
         border-radius: 99px;
     }
 </style>
@@ -232,160 +336,168 @@
 
 {% block content %}
 <div class="config-container">
-    <div class="d-flex align-items-center justify-content-between mb-4">
+    <div class="d-flex align-items-center justify-content-between mb-4 mt-2">
         <div>
-            <h4 class="mb-1"><i class="fas fa-file-powerpoint me-2 text-primary"></i>配置 PPT 导出</h4>
-            <p class="text-muted mb-0 small">选择导出范围、图表和增强选项，然后生成报告</p>
+            <h4 class="mb-1"><i class="fas fa-file-powerpoint me-2 text-primary"></i>创建 PPT 报告</h4>
+            <p class="text-secondary mb-0">选择内容模块与扩展数据，自动生成结构化分析报告</p>
         </div>
-        <a href="{{ url_for('export_ppt.ppt_export_page') }}" class="btn btn-sm btn-outline-secondary">
+        <a href="{{ url_for('export_ppt.ppt_export_page') }}" class="btn btn-sm btn-light border text-secondary">
             <i class="fas fa-arrow-left me-1"></i>返回旧版
         </a>
     </div>
 
-    <!-- ① 基础配置区 -->
-    <div class="config-card" id="sectionBasic">
-        <div class="config-card-title">
-            <span class="badge-num">1</span> 基础配置
-        </div>
-        <div class="row g-3">
-            <div class="col-md-3">
-                <label class="form-label fw-semibold small">开始月份</label>
-                <input type="month" class="form-control" id="cfgStartMonth">
+    <div class="row g-4">
+        <!-- ================= 左侧 主区 ================= -->
+        <div class="col-lg-8 col-xl-9">
+            <!-- ① 基础配置区 -->
+            <div class="config-card" id="sectionBasic">
+                <div class="config-card-title">
+                    <span class="badge-num">1</span> 基础范围设置
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold small text-secondary">开始月份</label>
+                        <input type="month" class="form-control" id="cfgStartMonth">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold small text-secondary">结束月份</label>
+                        <input type="month" class="form-control" id="cfgEndMonth">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold small text-secondary">报告视觉主题</label>
+                        <select class="form-select" id="cfgTheme">
+                            <option value="blue">标准公司蓝（推荐）</option>
+                            <option value="dark">质感深色</option>
+                            <option value="simple">黑白简约</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-sm btn-light border" onclick="setQuickRange(1)">近1月</button>
+                            <button class="btn btn-sm btn-light border" onclick="setQuickRange(3)">近3月</button>
+                            <button class="btn btn-sm btn-light border" onclick="setQuickRange(6)">近6月</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- 日期区间调整补丁：给用户明显的确认感，但保持 onChange 也生效的双保险 -->
+                <div class="mt-3 text-end">
+                    <span class="text-muted small me-3"><i class="fas fa-info-circle me-1"></i>重选时间后自动生效加载新数据</span>
+                    <button class="btn btn-sm btn-outline-primary px-3" onclick="updateSummary()">
+                        <i class="fas fa-sync-alt me-1"></i> 刷新预估
+                    </button>
+                </div>
+                <!-- 全局摘要开关下放至此 -->
+                <div class="row mt-3 pt-3 border-top">
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="cfgAppendSummaryGlobal" checked>
+                            <label class="form-check-label text-secondary small" for="cfgAppendSummaryGlobal">
+                                <b>全局摘要</b>：开启后，支持摘要的图表将自动追加一页执行摘要 PPT。
+                            </label>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="col-md-3">
-                <label class="form-label fw-semibold small">结束月份</label>
-                <input type="month" class="form-control" id="cfgEndMonth">
-            </div>
-            <div class="col-md-3">
-                <label class="form-label fw-semibold small">PPT 主题</label>
-                <select class="form-select" id="cfgTheme">
-                    <option value="blue">蓝色（默认）</option>
-                    <option value="dark">深色</option>
-                    <option value="simple">简约</option>
-                </select>
-            </div>
-            <div class="col-md-3 d-flex align-items-end">
-                <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-sm btn-outline-secondary" onclick="setQuickRange(1)">近1月</button>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="setQuickRange(3)">近3月</button>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="setQuickRange(6)">近6月</button>
+
+            <!-- ② 图表选择区 -->
+            <div class="config-card mb-lg-0" id="sectionCharts">
+                <div class="config-card-title">
+                    <span class="badge-num">2</span> 勾选报告图表
+                    <span class="ms-auto d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary py-1 px-3" onclick="selectAll()">全选</button>
+                        <button class="btn btn-sm btn-light border py-1 px-3" onclick="selectDefault()">默认</button>
+                        <button class="btn btn-sm btn-light border py-1 px-3 text-danger"
+                            onclick="clearAll()">清空</button>
+                    </span>
+                </div>
+                <div id="chartSelectionArea">
+                    <!-- 由 JS 动态渲染 -->
+                    <div class="text-center text-muted py-5" id="chartLoadingHint">
+                        <span class="spinner-border spinner-border-sm me-2"></span>加载中...
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="row g-3 mt-1">
-            <div class="col-12">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" id="cfgAppendSummaryGlobal" checked>
-                    <label class="form-check-label small" for="cfgAppendSummaryGlobal">
-                        追加摘要页（仅对支持摘要的图表生效）
-                    </label>
+
+        <!-- ================= 右侧 侧栏 ================= -->
+        <div class="col-lg-4 col-xl-3">
+            <div class="sticky-sidebar">
+                <!-- ③ 高级配置区 -->
+                <div class="config-card">
+                    <div class="config-card-title">
+                        <span class="badge-num">3</span> 增强配置
+                    </div>
+
+                    <div class="enhance-row">
+                        <div class="form-check form-switch mb-0 w-100 d-flex justify-content-between">
+                            <label class="form-check-label fw-semibold" for="enhTrend">趋势图增强</label>
+                            <input class="form-check-input" type="checkbox" id="enhTrend" checked>
+                        </div>
+                        <div class="text-secondary" style="font-size:.75rem; margin-top:2px;">计算最新值/峰值/均值附加至图表旁。</div>
+                    </div>
+
+                    <div class="enhance-row flex-column align-items-stretch">
+                        <div class="d-flex justify-content-between mb-1">
+                            <label class="form-check-label fw-semibold" for="enhRiskMatrix">风险矩阵增强</label>
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="enhRiskMatrix" checked>
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="text-secondary" style="font-size:.78rem;">抓取高风险 Top</span>
+                            <input type="number" class="form-control form-control-sm" id="riskMatrixTopN" value="5"
+                                min="1" max="20">
+                            <span class="text-secondary" style="font-size:.78rem;">人名单</span>
+                        </div>
+                    </div>
+
+                    <div class="enhance-row">
+                        <div class="form-check form-switch mb-0 w-100 d-flex justify-content-between">
+                            <label class="form-check-label fw-semibold" for="enhDecisionSummary">决策摘要生成</label>
+                            <input class="form-check-input" type="checkbox" id="enhDecisionSummary" checked>
+                        </div>
+                        <div class="text-secondary" style="font-size:.75rem; margin-top:2px;">
+                            基于判定规则自动生成行动建议（需基础配置中开启全局摘要）。</div>
+                    </div>
+                </div>
+
+                <!-- ④ 导出摘要与操作区 -->
+                <div class="config-card border-primary" style="box-shadow:0 4px 12px rgba(22,93,255,.05)">
+                    <div class="config-card-title mb-3">
+                        <i class="fas fa-file-export me-1"></i> 导出检查
+                    </div>
+
+                    <div class="summary-grid mb-4">
+                        <div class="summary-stat">
+                            <div class="lbl">已选图表</div>
+                            <div class="val val-highlight" id="statSelectedCount">0</div>
+                        </div>
+                        <div class="summary-stat">
+                            <div class="lbl">含决策摘要</div>
+                            <div class="val" id="statSummaryCount">0</div>
+                        </div>
+                        <div class="summary-stat" style="grid-column: span 2">
+                            <div class="lbl">预估总页数</div>
+                            <div class="val text-dark"><span id="statEstimatedPages">0</span> <span
+                                    style="font-size:.8rem;color:#64748b;font-weight:400">页</span></div>
+                        </div>
+                        <div class="summary-stat" style="grid-column: span 2; padding:10px 16px;">
+                            <div class="lbl mb-1 text-xs">生成跨度</div>
+                            <div class="fw-semibold text-dark" style="font-size:.9rem;" id="statDateRange">-</div>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-primary btn-lg" id="btnStartExport" onclick="startExport()">
+                            生成 PPT <i class="fas fa-arrow-right ms-2"></i>
+                        </button>
+                        <button class="btn btn-light border text-secondary mt-1" onclick="resetConfig()">
+                            还原默认配置
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- ② 图表选择区 -->
-    <div class="config-card" id="sectionCharts">
-        <div class="config-card-title">
-            <span class="badge-num">2</span> 选择导出图表
-            <span class="ms-auto d-flex gap-2">
-                <button class="btn btn-xs btn-outline-primary" style="font-size:.78rem; padding:2px 10px"
-                    onclick="selectAll()">全选</button>
-                <button class="btn btn-xs btn-outline-secondary" style="font-size:.78rem; padding:2px 10px"
-                    onclick="selectDefault()">恢复默认</button>
-                <button class="btn btn-xs btn-outline-danger" style="font-size:.78rem; padding:2px 10px"
-                    onclick="clearAll()">清空</button>
-            </span>
-        </div>
-        <div id="chartSelectionArea">
-            <!-- 由 JS 根据 ChartRegistry 动态渲染 -->
-            <div class="text-center text-muted py-4" id="chartLoadingHint">
-                <span class="spinner-border spinner-border-sm me-2"></span>加载图表列表...
-            </div>
-        </div>
-    </div>
-
-    <!-- ③ 高级配置区 -->
-    <div class="config-card" id="sectionAdvanced">
-        <div class="config-card-title">
-            <span class="badge-num">3</span> 增强配置
-        </div>
-        <p class="text-muted small mb-3">针对支持增强的图表，配置 PPT 页内扩展数据。</p>
-
-        <!-- 趋势增强 -->
-        <div class="enhance-row">
-            <div class="form-check form-switch mb-0">
-                <input class="form-check-input" type="checkbox" id="enhTrend" checked>
-                <label class="form-check-label fw-semibold" for="enhTrend">趋势图增强</label>
-            </div>
-            <span class="text-muted small">显示 最新值 / 峰值 / 均值（适用于培训合格率、安全趋势等趋势图）</span>
-        </div>
-
-        <!-- 风险矩阵增强 -->
-        <div class="enhance-row">
-            <div class="form-check form-switch mb-0" style="min-width:140px">
-                <input class="form-check-input" type="checkbox" id="enhRiskMatrix" checked>
-                <label class="form-check-label fw-semibold" for="enhRiskMatrix">风险矩阵增强</label>
-            </div>
-            <span class="text-muted small me-2">高风险区 Top</span>
-            <input type="number" class="form-control form-control-sm" id="riskMatrixTopN" value="5" min="1" max="20">
-            <span class="text-muted small">人</span>
-        </div>
-
-        <!-- 决策摘要 -->
-        <div class="enhance-row">
-            <div class="form-check form-switch mb-0">
-                <input class="form-check-input" type="checkbox" id="enhDecisionSummary" checked>
-                <label class="form-check-label fw-semibold" for="enhDecisionSummary">决策摘要页</label>
-            </div>
-            <span class="text-muted small">对决策型图表额外生成摘要页（需勾选对应图表）</span>
-        </div>
-    </div>
-
-    <!-- ④ 配置摘要区 -->
-    <div class="config-card" id="sectionSummary">
-        <div class="config-card-title">
-            <span class="badge-num">4</span> 导出摘要
-        </div>
-        <div class="row g-3 text-center">
-            <div class="col-3">
-                <div class="summary-stat">
-                    <div class="val" id="statSelectedCount">0</div>
-                    <div class="lbl">已选图表</div>
-                </div>
-            </div>
-            <div class="col-3">
-                <div class="summary-stat">
-                    <div class="val" id="statSummaryCount">0</div>
-                    <div class="lbl">摘要页数</div>
-                </div>
-            </div>
-            <div class="col-3">
-                <div class="summary-stat">
-                    <div class="val" id="statEstimatedPages">0</div>
-                    <div class="lbl">预估总页数</div>
-                </div>
-            </div>
-            <div class="col-3">
-                <div class="summary-stat">
-                    <div class="val" id="statDateRange">-</div>
-                    <div class="lbl">时间范围</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 底部操作栏 -->
-<div class="action-bar">
-    <div class="text-muted small" id="actionBarHint">配置完成后点击"开始导出"</div>
-    <div class="d-flex gap-2">
-        <button class="btn btn-outline-secondary" onclick="resetConfig()">
-            <i class="fas fa-undo me-1"></i>重置配置
-        </button>
-        <button class="btn btn-primary px-5" id="btnStartExport" onclick="startExport()">
-            <i class="fas fa-file-export me-2"></i>开始导出
-        </button>
     </div>
 </div>
 
@@ -466,8 +578,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- ECharts（复用已有本地版） -->
-<script src="{{ url_for('static', filename='js/echarts.min.js') }}"></script>
+<!-- ECharts -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <!-- ChartRegistry -->
 <script src="{{ url_for('static', filename='js/chart-registry.js') }}"></script>
 
@@ -551,7 +663,7 @@
        ========================================================== */
     function renderChartSelection() {
         const area = document.getElementById('chartSelectionArea');
-        const modules = ChartRegistry.getModules ? ChartRegistry.getModules() : [];
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
 
         if (!modules || modules.length === 0) {
             area.innerHTML = '<div class="alert alert-warning">ChartRegistry 未加载，请刷新页面</div>';
@@ -569,45 +681,101 @@
             const exportableCharts = (mod.charts || []).filter(c => c.exportable !== false);
             if (!exportableCharts.length) continue;
 
-            const iconInfo = moduleIconMap[mod.key] || { icon: 'fa-chart-bar', label: mod.label || mod.key };
+            const modKey = Object.keys(ChartRegistry.getModules()).find(k => ChartRegistry.getModules()[k] === mod) || 'analytics';
+            const iconInfo = moduleIconMap[modKey] || { icon: 'fa-chart-bar', label: mod.label || modKey };
             html += `<div class="module-group">
-            <div class="module-label">
-                <i class="fas ${iconInfo.icon}"></i>${iconInfo.label}
-                <span class="text-muted fw-normal ms-1">(${exportableCharts.length} 张)</span>
-            </div>
-            <div class="chart-grid">`;
+                <div class="module-label">
+                    <i class="fas ${iconInfo.icon}"></i> ${iconInfo.label}
+                    <span class="text-muted fw-normal ms-1" style="font-size:0.8rem">(${exportableCharts.length} 张)</span>
+                </div>
+                <div class="chart-grid">`;
 
             for (const chart of exportableCharts) {
                 const isDefault = chart.defaultSelected !== false;
+
+                // 确保配置对象初始化
+                if (!ExportConfig.chartConfigs[chart.id]) {
+                    ExportConfig.chartConfigs[chart.id] = {
+                        selected: isDefault,
+                        enhanceEnabled: true,
+                        appendSummary: isDefault && !!chart.supportsSummary
+                    };
+                }
+                const isSelected = ExportConfig.chartConfigs[chart.id].selected;
+
+                // 提取优先标签
+                const l = chart.chartLabels || {};
+                const noteLabel = l.note || (chart.summaryHint ? chart.summaryHint.split('|').slice(-1)[0].trim() : '');
+
+                // 能力胶囊
+                let badgesHtml = '';
+                if (chart.supportsSummary) badgesHtml += `<span class="capsule-badge badge-outline-primary">支持摘要</span>`;
+                if (chart.schema === 'trend_enhance' || chart.schema === 'risk_matrix_enhance') {
+                    badgesHtml += `<span class="capsule-badge badge-outline-info">增强图表</span>`;
+                }
+
+                // 底部兜底状态
                 const priority = chart.priority || 'medium';
-                const priorityLabel = { high: '重点', medium: '标准', low: '辅助' }[priority] || '标准';
+                const priorityLabel = { high: '⭐️ 重点', medium: '标准', low: '辅助' }[priority] || '标准';
 
-                // 初始化 chartConfigs
-                ExportConfig.chartConfigs[chart.id] = {
-                    selected: isDefault,
-                    enhanceEnabled: true,
-                    appendSummary: isDefault && !!chart.supportsSummary
-                };
+                html += `
+                <div class="chart-card${isSelected ? ' selected' : ''} h-100" data-chart-id="${chart.id}" onclick="toggleCard(this, '${chart.id}')">
+                    <div class="check-mark"><i class="fas fa-check"></i></div>
+                    
+                    <!-- 原生 Checkbox 作为数据绑定源 (隐藏) -->
+                    <input type="checkbox" class="chart-check" data-chart-id="${chart.id}" 
+                           ${isSelected ? 'checked' : ''} onchange="syncCardState(this)">
 
-                html += `<label class="chart-card${isDefault ? ' selected' : ''}" data-chart-id="${chart.id}">
-                <input type="checkbox" class="chart-check" data-chart-id="${chart.id}"
-                    ${isDefault ? 'checked' : ''} onchange="onChartToggle(this)">
-                <div class="chart-card-body">
-                    <div class="chart-card-title">${chart.title}</div>
-                    <div class="chart-card-meta">
-                        ${chart.summaryHint ? chart.summaryHint.split('|')[0].trim() : ''}
-                        ${chart.supportsSummary ? '<span class="badge bg-info text-dark ms-1" style="font-size:.68rem">支持摘要</span>' : ''}
+                    <!-- 占位预览区域 -->
+                    <div class="chart-preview-placeholder">
+                        <div>
+                            <i class="far fa-image mb-2 d-block" style="font-size:32px; color:#94a3b8; text-align:center"></i>
+                            <span style="font-size:0.75rem; color:#64748b; font-weight:normal">暂无预览</span>
+                        </div>
                     </div>
-                </div>
-                <span class="priority-badge priority-${priority}">${priorityLabel}</span>
-            </label>`;
-            }
 
+                    <div class="chart-card-body d-flex flex-column" style="flex:1">
+                        <div class="chart-card-title">${chart.title || '无标题图表'}</div>
+                        ${noteLabel ? `<div class="chart-card-labels">${noteLabel}</div>` : ''}
+                        
+                        <div class="chart-card-meta mt-1 mb-3" style="flex-grow:1; display:flex; flex-direction:column; justify-content:center">
+                            ${chart.summaryHint ? chart.summaryHint.split('|').slice(0, 2).join(' | ').trim() : ''}
+                        </div>
+
+                        <div class="chart-card-footer mt-auto pt-2 disabled">
+                            <span class="text-secondary fw-semibold" style="font-size:0.75rem">${priorityLabel}</span>
+                            <div class="ms-auto d-flex gap-1" style="flex-wrap:wrap; justify-content:flex-end">
+                                ${badgesHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }
             html += `</div></div>`;
         }
 
         document.getElementById('chartLoadingHint').style.display = 'none';
         area.innerHTML = html;
+        updateSummary();
+    }
+
+    // --- 相邻补充方法 ---
+    function toggleCard(cardEl, chartId) {
+        const chk = cardEl.querySelector('.chart-check');
+        if (!chk) return;
+        chk.checked = !chk.checked;
+        syncCardState(chk);
+    }
+
+    function syncCardState(checkbox) {
+        const chartId = checkbox.dataset.chartId;
+        const card = checkbox.closest('.chart-card');
+        const selected = checkbox.checked;
+
+        if (ExportConfig.chartConfigs[chartId]) {
+            ExportConfig.chartConfigs[chartId].selected = selected;
+        }
+        card.classList.toggle('selected', selected);
         updateSummary();
     }
 
@@ -679,7 +847,7 @@
        ========================================================== */
     function updateSummary() {
         const selected = Object.values(ExportConfig.chartConfigs).filter(c => c.selected);
-        const modules = ChartRegistry.getModules ? ChartRegistry.getModules() : [];
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
 
         // 统计支持摘要且被选中的图表数
         let summaryCount = 0;
@@ -703,10 +871,6 @@
         const end = ExportConfig.endMonth || '--';
         document.getElementById('statDateRange').textContent = start === end ? start : `${start}~${end.slice(5)}`;
 
-        const hint = selected.length > 0
-            ? `已选 ${selected.length} 张图表，预估约 ${estimatedPages} 页`
-            : '请至少选择一张图表';
-        document.getElementById('actionBarHint').textContent = hint;
     }
 
     /* ==========================================================
