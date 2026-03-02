@@ -538,6 +538,32 @@
     </div>
 </div>
 
+<!-- ── 移动端吸底操作栏（仅 <992px 显示）── -->
+<div id="mobileActionBar" class="d-lg-none" style="
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 1040;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid #e2e8f0;
+    padding: 12px 20px;
+    box-shadow: 0 -4px 16px rgba(0,0,0,.08);
+">
+    <div class="d-flex align-items-center gap-3">
+        <div style="flex:1">
+            <div style="font-size:.72rem;color:#64748b;line-height:1.2">已选图表</div>
+            <div style="font-size:1.05rem;font-weight:700;color:#165DFF;white-space:nowrap">
+                <span id="mobileSelectedCount">0</span> 张
+                <span style="font-size:.78rem;color:#64748b;font-weight:400"> · 约 <span id="mobileEstPages">0</span>
+                    页</span>
+            </div>
+        </div>
+        <button class="btn btn-primary px-4" onclick="startExport()"
+            style="border-radius:999px;font-weight:600;flex-shrink:0">
+            <i class="fas fa-file-powerpoint me-1"></i> 生成 PPT
+        </button>
+    </div>
+</div>
+
 <!-- ── 导出确认 Modal（Phase 2）── -->
 <div class="modal fade" id="confirmExportModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -948,6 +974,11 @@
         document.getElementById('statSelectedCount').textContent = selected.length;
         document.getElementById('statSummaryCount').textContent = summaryCount;
         document.getElementById('statEstimatedPages').textContent = estimatedPages;
+        // 同步移动端吸底栏
+        const mSel = document.getElementById('mobileSelectedCount');
+        const mPg = document.getElementById('mobileEstPages');
+        if (mSel) mSel.textContent = selected.length;
+        if (mPg) mPg.textContent = estimatedPages;
 
         const start = ExportConfig.startMonth || '--';
         const end = ExportConfig.endMonth || '--';
