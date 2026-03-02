@@ -1123,6 +1123,50 @@
         return m ? parseFloat(m[0]) : 0;
     }
 
+    /** 安全隐患摘要辅助：生成统计数据 */
+    function buildSeverityStats(allProblems, highCount, threshold) {
+        const persons = [...new Set(allProblems.map(p => p.inspectedPerson).filter(Boolean))];
+        const depts = [...new Set(allProblems.map(p => p.department).filter(Boolean))];
+        const teams = [...new Set(allProblems.map(p => p.team).filter(Boolean))];
+        return [
+            { label: `≥${threshold}分问题数`, value: String(highCount) },
+            { label: '涉及人员数', value: String(persons.length) },
+            { label: '涉及部门/班组', value: `${depts.length}/${teams.length}` }
+        ];
+    }
+
+    /** 安全隐患摘要辅助：生成项目列表文本 */
+    function buildSeverityBullets(allProblems, bulletsRule) {
+        let filtered = allProblems.filter(p => p.score >= bulletsRule.minScore);
+        if (filtered.length === 0) {
+            filtered = allProblems.filter(p => p.score >= bulletsRule.fallbackMinScore);
+        }
+
+        if (bulletsRule.sort === 'score_desc_date_desc') {
+            filtered.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return (b.date || '').localeCompare(a.date || '');
+            });
+        }
+
+        const maxItems = bulletsRule.maxItems || 5;
+        const sliced = filtered.slice(0, maxItems);
+
+        return sliced.map(p => formatSeverityBullet(p, bulletsRule.fields));
+    }
+
+    /** 安全隐患摘要辅助：格式化单条记录 */
+    function formatSeverityBullet(p, fields) {
+        const parts = [];
+        fields.forEach(f => {
+            if (f === 'date') parts.push(p.date || '');
+            if (f === 'person') parts.push(p.inspectedPerson || '');
+            if (f === 'problem') parts.push(p.hazardDescription || p.inspectionItem || '未填写问题详情');
+            if (f === 'score') parts.push(`-${p.score}分`);
+        });
+        return parts.filter(Boolean).join('  ');
+    }
+
     /**
      * 为趋势图构建 enhanceData
      * @param {object} pe - pptEnhance 元信息
@@ -1193,16 +1237,25 @@
             let stats = [], bullets = [], chartTitle = chartObj.title || '';
 
             if (mode === 'severity') {
-                // 从 apiResp[0] 统计 ≥3 分问题数
+                const pptEnhance = chartObj.pptEnhance || {};
+                const statsRule = pptEnhance.statsRule || { minScore: 3 };
+                const bulletsRule = pptEnhance.bulletsRule || { minScore: 4, fallbackMinScore: 3, maxItems: 3, sort: 'score_desc_date_desc', fields: ['date', 'person', 'problem', 'score'] };
+
+                // 从 apiResp[0] 统计
                 const raw = isMultiApi ? apiResp[0] : apiResp;
                 if (!raw || !raw.length) return;
-                const threshold = 3;
-                const highCount = raw.filter(r => parseSeverityScore(r.name) >= threshold)
+
+                const minThreshold = Math.min(statsRule.minScore, bulletsRule.fallbackMinScore);
+
+                const highCount = raw.filter(r => parseSeverityScore(r.name) >= statsRule.minScore)
                     .reduce((s, r) => s + (r.value || 0), 0);
-                if (highCount === 0) return;
-                // 分别拉 score=3/4/5 再聚合 bullets
+
+                // 如果连兜底分值的问题都没有，那就直接退出，整页都不用展示摘要了
+                if (raw.filter(r => parseSeverityScore(r.name) >= minThreshold).length === 0) return;
+
+                // 分别拉需要的所有下钻的分数
                 const scoreList = raw.map(r => parseSeverityScore(r.name))
-                    .filter(s => s >= threshold);
+                    .filter(s => s >= minThreshold);
                 const uniqueScores = [...new Set(scoreList)];
                 const dResults = await Promise.all(
                     uniqueScores.map(s => fetch(`/safety/api/analytics/severity-drilldown?score=${s}&${dateParams}`)
@@ -1212,18 +1265,9 @@
                 dResults.forEach(dr => {
                     if (dr && dr.problems) allProblems.push(...dr.problems);
                 });
-                allProblems.sort((a, b) => b.score - a.score);
-                const persons = [...new Set(allProblems.map(p => p.inspectedPerson).filter(Boolean))];
-                const depts = [...new Set(allProblems.map(p => p.department).filter(Boolean))];
-                const teams = [...new Set(allProblems.map(p => p.team).filter(Boolean))];
-                stats = [
-                    { label: `≥${threshold}分问题数`, value: String(highCount) },
-                    { label: '涉及人员数', value: String(persons.length) },
-                    { label: '涉及部门/班组', value: `${depts.length}/${teams.length}` }
-                ];
-                bullets = allProblems.slice(0, 3).map(
-                    p => `${p.date || ''}  ${p.inspectedPerson || ''}  ${p.inspectionItem || p.hazardDescription || ''}  -${p.score}分`
-                );
+
+                stats = buildSeverityStats(allProblems, highCount, statsRule.minScore);
+                bullets = buildSeverityBullets(allProblems, bulletsRule);
 
             } else if (mode === 'top_loss') {
                 const raw = isMultiApi ? apiResp[1] : apiResp;

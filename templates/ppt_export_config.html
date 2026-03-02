@@ -18,6 +18,11 @@
         /* 页面底部留白，替代原生悬浮栏 */
     }
 
+    /* 搜索过滤隐藏 */
+    .chart-search-hidden {
+        display: none !important;
+    }
+
     /* ── 区块卡片 ── */
     .config-card {
         background: #fff;
@@ -64,18 +69,16 @@
             flex-direction: column;
         }
 
-        /* 图表选区撑满左列剩余高度 */
+        /* 图表选区：按内容自然撑高，超出后出现滚动条 */
         #sectionCharts {
-            flex: 1;
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
 
         #chartSelectionArea {
-            flex: 1;
             overflow-y: auto;
-            min-height: 200px;
+            min-height: 0;
         }
 
         /* 右侧侧栏：高度跟随左侧，不 sticky（已经等高了不需要 sticky） */
@@ -416,13 +419,7 @@
                         </div>
                     </div>
                 </div>
-                <!-- 日期区间调整补丁：给用户明显的确认感，但保持 onChange 也生效的双保险 -->
-                <div class="mt-3 text-end">
-                    <span class="text-muted small me-3"><i class="fas fa-info-circle me-1"></i>重选时间后自动生效加载新数据</span>
-                    <button class="btn btn-sm btn-outline-primary px-3" onclick="updateSummary()">
-                        <i class="fas fa-sync-alt me-1"></i> 刷新预估
-                    </button>
-                </div>
+
                 <!-- 全局摘要开关下放至此 -->
                 <div class="row mt-3 pt-3 border-top">
                     <div class="col-12">
@@ -433,6 +430,31 @@
                             </label>
                         </div>
                     </div>
+                </div>
+                <!-- 配置复用快捷入口 -->
+                <div class="d-flex align-items-center justify-content-between mt-3 pt-3 border-top" id="configStoreBar">
+                    <span class="text-muted small" id="configStoreHint">
+                        <i class="fas fa-history me-1"></i><span id="lastSavedLabel">暂无上次配置</span>
+                    </span>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-light border" id="btnLoadLast" onclick="loadLastConfig()"
+                            disabled>
+                            <i class="fas fa-undo me-1"></i>使用上次配置
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="saveCurrentAsDefault()">
+                            <i class="fas fa-bookmark me-1"></i>保存为默认
+                        </button>
+                    </div>
+                </div>
+                <!-- 关键人员画像占位（Phase 3，待实现）-->
+                <div class="d-flex align-items-center justify-content-between mt-3 pt-3 border-top" style="opacity:.55">
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" id="cfgKeyPersonnel" disabled>
+                        <label class="form-check-label text-secondary small" for="cfgKeyPersonnel">
+                            <b>关键人员画像</b>：导出高风险/高绩效人员专属页面
+                        </label>
+                    </div>
+                    <span class="badge bg-secondary" style="font-size:.68rem">后续版本</span>
                 </div>
             </div>
 
@@ -447,10 +469,19 @@
                             onclick="clearAll()">清空</button>
                     </span>
                 </div>
+                <!-- 搜索框：独占一行，细且宽 -->
+                <div style="position:relative;margin-bottom:10px">
+                    <i class="fas fa-search"
+                        style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.72rem;pointer-events:none"></i>
+                    <input type="text" id="searchInput" oninput="filterCharts(this.value)" placeholder="搜索图表名称..."
+                        style="width:100%;height:32px;min-height:0;padding:0 32px 0 32px;border:1px solid #e2e8f0;border-radius:7px;font-size:.82rem;outline:none;color:#334155;background:#f8fafc">
+                    <i class="fas fa-times" onclick="filterCharts('');document.getElementById('searchInput').value=''"
+                        style="position:absolute;right:11px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.68rem;cursor:pointer"></i>
+                </div>
                 <div id="chartSelectionArea" style="padding-right:4px;">
                     <!-- 由 JS 动态渲染 -->
-                    <div class="text-center text-muted py-5" id="chartLoadingHint">
-                        <span class="spinner-border spinner-border-sm me-2"></span>加载中...
+                    <div class="text-center text-muted py-2" id="chartLoadingHint" style="font-size:.82rem">
+                        <span class="spinner-border spinner-border-sm me-1"></span>加载中...
                     </div>
                 </div>
             </div>
@@ -465,12 +496,22 @@
                         <span class="badge-num">3</span> 增强配置
                     </div>
 
-                    <div class="enhance-row">
-                        <div class="form-check form-switch mb-0 w-100 d-flex justify-content-between">
-                            <label class="form-check-label fw-semibold" for="enhTrend">趋势图增强</label>
-                            <input class="form-check-input" type="checkbox" id="enhTrend" checked>
+                    <div class="enhance-row flex-column align-items-stretch">
+                        <div class="fw-semibold mb-2" style="font-size:.85rem">趋势图增强</div>
+                        <div class="d-flex flex-column gap-1">
+                            <div class="form-check form-check-sm d-flex justify-content-between">
+                                <label class="form-check-label text-secondary" for="enhTrendLatest">显示最新值</label>
+                                <input class="form-check-input" type="checkbox" id="enhTrendLatest" checked>
+                            </div>
+                            <div class="form-check form-check-sm d-flex justify-content-between">
+                                <label class="form-check-label text-secondary" for="enhTrendPeak">显示峰值</label>
+                                <input class="form-check-input" type="checkbox" id="enhTrendPeak" checked>
+                            </div>
+                            <div class="form-check form-check-sm d-flex justify-content-between">
+                                <label class="form-check-label text-secondary" for="enhTrendAvg">显示均值</label>
+                                <input class="form-check-input" type="checkbox" id="enhTrendAvg" checked>
+                            </div>
                         </div>
-                        <div class="text-secondary" style="font-size:.75rem; margin-top:2px;">计算最新值/峰值/均值附加至图表旁。</div>
                     </div>
 
                     <div class="enhance-row flex-column align-items-stretch">
@@ -510,10 +551,6 @@
                             <div class="val val-highlight" id="statSelectedCount">0</div>
                         </div>
                         <div class="summary-stat">
-                            <div class="lbl">含决策摘要</div>
-                            <div class="val" id="statSummaryCount">0</div>
-                        </div>
-                        <div class="summary-stat" style="grid-column: span 2">
                             <div class="lbl">预估总页数</div>
                             <div class="val text-dark"><span id="statEstimatedPages">0</span> <span
                                     style="font-size:.8rem;color:#64748b;font-weight:400">页</span></div>
@@ -521,6 +558,21 @@
                         <div class="summary-stat" style="grid-column: span 2; padding:10px 16px;">
                             <div class="lbl mb-1 text-xs">生成跨度</div>
                             <div class="fw-semibold text-dark" style="font-size:.9rem;" id="statDateRange">-</div>
+                        </div>
+                        <!-- 补全字段 -->
+                        <div class="summary-stat" style="grid-column: span 2; padding:10px 16px;">
+                            <div class="lbl mb-1 text-xs">当前模板</div>
+                            <div class="text-dark" style="font-size:.85rem;" id="statTheme">标准公司蓝</div>
+                        </div>
+                        <div class="summary-stat" style="grid-column: span 2; padding:10px 16px;">
+                            <div class="lbl mb-1 text-xs">已启用增强</div>
+                            <div class="text-dark" style="font-size:.8rem; line-height:1.6" id="statEnhanceList">趋势 ·
+                                风险矩阵 · 决策摘要</div>
+                        </div>
+                        <div class="summary-stat" style="grid-column: span 2; padding:10px 16px;">
+                            <div class="lbl mb-1 text-xs">含摘要页图表</div>
+                            <div class="text-dark" style="font-size:.85rem;" id="statSummaryCount">0 <span
+                                    style="font-size:.78rem;color:#64748b;font-weight:400">张</span></div>
                         </div>
                     </div>
 
@@ -645,6 +697,7 @@
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <!-- ChartRegistry -->
 <script src="{{ url_for('static', filename='js/chart-registry.js') }}"></script>
+<script src="{{ url_for('static', filename='js/export-config-store.js') }}"></script>
 
 <script>
     'use strict';
@@ -657,9 +710,12 @@
         endMonth: '',
         theme: 'blue',
         appendSummaryGlobal: true,
-        chartConfigs: {},   // { [chartId]: { selected, enhanceEnabled, appendSummary } }
+        selectedCharts: new Set(),      // 全局已选图表 ID 集合
+        chartConfigs: {},               // { [chartId]: { summaryEnabled } }
         enhance: {
-            trendEnabled: true,
+            trendShowLatest: true,
+            trendShowPeak: true,
+            trendShowAverage: true,
             riskMatrixEnabled: true,
             riskMatrixTopN: 5,
             decisionSummaryEnabled: true
@@ -670,9 +726,28 @@
        初始化
        ========================================================== */
     document.addEventListener('DOMContentLoaded', () => {
-        setQuickRange(3);
-        renderChartSelection();
+        // 尝试恢复上次配置（先设置时间范围，再 apply 覆盖）
+        const stored = ExportConfigStore.load();
+        setQuickRange(3);     // 先设默认
+        if (stored) {
+            // 时间范围
+            if (stored.startMonth) {
+                ExportConfig.startMonth = stored.startMonth;
+                document.getElementById('cfgStartMonth').value = stored.startMonth;
+            }
+            if (stored.endMonth) {
+                ExportConfig.endMonth = stored.endMonth;
+                document.getElementById('cfgEndMonth').value = stored.endMonth;
+            }
+        }
+        renderChartSelection(stored);  // 把 stored 传进去，恢复选中和图表级配置
+        if (stored) {
+            // 应用主题、增强等
+            ExportConfigStore.applyTo(stored, ExportConfig);
+            syncFormFromConfig();
+        }
         bindConfigListeners();
+        updateSummary();
         // 后台自动截图，回填预览（不阻塞配置页操作）
         setTimeout(() => previewAllCharts(), 300);
     });
@@ -720,14 +795,23 @@
         }
     }
 
+    // 日期变更后防抖触发预览刷新（1.2s 内连续改则只触发一次）
+    let _previewDebounceTimer = null;
+    function schedulePreviewRefresh() {
+        clearTimeout(_previewDebounceTimer);
+        _previewDebounceTimer = setTimeout(() => previewAllCharts(), 1200);
+    }
+
     function bindConfigListeners() {
         document.getElementById('cfgStartMonth').addEventListener('change', e => {
             ExportConfig.startMonth = e.target.value;
             updateSummary();
+            schedulePreviewRefresh();  // 日期改变后刷新预览
         });
         document.getElementById('cfgEndMonth').addEventListener('change', e => {
             ExportConfig.endMonth = e.target.value;
             updateSummary();
+            schedulePreviewRefresh();  // 日期改变后刷新预览
         });
         document.getElementById('cfgTheme').addEventListener('change', e => {
             ExportConfig.theme = e.target.value;
@@ -736,8 +820,14 @@
             ExportConfig.appendSummaryGlobal = e.target.checked;
             updateSummary();
         });
-        document.getElementById('enhTrend').addEventListener('change', e => {
-            ExportConfig.enhance.trendEnabled = e.target.checked;
+        document.getElementById('enhTrendLatest').addEventListener('change', e => {
+            ExportConfig.enhance.trendShowLatest = e.target.checked;
+        });
+        document.getElementById('enhTrendPeak').addEventListener('change', e => {
+            ExportConfig.enhance.trendShowPeak = e.target.checked;
+        });
+        document.getElementById('enhTrendAvg').addEventListener('change', e => {
+            ExportConfig.enhance.trendShowAverage = e.target.checked;
         });
         document.getElementById('enhRiskMatrix').addEventListener('change', e => {
             ExportConfig.enhance.riskMatrixEnabled = e.target.checked;
@@ -749,6 +839,22 @@
             ExportConfig.enhance.decisionSummaryEnabled = e.target.checked;
             updateSummary();
         });
+    }
+
+    /** 将 ExportConfig 的值同步回表单控件（用于加载上次配置后刷新 UI） */
+    function syncFormFromConfig() {
+        const el = id => document.getElementById(id);
+        if (el('cfgStartMonth')) el('cfgStartMonth').value = ExportConfig.startMonth || '';
+        if (el('cfgEndMonth')) el('cfgEndMonth').value = ExportConfig.endMonth || '';
+        if (el('cfgTheme')) el('cfgTheme').value = ExportConfig.theme || 'blue';
+        if (el('cfgAppendSummaryGlobal')) el('cfgAppendSummaryGlobal').checked = !!ExportConfig.appendSummaryGlobal;
+        const e = ExportConfig.enhance;
+        if (el('enhTrendLatest')) el('enhTrendLatest').checked = !!e.trendShowLatest;
+        if (el('enhTrendPeak')) el('enhTrendPeak').checked = !!e.trendShowPeak;
+        if (el('enhTrendAvg')) el('enhTrendAvg').checked = !!e.trendShowAverage;
+        if (el('enhRiskMatrix')) el('enhRiskMatrix').checked = !!e.riskMatrixEnabled;
+        if (el('riskMatrixTopN')) el('riskMatrixTopN').value = e.riskMatrixTopN || 5;
+        if (el('enhDecisionSummary')) el('enhDecisionSummary').checked = !!e.decisionSummaryEnabled;
     }
 
     /* ==========================================================
@@ -899,6 +1005,23 @@
         updateSummary();
     }
 
+    /** 实时搜索过滤图表卡片 */
+    function filterCharts(keyword) {
+        const q = (keyword || '').trim().toLowerCase();
+        document.querySelectorAll('.chart-card').forEach(card => {
+            const title = (card.querySelector('.chart-card-title') || {}).textContent || '';
+            const meta = (card.querySelector('.chart-card-meta') || {}).textContent || '';
+            const label = (card.querySelector('.chart-card-labels') || {}).textContent || '';
+            const match = !q || (title + meta + label).toLowerCase().includes(q);
+            const wrapper = card.parentElement || card;
+            wrapper.classList.toggle('chart-search-hidden', !match);
+        });
+        document.querySelectorAll('.module-group').forEach(group => {
+            const vis = group.querySelectorAll('.chart-grid > div:not(.chart-search-hidden)');
+            group.classList.toggle('chart-search-hidden', vis.length === 0);
+        });
+    }
+
     function selectAll() {
         document.querySelectorAll('.chart-check').forEach(chk => {
             chk.checked = true;
@@ -934,12 +1057,81 @@
         selectDefault();
         document.getElementById('cfgTheme').value = 'blue';
         document.getElementById('cfgAppendSummaryGlobal').checked = true;
-        document.getElementById('enhTrend').checked = true;
+        document.getElementById('enhTrendLatest').checked = true;
+        document.getElementById('enhTrendPeak').checked = true;
+        document.getElementById('enhTrendAvg').checked = true;
         document.getElementById('enhRiskMatrix').checked = true;
         document.getElementById('riskMatrixTopN').value = 5;
         document.getElementById('enhDecisionSummary').checked = true;
-        ExportConfig.enhance = { trendEnabled: true, riskMatrixEnabled: true, riskMatrixTopN: 5, decisionSummaryEnabled: true };
+        ExportConfig.enhance = {
+            trendShowLatest: true, trendShowPeak: true, trendShowAverage: true,
+            riskMatrixEnabled: true, riskMatrixTopN: 5,
+            decisionSummaryEnabled: true
+        };
         ExportConfig.appendSummaryGlobal = true;
+        updateSummary();
+    }
+
+    /** 更新"上次配置"区域显示 */
+    function updateStoreBar() {
+        const label = document.getElementById('lastSavedLabel');
+        const btnLoad = document.getElementById('btnLoadLast');
+        const t = ExportConfigStore.lastSavedAtDisplay();
+        if (t) {
+            if (label) label.textContent = `上次配置：${t}`;
+            if (btnLoad) btnLoad.disabled = false;
+        } else {
+            if (label) label.textContent = '暂无上次配置';
+            if (btnLoad) btnLoad.disabled = true;
+        }
+    }
+
+    /** 使用上次配置 */
+    function loadLastConfig() {
+        const stored = ExportConfigStore.load();
+        if (!stored) { alert('暂无上次保存的配置'); return; }
+        // 恢复时间范围
+        if (stored.startMonth) {
+            ExportConfig.startMonth = stored.startMonth;
+            document.getElementById('cfgStartMonth').value = stored.startMonth;
+        }
+        if (stored.endMonth) {
+            ExportConfig.endMonth = stored.endMonth;
+            document.getElementById('cfgEndMonth').value = stored.endMonth;
+        }
+        // 恢复图表选中
+        if (Array.isArray(stored.selectedCharts)) {
+            // 重新勾选卡片
+            ExportConfig.selectedCharts = new Set(stored.selectedCharts);
+            document.querySelectorAll('.chart-check').forEach(chk => {
+                const cid = chk.dataset.chartId;
+                const sel = ExportConfig.selectedCharts.has(cid);
+                chk.checked = sel;
+                const card = chk.closest('.chart-card');
+                if (card) card.classList.toggle('selected', sel);
+                if (!ExportConfig.chartConfigs[cid]) ExportConfig.chartConfigs[cid] = {};
+                ExportConfig.chartConfigs[cid].selected = sel;
+            });
+        }
+        ExportConfigStore.applyTo(stored, ExportConfig);
+        syncFormFromConfig();
+        updateSummary();
+    }
+
+    /** 保存当前配置为默认（同时也保存到上次） */
+    function saveCurrentAsDefault() {
+        ExportConfigStore.save(ExportConfig);
+        ExportConfigStore.saveAsDefault(ExportConfig);
+        updateStoreBar();
+        // 简短反馈
+        const btn = event.currentTarget;
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check me-1"></i>已保存';
+        btn.classList.replace('btn-outline-secondary', 'btn-success');
+        setTimeout(() => {
+            btn.innerHTML = orig;
+            btn.classList.replace('btn-success', 'btn-outline-secondary');
+        }, 2000);
     }
 
     /**
@@ -972,7 +1164,6 @@
         const estimatedPages = calcEstimatedPages(selected.length, summaryCount);
 
         document.getElementById('statSelectedCount').textContent = selected.length;
-        document.getElementById('statSummaryCount').textContent = summaryCount;
         document.getElementById('statEstimatedPages').textContent = estimatedPages;
         // 同步移动端吸底栏
         const mSel = document.getElementById('mobileSelectedCount');
@@ -984,6 +1175,26 @@
         const end = ExportConfig.endMonth || '--';
         document.getElementById('statDateRange').textContent = start === end ? start : `${start}~${end.slice(5)}`;
 
+        // ── 补全字段：当前模板 ──
+        const themeNames = { blue: '标准公司蓝', dark: '质感深色', simple: '黑白简约' };
+        const statTheme = document.getElementById('statTheme');
+        if (statTheme) statTheme.textContent = themeNames[ExportConfig.theme] || ExportConfig.theme;
+
+        // ── 补全字段：已启用增强项 ──
+        const enh = ExportConfig.enhance;
+        const enhParts = [];
+        if (enh.trendShowLatest || enh.trendShowPeak || enh.trendShowAverage) {
+            const trendSub = [enh.trendShowLatest ? '最新' : '', enh.trendShowPeak ? '峰值' : '', enh.trendShowAverage ? '均值' : ''].filter(Boolean).join('/');
+            enhParts.push(`趋势(${trendSub})`);
+        }
+        if (enh.riskMatrixEnabled) enhParts.push(`风险矩阵 Top${enh.riskMatrixTopN}`);
+        if (enh.decisionSummaryEnabled) enhParts.push('决策摘要');
+        const statEnhList = document.getElementById('statEnhanceList');
+        if (statEnhList) statEnhList.textContent = enhParts.length ? enhParts.join(' · ') : '无';
+
+        // ── 补全字段：含摘要页图表数 ──
+        const statSC = document.getElementById('statSummaryCount');
+        if (statSC) statSC.innerHTML = `${summaryCount} <span style="font-size:.78rem;color:#64748b;font-weight:400">张</span>`;
     }
 
     /* ==========================================================
@@ -1238,6 +1449,11 @@
         if (!start || !end) { showToast('请先选择时间范围', 'warning'); return; }
         const selectedCharts = Object.values(ExportConfig.chartConfigs).filter(c => c.selected);
         if (!selectedCharts.length) { showToast('请至少选择一张图表', 'warning'); return; }
+
+        // ── 自动保存本次配置为"上次配置" ──
+        ExportConfig.selectedCharts = new Set(Object.keys(ExportConfig.chartConfigs).filter(id => ExportConfig.chartConfigs[id].selected));
+        ExportConfigStore.save(ExportConfig);
+        updateStoreBar();
 
         const btn = document.getElementById('btnStartExport');
         btn.disabled = true;
