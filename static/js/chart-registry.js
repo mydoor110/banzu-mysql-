@@ -28,7 +28,7 @@
             multiApi: false,
             charts: [
                 {
-                    id: 'risk_distribution',
+                    id: 'risk_distribution', title: '驾龄风险分布',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：电客车司机 | 单位：人 | 按入司后单驾年限分级，识别新手集中风险',
@@ -55,7 +55,7 @@
                     }
                 },
                 {
-                    id: 'team_power',
+                    id: 'team_power', title: '班组经验结构对比',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：电客车司机 | 单位：年 | 各部门平均司龄/驾龄/取证年限对比',
@@ -86,7 +86,7 @@
                     }
                 },
                 {
-                    id: 'experience_scatter',
+                    id: 'experience_scatter', title: '司龄 vs 取证年限散点图',
                     exportable: true, defaultSelected: false, priority: 'medium',
                     schema: 'scatter_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：电客车司机 | 单位：年 | 取证年限vs单驾年限，识别准师傅人选',
@@ -117,7 +117,7 @@
                     }
                 },
                 {
-                    id: 'stability_scatter',
+                    id: 'stability_scatter', title: '工龄 vs 司龄散点图',
                     exportable: true, defaultSelected: false, priority: 'medium',
                     schema: 'scatter_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：电客车司机 | 单位：年 | 司龄vs工龄，区分应届/社招/老员工结构',
@@ -148,7 +148,7 @@
                     }
                 },
                 {
-                    id: 'hometown_stats',
+                    id: 'hometown_stats', title: '籍贯分布统计',
                     exportable: true, defaultSelected: false, priority: 'low',
                     schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：全部在册人员 | 单位：人 | 排序：按人数降序 | 补充图',
@@ -176,7 +176,7 @@
                     }
                 },
                 {
-                    id: 'political_stats',
+                    id: 'political_stats', title: '政治面貌分布',
                     exportable: true, defaultSelected: false, priority: 'low',
                     schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：全部在册人员 | 单位：人 | 党员/团员/群众占比统计 | 补充图',
@@ -205,7 +205,7 @@
                 },
                 // ── 对比型图表（仅多部门管理账号可见）──
                 {
-                    id: 'dept_rookie_compare',
+                    id: 'dept_rookie_compare', title: '各部门新手占比对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
                     schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
@@ -235,7 +235,7 @@
                     }
                 },
                 {
-                    id: 'dept_backbone_compare',
+                    id: 'dept_backbone_compare', title: '各部门骨干人数对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
                     schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
@@ -300,7 +300,7 @@
             },
             charts: [
                 {
-                    id: 'training_monthly_rate',
+                    id: 'training_monthly_rate', title: '月度培训合格率趋势',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'trend_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     pptEnhance: { type: 'trend', seriesType: 'single', seriesNames: ['合格率'], yUnit: '%' },
@@ -331,7 +331,7 @@
                     }
                 },
                 {
-                    id: 'training_project_top10',
+                    id: 'training_project_top10', title: '失格最多项目 Top10',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'ranked_bar', supportsPreview: false, supportsSummary: true, supportsManualBullets: true,
                     pptEnhance: { type: 'decision_summary', summaryMode: 'project_top10' },
@@ -381,7 +381,7 @@
                     }
                 },
                 {
-                    id: 'training_problem_type',
+                    id: 'training_problem_type', title: '培训问题分类占比',
                     exportable: true, defaultSelected: true, priority: 'medium',
                     schema: 'pie_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：不合格故障记录 | 单位：次 | 分析故障分类，明确改进方向',
@@ -413,7 +413,7 @@
                     }
                 },
                 {
-                    id: 'training_monthly_count',
+                    id: 'training_monthly_count', title: '月度培训人次趋势',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'trend_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     pptEnhance: { type: 'trend', seriesType: 'double', seriesNames: ['总人次', '不合格人次'], yUnit: '人次' },
@@ -450,7 +450,7 @@
                     }
                 },
                 {
-                    id: 'training_project_count_top20',
+                    id: 'training_project_count_top20', title: '实操项目人次 Top20',
                     exportable: true, defaultSelected: false, priority: 'low',
                     schema: 'ranked_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：培训记录 | 单位：次 | 排序：按总次数降序 | 补充图',
@@ -484,7 +484,7 @@
                     }
                 },
                 {
-                    id: 'training_person_count',
+                    id: 'training_person_count', title: '人员培训合格/失格次数',
                     exportable: true, defaultSelected: false, priority: 'low',
                     schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     drilldown: true, drilldownUrl: '/training/api/analytics/person-disqualified-drilldown',
@@ -535,7 +535,7 @@
                 },
                 // ── 对比型图表（仅多部门管理账号可见）──
                 {
-                    id: 'training_dept_rate_compare',
+                    id: 'training_dept_rate_compare', title: '各部门培训合格率对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
                     schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
@@ -586,7 +586,7 @@
             multiApi: true,
             charts: [
                 {
-                    id: 'safety_severity',
+                    id: 'safety_severity', title: '安全问题严重度分级',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'ranked_bar', supportsPreview: false, supportsSummary: true, supportsManualBullets: true,
                     pptEnhance: {
@@ -646,7 +646,7 @@
                     }
                 },
                 {
-                    id: 'safety_top_loss',
+                    id: 'safety_top_loss', title: '高频失分问题 Top10',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'ranked_bar', supportsPreview: false, supportsSummary: true, supportsManualBullets: true,
                     pptEnhance: { type: 'decision_summary', summaryMode: 'top_loss' },
@@ -693,7 +693,7 @@
                     }
                 },
                 {
-                    id: 'safety_risk_matrix',
+                    id: 'safety_risk_matrix', title: '人员安全风险矩阵',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'matrix_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     chartLabels: {
@@ -770,7 +770,7 @@
                     }
                 },
                 {
-                    id: 'safety_daily_trend',
+                    id: 'safety_daily_trend', title: '安全问题日趋势',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'trend_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     pptEnhance: { type: 'trend', seriesType: 'dual_axis', seriesNames: ['违规次数', '累计扣分'], yUnits: ['次', '分'] },
@@ -812,7 +812,7 @@
                     }
                 },
                 {
-                    id: 'safety_top_contributors',
+                    id: 'safety_top_contributors', title: '整改任务最多人员',
                     exportable: true, defaultSelected: false, priority: 'low',
                     schema: 'ranked_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：整改责任人(rectifier) | 单位：次 | 排序：按整改次数降序 | 补充图',
@@ -845,7 +845,7 @@
                 },
                 // ── 新增：高频问题项（按次数）──
                 {
-                    id: 'safety_top_frequency',
+                    id: 'safety_top_frequency', title: '高频安全问题 Top10',
                     exportable: true, defaultSelected: true, priority: 'high',
                     schema: 'ranked_bar', supportsPreview: false, supportsSummary: true, supportsManualBullets: true,
                     pptEnhance: { type: 'decision_summary', summaryMode: 'top_frequency' },
@@ -892,7 +892,7 @@
                 },
                 // ── 对比型图表（仅多部门管理账号可见）──
                 {
-                    id: 'safety_dept_issue_compare',
+                    id: 'safety_dept_issue_compare', title: '各部门问题数对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
                     schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
@@ -924,7 +924,7 @@
                     }
                 },
                 {
-                    id: 'safety_dept_risk_compare',
+                    id: 'safety_dept_risk_compare', title: '各部门高风险人员对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
                     schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
