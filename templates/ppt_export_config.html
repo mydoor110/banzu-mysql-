@@ -52,16 +52,45 @@
         flex-shrink: 0;
     }
 
-    /* ── 右侧侧栏（Sticky）── */
-    .sticky-sidebar {
-        /* Desktop 端固定，移动端自然堆叠 */
-        top: 24px;
-        z-index: 10;
-    }
-
+    /* ── 双列等高布局：让左右两栏撑满同一行高 ── */
     @media (min-width: 992px) {
+        .config-row {
+            align-items: stretch !important;
+            min-height: 600px;
+        }
+
+        .config-col-main {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 图表选区撑满左列剩余高度 */
+        #sectionCharts {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #chartSelectionArea {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 200px;
+        }
+
+        /* 右侧侧栏：高度跟随左侧，不 sticky（已经等高了不需要 sticky） */
+        .config-col-sidebar {
+            display: flex;
+            flex-direction: column;
+        }
+
         .sticky-sidebar {
-            position: sticky;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            /* 桌面不再 sticky，因为已经等高对齐 */
+            position: static;
+            top: auto;
         }
     }
 
@@ -90,7 +119,7 @@
     }
 
     /* 直接子元素（每个 card 外层 div）强制占满 grid 格高度 */
-    .chart-grid > div {
+    .chart-grid>div {
         display: flex;
         flex-direction: column;
         min-height: 0;
@@ -354,9 +383,9 @@
         </a>
     </div>
 
-    <div class="row g-4">
+    <div class="row g-4 config-row">
         <!-- ================= 左侧 主区 ================= -->
-        <div class="col-lg-8 col-xl-9">
+        <div class="col-lg-8 col-xl-9 config-col-main">
             <!-- ① 基础配置区 -->
             <div class="config-card" id="sectionBasic">
                 <div class="config-card-title">
@@ -408,7 +437,7 @@
             </div>
 
             <!-- ② 图表选择区 -->
-            <div class="config-card mb-lg-0" id="sectionCharts">
+            <div class="config-card" id="sectionCharts">
                 <div class="config-card-title">
                     <span class="badge-num">2</span> 勾选报告图表
                     <span class="ms-auto d-flex gap-2">
@@ -418,7 +447,7 @@
                             onclick="clearAll()">清空</button>
                     </span>
                 </div>
-                <div id="chartSelectionArea" style="max-height:680px; overflow-y:auto; padding-right:4px;">
+                <div id="chartSelectionArea" style="padding-right:4px;">
                     <!-- 由 JS 动态渲染 -->
                     <div class="text-center text-muted py-5" id="chartLoadingHint">
                         <span class="spinner-border spinner-border-sm me-2"></span>加载中...
@@ -428,7 +457,7 @@
         </div>
 
         <!-- ================= 右侧 侧栏 ================= -->
-        <div class="col-lg-4 col-xl-3">
+        <div class="col-lg-4 col-xl-3 config-col-sidebar">
             <div class="sticky-sidebar">
                 <!-- ③ 高级配置区 -->
                 <div class="config-card">
@@ -618,7 +647,52 @@
         setQuickRange(3);
         renderChartSelection();
         bindConfigListeners();
+        // 后台自动截图，回填预览（不阻塞配置页操作）
+        setTimeout(() => previewAllCharts(), 300);
     });
+
+    /**
+     * previewAllCharts —— 自动在配置页渲染预览缩略图
+     * 不影响配置操作，纯后台异步逐模块拉取 API 并渲染小图
+     */
+    async function previewAllCharts() {
+        const start = ExportConfig.startMonth;
+        const end = ExportConfig.endMonth;
+        if (!start || !end) return;
+
+        let deptCount = 0;
+        try {
+            const r = await fetch('/personnel/api/analytics-data');
+            if (r.ok) { const d = await r.json(); deptCount = d.accessible_dept_count || 0; }
+        } catch (e) { }
+
+        const moduleConfigs = [
+            { key: 'analytics', note: '人员' },
+            { key: 'training', note: '培训' },
+            { key: 'safety', note: '安全' },
+        ];
+
+        for (const cfg of moduleConfigs) {
+            try {
+                const { images } = await captureModuleChartsNew(cfg.key, start, end, deptCount);
+                for (const imgObj of images) {
+                    if (!imgObj.chartId || !imgObj.image) continue;
+                    // 找到对应卡片的预览占位区并替换
+                    const card = document.querySelector(`[data-chart-id="${imgObj.chartId}"]`);
+                    if (!card) continue;
+                    const placeholder = card.querySelector('.chart-preview-placeholder');
+                    if (!placeholder) continue;
+                    placeholder.innerHTML = `<img src="${imgObj.image}" 
+                        style="width:100%;height:100%;object-fit:cover;border-radius:0;display:block" 
+                        alt="图表预览">`;
+                    placeholder.style.background = 'none';
+                    placeholder.style.padding = '0';
+                }
+            } catch (e) {
+                console.warn(`[previewAllCharts] ${cfg.key} 预览失败:`, e);
+            }
+        }
+    }
 
     function bindConfigListeners() {
         document.getElementById('cfgStartMonth').addEventListener('change', e => {
@@ -734,11 +808,11 @@
                     <input type="checkbox" class="chart-check" data-chart-id="${chart.id}" 
                            ${isSelected ? 'checked' : ''} onchange="syncCardState(this)">
 
-                    <!-- 占位预览区域 -->
-                    <div class="chart-preview-placeholder">
-                        <div>
-                            <i class="far fa-image mb-2 d-block" style="font-size:32px; color:#94a3b8; text-align:center"></i>
-                            <span style="font-size:0.75rem; color:#64748b; font-weight:normal">暂无预览</span>
+                    <!-- 预览区域：初始显示加载态，previewAllCharts() 异步回填真实截图 -->
+                    <div class="chart-preview-placeholder" style="background:#f1f5f9">
+                        <div style="text-align:center;color:#94a3b8">
+                            <div class="spinner-border spinner-border-sm mb-1" style="color:#c7d2fe"></div>
+                            <div style="font-size:0.7rem;margin-top:4px">加载预览...</div>
                         </div>
                     </div>
 
