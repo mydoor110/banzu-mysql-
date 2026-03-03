@@ -1,0 +1,3976 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="{{ url_for('export_ppt.ppt_export_config_page') }}">PPT 导出</a></li>
+<li class="breadcrumb-item active">导出配置</li>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── 页面整体 ── */
+    .config-container {
+        max-width: 1400px;
+        /* 加宽以适应左右布局 */
+        margin: 0 auto;
+        padding-bottom: 40px;
+        /* 页面底部留白，替代原生悬浮栏 */
+    }
+
+    /* 搜索过滤隐藏 */
+    .chart-search-hidden {
+        display: none !important;
+    }
+
+    /* ── 区块卡片 ── */
+    .config-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, .03);
+    }
+
+    .config-card-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 18px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .config-card-title .badge-num {
+        background: #e0e7ff;
+        color: #4338ca;
+        border-radius: 6px;
+        width: 24px;
+        height: 24px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: .85em;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+
+    /* ── 双列等高布局：让左右两栏撑满同一行高 ── */
+    @media (min-width: 992px) {
+        .config-row {
+            align-items: stretch !important;
+            min-height: 600px;
+        }
+
+        .config-col-main {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 图表选区：按内容自然撑高，超出后出现滚动条 */
+        #sectionCharts {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #chartSelectionArea {
+            overflow-y: auto;
+            min-height: 0;
+        }
+
+        /* 右侧侧栏：高度跟随左侧，不 sticky（已经等高了不需要 sticky） */
+        .config-col-sidebar {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sticky-sidebar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            /* 桌面不再 sticky，因为已经等高对齐 */
+            position: static;
+            top: auto;
+        }
+    }
+
+    /* ── 图表选择区 ── */
+    .module-group {
+        margin-bottom: 24px;
+    }
+
+    .module-label {
+        font-size: .9rem;
+        font-weight: 700;
+        color: #334155;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #f1f5f9;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .chart-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 16px;
+        align-items: stretch;
+    }
+
+    /* 直接子元素（每个 card 外层 div）强制占满 grid 格高度 */
+    .chart-grid>div {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    /* 图表卡片（资源实体） */
+    .chart-card {
+        border: 1.5px solid #e2e8f0;
+        border-radius: 12px;
+        background: #fff;
+        cursor: pointer;
+        transition: all .2s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .chart-card:hover {
+        border-color: #cbd5e1;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, .05);
+        transform: translateY(-2px);
+    }
+
+    .chart-card.selected {
+        border-color: #165DFF;
+        box-shadow: 0 4px 12px rgba(22, 93, 255, .08);
+    }
+
+    /* 右上角选中标记 */
+    .chart-card .check-mark {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 22px;
+        height: 22px;
+        background: #165DFF;
+        color: #fff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        opacity: 0;
+        transform: scale(0.5);
+        transition: all .2s;
+        z-index: 2;
+    }
+
+    .chart-card.selected .check-mark {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    /* 原生 checkbox 仅作状态源，视觉隐藏 */
+    .chart-card input[type=checkbox].chart-check {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    /* 预览图占位 */
+    .chart-preview-placeholder {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #f8fafc;
+        border-bottom: 1px solid #f1f5f9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #cbd5e1;
+        font-size: 24px;
+    }
+
+    .chart-card.selected .chart-preview-placeholder {
+        background: #f0f7ff;
+        color: #bfdbfe;
+    }
+
+    /* 卡片内容区 */
+    .chart-card-body {
+        padding: 14px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .chart-card-title {
+        font-size: .95rem;
+        font-weight: 600;
+        color: #1e293b;
+        line-height: 1.4;
+        margin-bottom: 6px;
+        padding-right: 24px;
+        /* 留给 check-mark 的空间 */
+    }
+
+    /* 结构化标签摘要区 */
+    .chart-card-labels {
+        font-size: .75rem;
+        color: #475569;
+        background: #f1f5f9;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        display: inline-block;
+        align-self: flex-start;
+    }
+
+    /* 文字说明（summaryHint） */
+    .chart-card-meta {
+        font-size: .8rem;
+        color: #64748b;
+        line-height: 1.5;
+        margin-bottom: 10px;
+        flex: 1;
+        /* 撑开中间，让标签靠底 */
+    }
+
+    /* 底部能力/优先级标签 */
+    .chart-card-footer {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border-top: 1px dashed #e2e8f0;
+        padding-top: 10px;
+        margin-top: auto;
+    }
+
+    .capsule-badge {
+        font-size: .7rem;
+        padding: 2px 8px;
+        border-radius: 99px;
+        font-weight: 500;
+    }
+
+    .badge-outline-primary {
+        border: 1px solid #bfdbfe;
+        color: #3b82f6;
+        background: #eff6ff;
+    }
+
+    .badge-outline-info {
+        border: 1px solid #cffafe;
+        color: #06b6d4;
+        background: #ecfeff;
+    }
+
+    .badge-outline-warning {
+        border: 1px solid #fef08a;
+        color: #d97706;
+        background: #fefce8;
+    }
+
+    /* ── 增强配置区 ── */
+    .enhance-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        border-radius: 8px;
+        background: #fafafa;
+        border: 1px solid #f1f5f9;
+        margin-bottom: 8px;
+        transition: background .2s;
+    }
+
+    .enhance-row:hover {
+        background: #f8fafc;
+    }
+
+    .enhance-row label {
+        margin-bottom: 0;
+        font-size: .9rem;
+        color: #334155;
+    }
+
+    .enhance-row .form-control-sm {
+        width: 70px;
+        text-align: center;
+    }
+
+    /* ── 导出摘要区 ── */
+    .summary-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+    }
+
+    .summary-stat {
+        background: #f8fafc;
+        border: 1px solid #f1f5f9;
+        border-radius: 8px;
+        padding: 16px 12px;
+        text-align: center;
+        max-height: 90px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+
+    .summary-stat .lbl {
+        font-size: .8rem;
+        color: #64748b;
+        font-weight: 500;
+    }
+
+    .summary-stat .val {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0f172a;
+        line-height: 1;
+        display: block;
+        min-height: 1em;
+    }
+
+    .val-highlight {
+        color: #165DFF !important;
+        font-size: 1.8rem !important;
+        font-weight: 800 !important;
+        line-height: 1 !important;
+        position: static !important;
+    }
+
+    /* ── 进度条 ── */
+    #captureProgress {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, .95);
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        display: none;
+        /* JS 控制 */
+    }
+
+    #captureProgress .prog-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 24px;
+        color: #1e293b;
+    }
+
+    #captureProgress .progress {
+        width: 100%;
+        max-width: 480px;
+        height: 10px;
+        border-radius: 99px;
+    }
+
+    /* ── 企业模板管理 ── */
+    .tpl-card {
+        display: flex;
+        align-items: center;
+        padding: 10px 14px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        background: #fff;
+        gap: 10px;
+    }
+
+    .tpl-card.tpl-default {
+        border-color: #a5b4fc;
+        background: #f5f3ff;
+    }
+
+    .tpl-color-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        border: 1px solid rgba(0, 0, 0, .12);
+    }
+
+    .tpl-name {
+        font-weight: 600;
+        font-size: .88rem;
+        flex: 1;
+    }
+
+    .tpl-badge-default {
+        font-size: .65rem;
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: #818cf8;
+        color: #fff;
+    }
+
+    .tpl-edit-form .form-label {
+        font-size: .78rem;
+        margin-bottom: 2px;
+    }
+
+    .tpl-edit-form .form-control,
+    .tpl-edit-form .form-select {
+        font-size: .85rem;
+    }
+
+    .tpl-edit-form input[type='color'] {
+        width: 40px;
+        height: 32px;
+        padding: 2px;
+        border-radius: 4px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       UI/UX 收口修复
+       ═══════════════════════════════════════════════════════════ */
+
+    /* ── 图表卡片描述限高 → 卡片等高 ── */
+    .chart-card-meta {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        min-height: 2.4em;
+    }
+
+    /* ── 增强配置区文字不截断 ── */
+    .enhance-row {
+        flex-wrap: wrap;
+    }
+
+    .enhance-row .text-secondary {
+        word-break: break-all;
+    }
+
+    /* ── 侧栏导出检查卡片限高 ── */
+    .config-col-sidebar .config-card {
+        font-size: .88rem;
+    }
+
+    /* ── 手机端响应式 ── */
+    @media (max-width: 768px) {
+
+        /* 图表卡片单列 */
+        .chart-grid {
+            grid-template-columns: 1fr !important;
+            gap: 12px;
+        }
+
+        /* 底部固定栏 */
+        .sticky-bottom {
+            padding: 8px 12px !important;
+        }
+
+        .sticky-bottom .btn-primary,
+        .sticky-bottom .btn-lg {
+            width: 100% !important;
+            padding: 10px 20px !important;
+            font-size: 1rem !important;
+        }
+
+        /* 底部信息条堆叠 */
+        .sticky-bottom .d-flex {
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        /* 增强配置区手机不 sticky */
+        .sticky-sidebar {
+            position: static !important;
+            top: auto !important;
+        }
+
+        /* 配置卡片间距 */
+        .config-card {
+            padding: 16px !important;
+            margin-bottom: 12px;
+        }
+
+        /* 模板管理 Modal 全宽 */
+        #tplManagerModal .modal-dialog {
+            margin: 8px !important;
+            max-width: calc(100% - 16px) !important;
+        }
+
+        #tplManagerModal .modal-body {
+            padding: 12px !important;
+        }
+
+        /* 模板编辑表单紧凑 */
+        .tpl-edit-form .row.g-3 {
+            --bs-gutter-y: 0.6rem;
+        }
+
+        .tpl-edit-form .col-6 {
+            flex: 0 0 100% !important;
+            max-width: 100% !important;
+        }
+
+        /* 确认导出 Modal */
+        #confirmExportModal .modal-dialog {
+            margin: 8px !important;
+            max-width: calc(100% - 16px) !important;
+        }
+
+        #confirmExportModal .summary-grid {
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        /* 搜索框 */
+        #chartSearch {
+            font-size: .85rem !important;
+        }
+
+        /* 模块标题 */
+        .module-label {
+            font-size: .85rem;
+        }
+
+        /* 基础配置区字段堆叠 */
+        .config-card .row .col-md-3,
+        .config-card .row .col-md-6 {
+            margin-bottom: 8px;
+        }
+    }
+
+    /* ── 超小屏幕 (≤375px) ── */
+    @media (max-width: 375px) {
+        .chart-card-body {
+            padding: 10px;
+        }
+
+        .chart-card-title {
+            font-size: .88rem;
+        }
+
+        .summary-stat .val {
+            font-size: 1.2rem !important;
+        }
+    }
+
+    /* ── 关键人员列表 ── */
+    .kp-list-scroll {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #fafafa;
+    }
+
+    .kp-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: .82rem;
+        transition: background .15s;
+    }
+
+    .kp-item:last-child {
+        border-bottom: none;
+    }
+
+    .kp-item:hover {
+        background: #f0f7ff;
+    }
+
+    .kp-item .kp-name {
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    .kp-item .kp-dept {
+        color: #64748b;
+        font-size: .75rem;
+    }
+
+    .kp-item .kp-score {
+        margin-left: auto;
+        font-weight: 700;
+        font-size: .82rem;
+    }
+
+    .kp-score-danger {
+        color: #ef4444;
+    }
+
+    .kp-score-warning {
+        color: #f59e0b;
+    }
+
+    .kp-score-ok {
+        color: #22c55e;
+    }
+
+    /* ── 典型问题人工选题 ── */
+    .manual-bullets-btn {
+        font-size: .68rem;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border: 1px solid #c7d2fe;
+        background: #eef2ff;
+        color: #4338ca;
+        cursor: pointer;
+        transition: all .2s;
+        white-space: nowrap;
+    }
+
+    .manual-bullets-btn:hover {
+        background: #c7d2fe;
+        color: #312e81;
+    }
+
+    .manual-bullets-badge {
+        font-size: .6rem;
+        padding: 1px 5px;
+        border-radius: 3px;
+        background: #4338ca;
+        color: #fff;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
+
+    .bullet-candidate-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid #f1f5f9;
+        transition: background .15s;
+    }
+
+    .bullet-candidate-item:hover {
+        background: #f8fafc;
+    }
+
+    .bullet-candidate-item:last-child {
+        border-bottom: none;
+    }
+
+    .bullet-candidate-item .form-check-input {
+        margin-top: 3px;
+        flex-shrink: 0;
+    }
+
+    .bullet-candidate-item .bc-text {
+        flex: 1;
+        font-size: .82rem;
+        line-height: 1.5;
+        color: #334155;
+    }
+
+    .bullet-candidate-item .bc-score {
+        flex-shrink: 0;
+        font-weight: 600;
+        font-size: .8rem;
+        color: #dc2626;
+    }
+
+    .bullet-candidate-item .form-check-input:disabled {
+        opacity: .35;
+    }
+
+    /* ═══════════════════════════════════════════════════════════
+       WIZARD 五步流程式布局
+       ═══════════════════════════════════════════════════════════ */
+    .wizard-stepper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        padding: 12px 16px;
+        margin-bottom: 12px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, .06);
+    }
+
+    .ws-step {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        cursor: pointer;
+        opacity: .45;
+        transition: all .2s;
+    }
+
+    .ws-step.active {
+        opacity: 1;
+    }
+
+    .ws-step.done {
+        opacity: .8;
+    }
+
+    .ws-step.done .ws-num {
+        background: #22c55e;
+        color: #fff;
+    }
+
+    .ws-num {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #e2e8f0;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: .75rem;
+        font-weight: 700;
+        transition: all .2s;
+    }
+
+    .ws-step.active .ws-num {
+        background: #165DFF;
+        color: #fff;
+    }
+
+    .ws-label {
+        font-size: .68rem;
+        color: #64748b;
+        white-space: nowrap;
+    }
+
+    .ws-step.active .ws-label {
+        color: #165DFF;
+        font-weight: 600;
+    }
+
+    .ws-line {
+        flex: 1;
+        height: 2px;
+        background: #e2e8f0;
+        margin: 0 4px;
+        min-width: 16px;
+    }
+
+    .wizard-summary-mobile {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        margin-bottom: 12px;
+        background: #f0f7ff;
+        border: 1px solid #c7d2fe;
+        border-radius: 10px;
+        font-size: .78rem;
+        color: #334155;
+        cursor: pointer;
+    }
+
+    .wizard-body {
+        display: flex;
+        gap: 20px;
+        align-items: flex-start;
+    }
+
+    .wizard-nav {
+        flex-direction: column;
+        gap: 4px;
+        width: 200px;
+        min-width: 200px;
+        position: sticky;
+        top: 80px;
+        align-self: flex-start;
+    }
+
+    .wn-step {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all .2s;
+        border: 1px solid transparent;
+    }
+
+    .wn-step:hover {
+        background: #f8fafc;
+    }
+
+    .wn-step.active {
+        background: #eff6ff;
+        border-color: #c7d2fe;
+    }
+
+    .wn-step.done .wn-num {
+        background: #22c55e;
+        color: #fff;
+    }
+
+    .wn-num {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: #e2e8f0;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: .8rem;
+        font-weight: 700;
+        flex-shrink: 0;
+        transition: all .2s;
+    }
+
+    .wn-step.active .wn-num {
+        background: #165DFF;
+        color: #fff;
+    }
+
+    .wn-title {
+        font-size: .85rem;
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    .wn-desc {
+        font-size: .72rem;
+        color: #94a3b8;
+    }
+
+    .wizard-main {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .step-section {
+        display: none;
+        animation: stepFadeIn .25s ease;
+    }
+
+    .step-section.active {
+        display: block;
+    }
+
+    @keyframes stepFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+
+    .wizard-summary {
+        width: 240px;
+        min-width: 240px;
+        position: sticky;
+        top: 80px;
+        align-self: flex-start;
+    }
+
+    .ws-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, .06);
+        border: 1px solid #f1f5f9;
+    }
+
+    .ws-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px solid #f8fafc;
+        font-size: .8rem;
+        max-height: 40px;
+        overflow: hidden;
+    }
+
+    .ws-row:last-child {
+        border-bottom: none;
+    }
+
+    .ws-row.ws-row-wrap {
+        max-height: none;
+        flex-wrap: wrap;
+    }
+
+    .ws-label2 {
+        color: #64748b;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .ws-val {
+        font-weight: 600;
+        color: #1e293b;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 120px;
+    }
+
+    .ws-chart-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+        margin-top: 4px;
+        max-height: 60px;
+        overflow-y: auto;
+    }
+
+    .ws-chart-tags .ws-tag {
+        display: inline-block;
+        font-size: .65rem;
+        background: #eef2ff;
+        color: #4338ca;
+        padding: 1px 6px;
+        border-radius: 4px;
+        white-space: nowrap;
+    }
+
+    .wizard-footer {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        position: sticky;
+        bottom: 0;
+        z-index: 1040;
+        padding: 16px 0;
+        background: rgba(255, 255, 255, .95);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-top: 1px solid #e2e8f0;
+        margin-top: 24px;
+    }
+
+    .config-container {
+        padding-bottom: 80px !important;
+    }
+
+    .summary-chart-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid #f1f5f9;
+        border-radius: 10px;
+        margin-bottom: 8px;
+        transition: all .15s;
+    }
+
+    .summary-chart-row:hover {
+        border-color: #c7d2fe;
+        background: #fafbff;
+    }
+
+    .summary-chart-row .scr-name {
+        flex: 1;
+        font-weight: 600;
+        font-size: .88rem;
+    }
+
+    .summary-chart-row .scr-status {
+        font-size: .75rem;
+    }
+
+    .scr-status-done {
+        color: #22c55e;
+    }
+
+    .scr-status-pending {
+        color: #f59e0b;
+    }
+
+    @media (max-width: 991.98px) {
+        .wizard-body {
+            flex-direction: column;
+        }
+
+        .wizard-main {
+            width: 100%;
+        }
+
+        .config-container {
+            padding-bottom: 70px !important;
+        }
+
+        /* 手机端 stepper 可点击，增大触控区 */
+        .ws-step {
+            padding: 6px 2px;
+            min-width: 44px;
+        }
+
+        .ws-num {
+            width: 32px;
+            height: 32px;
+            font-size: .85rem;
+        }
+
+        .ws-label {
+            font-size: .72rem;
+        }
+
+        /* 手机端 wizard-footer 按钮间距 */
+        .wizard-footer {
+            padding: 10px 16px;
+            gap: 8px;
+        }
+
+        .wizard-footer .btn {
+            font-size: .85rem;
+        }
+
+        /* Step 3 摘要行手机端堆叠 */
+        .summary-chart-row {
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .summary-chart-row .scr-name {
+            width: 100%;
+        }
+
+        /* Step 5 review 图表清单手机端滚动 */
+        #reviewChartList {
+            max-height: 200px;
+        }
+    }
+
+    /* 窄桌面（1024-1200px）压缩右侧 sidebar */
+    @media (min-width: 992px) and (max-width: 1279px) {
+        .wizard-summary {
+            width: 180px;
+            min-width: 180px;
+        }
+
+        .wizard-nav {
+            width: 170px;
+            min-width: 170px;
+        }
+
+        .ws-card {
+            padding: 12px;
+        }
+
+        .ws-row {
+            font-size: .75rem;
+            gap: 4px;
+        }
+
+        .ws-label2 {
+            font-size: .72rem;
+        }
+
+        .ws-val {
+            font-size: .75rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 80px;
+        }
+
+        .wn-title {
+            font-size: .8rem;
+        }
+
+        .wn-desc {
+            font-size: .68rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="config-container">
+
+    <!-- ═══════ 顶部标题栏 ═══════ -->
+    <div class="d-flex align-items-center justify-content-between mb-3 mt-2">
+        <div>
+            <h4 class="mb-1"><i class="fas fa-file-powerpoint me-2 text-primary"></i>创建 PPT 报告</h4>
+            <p class="text-secondary mb-0" style="font-size:.85rem">5 步完成配置，自动生成结构化分析报告</p>
+        </div>
+        <a href="{{ url_for('personnel.dashboard') }}" class="btn btn-sm btn-light border text-secondary">
+            <i class="fas fa-arrow-left me-1"></i>返回工作台
+        </a>
+    </div>
+
+    <!-- ═══════ 手机端 Stepper ═══════ -->
+    <div class="wizard-stepper d-lg-none" id="wizardStepper">
+        <div class="ws-step active" data-step="scope" onclick="StepManager.goTo('scope')"><span
+                class="ws-num">1</span><span class="ws-label">范围</span></div>
+        <div class="ws-line"></div>
+        <div class="ws-step" data-step="charts" onclick="StepManager.goTo('charts')"><span class="ws-num">2</span><span
+                class="ws-label">图表</span></div>
+        <div class="ws-line"></div>
+        <div class="ws-step" data-step="summary" onclick="StepManager.goTo('summary')"><span
+                class="ws-num">3</span><span class="ws-label">摘要</span></div>
+        <div class="ws-line"></div>
+        <div class="ws-step" data-step="advanced" onclick="StepManager.goTo('advanced')"><span
+                class="ws-num">4</span><span class="ws-label">高级</span></div>
+        <div class="ws-line"></div>
+        <div class="ws-step" data-step="review" onclick="StepManager.goTo('review')"><span class="ws-num">5</span><span
+                class="ws-label">导出</span></div>
+    </div>
+
+    <div class="wizard-summary-mobile d-lg-none" id="wizardSummaryMobile">
+        <i class="fas fa-clipboard-list me-1 text-primary"></i>
+        <span id="mobileSummaryText">请先配置时间范围</span>
+    </div>
+
+    <div class="wizard-body">
+        <!-- ── 桌面左侧步骤导航 ── -->
+        <div class="wizard-nav d-none d-lg-flex" id="wizardNav">
+            <div class="wn-step active" data-step="scope" onclick="StepManager.goTo('scope')">
+                <div class="wn-num">1</div>
+                <div class="wn-info">
+                    <div class="wn-title">范围与模板</div>
+                    <div class="wn-desc">时间、主题、模板、关键人员</div>
+                </div>
+            </div>
+            <div class="wn-step" data-step="charts" onclick="StepManager.goTo('charts')">
+                <div class="wn-num">2</div>
+                <div class="wn-info">
+                    <div class="wn-title">图表选择</div>
+                    <div class="wn-desc">勾选报告图表</div>
+                </div>
+            </div>
+            <div class="wn-step" data-step="summary" onclick="StepManager.goTo('summary')">
+                <div class="wn-num">3</div>
+                <div class="wn-info">
+                    <div class="wn-title">摘要与选题</div>
+                    <div class="wn-desc">决策摘要配置</div>
+                </div>
+            </div>
+            <div class="wn-step" data-step="advanced" onclick="StepManager.goTo('advanced')">
+                <div class="wn-num">4</div>
+                <div class="wn-info">
+                    <div class="wn-title">高级配置</div>
+                    <div class="wn-desc">增强策略与全局选项</div>
+                </div>
+            </div>
+            <div class="wn-step" data-step="review" onclick="StepManager.goTo('review')">
+                <div class="wn-num">5</div>
+                <div class="wn-info">
+                    <div class="wn-title">预览与导出</div>
+                    <div class="wn-desc">确认并生成</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="wizard-main">
+
+            <section id="stepScope" class="step-section active">
+                <!-- ① 基础配置区 -->
+                <div class="config-card" id="sectionBasic">
+                    <div class="config-card-title">
+                        <span class="badge-num">1</span> 基础范围设置
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold small text-secondary">开始月份</label>
+                            <input type="month" class="form-control" id="cfgStartMonth">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold small text-secondary">结束月份</label>
+                            <input type="month" class="form-control" id="cfgEndMonth">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold small text-secondary">报告视觉主题</label>
+                            <select class="form-select" id="cfgTheme">
+                                <option value="blue">标准公司蓝（推荐）</option>
+                                <option value="dark">质感深色</option>
+                                <option value="simple">黑白简约</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="d-flex gap-2 flex-wrap">
+                                <button class="btn btn-sm btn-light border" onclick="setQuickRange(1)">近1月</button>
+                                <button class="btn btn-sm btn-light border" onclick="setQuickRange(3)">近3月</button>
+                                <button class="btn btn-sm btn-light border" onclick="setQuickRange(6)">近6月</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 报告模板选择 -->
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small text-secondary">报告模板</label>
+                            <div class="d-flex gap-2">
+                                <select class="form-select" id="cfgTemplate">
+                                    <option value="">系统默认模板</option>
+                                </select>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="openTemplateManager()"
+                                    style="white-space:nowrap">
+                                    <i class="fas fa-cog me-1"></i>管理
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-md-6 d-flex align-items-end">
+                            <small class="text-muted" id="tplHint" 　style="line-height:1.3">选择企业模板可自定义
+                                Logo、主色、末页</small>
+                        </div>
+                    </div>
+
+                    <!-- 全局摘要开关下放至此 -->
+                    <div class="row mt-3 pt-3 border-top">
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="cfgAppendSummaryGlobal" checked>
+                                <label class="form-check-label text-secondary small" for="cfgAppendSummaryGlobal">
+                                    <b>全局摘要</b>：开启后，支持摘要的图表将自动追加一页执行摘要 PPT。
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 配置复用快捷入口 -->
+                    <div class="d-flex align-items-center justify-content-between mt-3 pt-3 border-top"
+                        id="configStoreBar">
+                        <span class="text-muted small" id="configStoreHint">
+                            <i class="fas fa-history me-1"></i><span id="lastSavedLabel">暂无上次配置</span>
+                        </span>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-light border" id="btnLoadLast" onclick="loadLastConfig()"
+                                disabled>
+                                <i class="fas fa-undo me-1"></i>使用上次配置
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="saveCurrentAsDefault()">
+                                <i class="fas fa-bookmark me-1"></i>保存为默认
+                            </button>
+                        </div>
+                    </div>
+                    <!-- 关键人员画像导出 -->
+                    <div class="mt-3 pt-3 border-top" id="keyPersonSection">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="form-check form-switch mb-0">
+                                <input class="form-check-input" type="checkbox" id="cfgKeyPersonnel"
+                                    onchange="toggleKeyPersonSection(this.checked)">
+                                <label class="form-check-label fw-semibold" for="cfgKeyPersonnel"
+                                    style="font-size:.9rem">
+                                    关键人员画像
+                                </label>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span id="kpSelectedBadge" class="badge bg-primary" style="display:none">已选 0 人</span>
+                                <button class="btn btn-sm btn-outline-primary" id="btnLoadKeyPersons"
+                                    onclick="loadKeyPersonsForConfig()" style="display:none">
+                                    <i class="fas fa-sync-alt me-1"></i>加载人员
+                                </button>
+                            </div>
+                        </div>
+                        <div class="text-secondary" style="font-size:.75rem;margin-top:4px">
+                            导出高风险/高绩效人员专属画像页（含雷达图）
+                        </div>
+                        <!-- 人员列表折叠区 -->
+                        <div id="kpListWrapper" style="display:none;margin-top:10px">
+                            <div class="d-flex gap-2 mb-2">
+                                <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem"
+                                    onclick="kpSelectAllKey()">全选关键人员</button>
+                                <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem"
+                                    onclick="kpClearAll()">清空</button>
+                            </div>
+                            <div id="kpListArea" class="kp-list-scroll">
+                                <div class="text-muted text-center py-3" style="font-size:.82rem">点击"加载人员"获取候选列表</div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </section>
+
+            <section id="stepCharts" class="step-section">
+                <div class="config-card" id="sectionCharts">
+                    <div class="config-card-title">
+                        <span class="badge-num">2</span> 勾选报告图表
+                        <span class="ms-auto d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-primary py-1 px-3" onclick="selectAll()">全选</button>
+                            <button class="btn btn-sm btn-light border py-1 px-3" onclick="selectDefault()">默认</button>
+                            <button class="btn btn-sm btn-light border py-1 px-3 text-danger"
+                                onclick="clearAll()">清空</button>
+                        </span>
+                    </div>
+                    <!-- 搜索框：独占一行，细且宽 -->
+                    <div style="position:relative;margin-bottom:10px">
+                        <i class="fas fa-search"
+                            style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.72rem;pointer-events:none"></i>
+                        <input type="text" id="searchInput" oninput="filterCharts(this.value)" placeholder="搜索图表名称..."
+                            style="width:100%;height:32px;min-height:0;padding:0 32px 0 32px;border:1px solid #e2e8f0;border-radius:7px;font-size:.82rem;outline:none;color:#334155;background:#f8fafc">
+                        <i class="fas fa-times"
+                            onclick="filterCharts('');document.getElementById('searchInput').value=''"
+                            style="position:absolute;right:11px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:.68rem;cursor:pointer"></i>
+                    </div>
+                    <div id="chartSelectionArea" style="padding-right:4px;">
+                        <!-- 由 JS 动态渲染 -->
+                        <div class="text-center text-muted py-2" id="chartLoadingHint" style="font-size:.82rem">
+                            <span class="spinner-border spinner-border-sm me-1"></span>加载中...
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="stepSummary" class="step-section">
+                <div class="config-card">
+                    <div class="config-card-title">
+                        <span class="badge-num">3</span> 摘要与选题
+                        <span class="ms-auto d-flex gap-2 align-items-center">
+                            <button class="btn btn-sm btn-outline-secondary py-0 px-2 active" style="font-size:.75rem"
+                                onclick="filterSummaryCharts('all')">全部</button>
+                            <button class="btn btn-sm btn-outline-warning py-0 px-2" style="font-size:.75rem"
+                                onclick="filterSummaryCharts('pending')">待配置</button>
+                            <button class="btn btn-sm btn-outline-success py-0 px-2" style="font-size:.75rem"
+                                onclick="filterSummaryCharts('done')">已完成</button>
+                        </span>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
+                        <p class="text-secondary mb-0" style="font-size:.82rem">以下图表支持决策摘要。为每张图选定典型问题，或使用自动推荐。</p>
+                        <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.75rem"
+                            onclick="openSummaryBulletLimitModal()">
+                            <i class="fas fa-sliders-h me-1"></i>统一条数
+                            <span class="ms-1 text-primary" id="summaryBulletLimitLabel">5条</span>
+                        </button>
+                    </div>
+                    <div id="summaryChartList"></div>
+                    <div id="summaryEmptyHint" class="text-center text-muted py-4" style="display:none">
+                        <i class="fas fa-check-circle text-success me-1"></i>当前已选图表中没有支持摘要的图表，此步可跳过。
+                    </div>
+                </div>
+            </section>
+
+            <section id="stepAdvanced" class="step-section">
+                <div class="config-card">
+                    <div class="config-card-title">
+                        <span class="badge-num">4</span> 高级配置
+                        <button class="btn btn-sm btn-outline-secondary ms-auto py-0 px-2" style="font-size:.75rem"
+                            onclick="resetEnhanceConfig()">
+                            <i class="fas fa-undo me-1"></i>恢复推荐配置
+                        </button>
+                    </div>
+
+                    <div class="enhance-row flex-column align-items-stretch">
+                        <div class="fw-semibold mb-2" style="font-size:.85rem">趋势图增强</div>
+                        <div class="d-flex flex-column gap-1">
+                            <div class="form-check form-check-sm d-flex justify-content-between">
+                                <label class="form-check-label text-secondary" for="enhTrendLatest">显示最新值</label>
+                                <input class="form-check-input" type="checkbox" id="enhTrendLatest" checked>
+                            </div>
+                            <div class="form-check form-check-sm d-flex justify-content-between">
+                                <label class="form-check-label text-secondary" for="enhTrendPeak">显示峰值</label>
+                                <input class="form-check-input" type="checkbox" id="enhTrendPeak" checked>
+                            </div>
+                            <div class="form-check form-check-sm d-flex justify-content-between">
+                                <label class="form-check-label text-secondary" for="enhTrendAvg">显示均值</label>
+                                <input class="form-check-input" type="checkbox" id="enhTrendAvg" checked>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="enhance-row flex-column align-items-stretch">
+                        <div class="d-flex justify-content-between mb-1">
+                            <label class="form-check-label fw-semibold" for="enhRiskMatrix">风险矩阵增强</label>
+                            <div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox"
+                                    id="enhRiskMatrix" checked></div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="text-secondary" style="font-size:.78rem;">抓取高风险 Top</span>
+                            <input type="number" class="form-control form-control-sm" id="riskMatrixTopN" value="5"
+                                min="1" max="20" style="width:70px;text-align:center">
+                            <span class="text-secondary" style="font-size:.78rem;">人名单</span>
+                        </div>
+                    </div>
+
+                    <div class="enhance-row">
+                        <div class="form-check form-switch mb-0 w-100 d-flex justify-content-between">
+                            <label class="form-check-label fw-semibold" for="enhDecisionSummary">决策摘要生成</label>
+                            <input class="form-check-input" type="checkbox" id="enhDecisionSummary" checked>
+                        </div>
+                        <div class="text-secondary" style="font-size:.75rem; margin-top:2px;">基于判定规则自动生成行动建议（需 Step1
+                            中开启全局摘要）。</div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="stepReview" class="step-section">
+                <div class="config-card">
+                    <div class="config-card-title"><span class="badge-num">5</span> 预览与导出</div>
+                    <div class="row g-3 text-center mb-4">
+                        <div class="col-md-3">
+                            <div class="summary-stat"
+                                style="height:90px; max-height:90px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                                <div class="val val-highlight" id="reviewChartCount">0</div>
+                                <div class="lbl">已选图表</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="summary-stat"
+                                style="height:90px; max-height:90px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                                <div class="val" id="reviewSummaryCount">0</div>
+                                <div class="lbl">摘要页数</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="summary-stat"
+                                style="height:90px; max-height:90px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                                <div class="val" id="reviewPageCount">0</div>
+                                <div class="lbl">预估页数</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="summary-stat"
+                                style="height:90px; max-height:90px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+                                <div class="val" id="reviewDateRange" style="font-size:1.1rem">-</div>
+                                <div class="lbl">时间范围</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <div class="fw-semibold small text-secondary mb-2"><i class="fas fa-cog me-1"></i>配置项</div>
+                            <table class="table table-sm table-borderless mb-0" style="font-size:.82rem">
+                                <tr>
+                                    <td class="text-muted" style="width:100px">模板</td>
+                                    <td id="reviewTemplate">系统默认</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">主题</td>
+                                    <td id="reviewTheme">标准公司蓝</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">关键人员</td>
+                                    <td id="reviewKeyPersons">未启用</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">增强策略</td>
+                                    <td id="reviewEnhance">-</td>
+                                </tr>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="fw-semibold small text-secondary mb-2"><i class="fas fa-list me-1"></i>导出图表清单
+                            </div>
+                            <div id="reviewChartList"
+                                style="max-height:260px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2" style="max-width:400px">
+                        <button class="btn btn-primary btn-lg" id="btnStartExport" onclick="startExport()"><i
+                                class="fas fa-download me-2"></i>确认导出</button>
+                    </div>
+                </div>
+            </section>
+
+        </div><!-- /.wizard-main -->
+
+        <div class="wizard-summary d-none d-lg-block">
+            <div class="ws-card">
+                <div class="fw-semibold mb-2" style="font-size:.85rem"><i
+                        class="fas fa-clipboard-list me-1 text-primary"></i>实时摘要</div>
+                <div class="ws-row d-flex justify-content-between align-items-center"><span
+                        class="ws-label2 mb-0">时间范围</span><span class="ws-val mb-0" id="sidebarDateRange">-</span></div>
+                <div class="ws-row d-flex justify-content-between align-items-center"><span
+                        class="ws-label2 mb-0">已选图表</span><span class="ws-val mb-0" id="sidebarChartCount">0 张</span>
+                </div>
+                <div class="ws-chart-tags" id="sidebarChartTags"></div>
+                <div class="ws-row d-flex justify-content-between align-items-center"><span
+                        class="ws-label2 mb-0">关键人员</span><span class="ws-val mb-0" id="sidebarKeyPersons">未启用</span>
+                </div>
+                <div class="ws-row d-flex justify-content-between align-items-center"><span
+                        class="ws-label2 mb-0">摘要图表</span><span class="ws-val mb-0" id="sidebarSummaryCount">0 张</span>
+                </div>
+                <div class="ws-row d-flex justify-content-between align-items-center"><span
+                        class="ws-label2 mb-0">预估页数</span><span class="ws-val mb-0" id="sidebarPageCount">0 页</span>
+                </div>
+                <div class="ws-row d-flex justify-content-between align-items-center"><span
+                        class="ws-label2 mb-0">模板</span><span class="ws-val mb-0" id="sidebarTemplate">系统默认</span></div>
+                <div class="ws-row d-flex justify-content-between align-items-center"><span
+                        class="ws-label2 mb-0">增强</span><span class="ws-val mb-0" id="sidebarEnhance"
+                        style="font-size:.75rem; white-space:normal; max-width:120px; line-height:1.3">趋势 · 风险 ·
+                        摘要</span></div>
+            </div>
+        </div>
+
+    </div><!-- /.wizard-body -->
+
+    <div class="wizard-footer" id="wizardFooter">
+        <button class="btn btn-outline-secondary" id="btnPrevStep" onclick="StepManager.prev()" style="display:none"><i
+                class="fas fa-arrow-left me-1"></i>上一步</button>
+        <div class="flex-fill"></div>
+        <button class="btn btn-primary px-4" id="btnNextStep" onclick="StepManager.next()">下一步 <i
+                class="fas fa-arrow-right ms-1"></i></button>
+    </div>
+
+</div>
+
+<div class="modal fade" id="tplManagerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title" id="tplManagerTitle">
+                    <i class="fas fa-palette me-2"></i>报告模板管理
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="tplManagerBody">
+                <!-- 列表视图 -->
+                <div id="tplListView">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <small class="text-muted">点击模板进行编辑，仅系统管理员可操作</small>
+                        <button class="btn btn-sm btn-primary" onclick="openTemplateEditor(null)">
+                            <i class="fas fa-plus me-1"></i>新增模板
+                        </button>
+                    </div>
+                    <div id="tplListContainer">
+                        <div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>
+                    </div>
+                </div>
+                <!-- 编辑视图 -->
+                <div id="tplEditView" style="display:none">
+                    <div class="tpl-edit-form">
+                        <input type="hidden" id="tplEditId">
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">模板名称 <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="tplEditName" placeholder="例如：XX铁路公司模板">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">主色</label>
+                                <div class="d-flex gap-2 align-items-center">
+                                    <input type="color" class="form-control form-control-color" id="tplEditPrimary"
+                                        value="#1A56DB">
+                                    <input type="text" class="form-control" id="tplEditPrimaryText" value="#1A56DB"
+                                        style="width:90px; font-size:.8rem">
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">辅色</label>
+                                <div class="d-flex gap-2 align-items-center">
+                                    <input type="color" class="form-control form-control-color" id="tplEditSecondary"
+                                        value="#DC3545">
+                                    <input type="text" class="form-control" id="tplEditSecondaryText" value="#DC3545"
+                                        style="width:90px; font-size:.8rem">
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Logo 图片</label>
+                                <input type="file" class="form-control" id="tplEditLogo" accept="image/*">
+                                <div id="tplLogoPreview" class="mt-1"></div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">末页背景图</label>
+                                <input type="file" class="form-control" id="tplEditEndBg" accept="image/*">
+                                <div id="tplEndBgPreview" class="mt-1"></div>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">末页标题</label>
+                                <input type="text" class="form-control" id="tplEditEndTitle" placeholder="例如：感谢阅读">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">末页副标题</label>
+                                <input type="text" class="form-control" id="tplEditEndSubtitle" placeholder="例如：XX铁路公司">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label">标题字体</label>
+                                <input type="text" class="form-control" id="tplEditFont" placeholder="可留空，例如：微软雅黑">
+                            </div>
+                            <div class="col-6">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="tplEditDefault">
+                                    <label class="form-check-label" for="tplEditDefault">设为默认模板</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <div id="tplFooterList">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">关闭</button>
+                </div>
+                <div id="tplFooterEdit" style="display:none">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="showTemplateList()">返回列表</button>
+                    <button type="button" class="btn btn-danger btn-sm" id="tplBtnDelete" onclick="deleteTemplate()"
+                        style="display:none">删除</button>
+                    <button type="button" class="btn btn-primary btn-sm" onclick="saveTemplate()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── 典型问题选题 Modal ── -->
+<div class="modal fade" id="bulletSelectorModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0">
+                    <i class="fas fa-list-check me-2 text-primary"></i>选择典型问题
+                    <span class="text-muted ms-2" style="font-size:.78rem" id="bulletModalChartTitle"></span>
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="px-3 py-2 bg-light border-bottom d-flex align-items-center justify-content-between"
+                    style="font-size:.78rem">
+                    <span class="text-secondary">勾选要放入摘要页的典型问题（<b id="bulletMaxLabel">数量由你决定</b>）</span>
+                    <span id="bulletSelectedCount" class="fw-semibold text-primary">已选 0 条</span>
+                </div>
+                <!-- 加载态 -->
+                <div id="bulletLoadingHint" class="text-center text-muted py-4" style="font-size:.85rem">
+                    <span class="spinner-border spinner-border-sm me-1"></span>加载候选列表...
+                </div>
+                <!-- 空态 -->
+                <div id="bulletEmptyHint" class="text-center text-muted py-4" style="display:none;font-size:.85rem">
+                    <i class="fas fa-inbox me-1"></i>当前时间范围内暂无候选问题
+                </div>
+                <!-- 候选列表 -->
+                <div id="bulletCandidateList" style="max-height:400px;overflow-y:auto"></div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="btnBulletClear"
+                    onclick="clearBulletSelection()">
+                    <i class="fas fa-eraser me-1"></i>清空选择
+                </button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="confirmBulletSelection()">
+                    <i class="fas fa-check me-1"></i>确认选题
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── 摘要统一条数设置 Modal ── -->
+<div class="modal fade" id="summaryBulletLimitModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title mb-0">
+                    <i class="fas fa-sliders-h me-2 text-primary"></i>统一摘要条数
+                </h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label for="summaryBulletLimitInput" class="form-label text-secondary small mb-2">自动推荐和摘要页最多展示几条典型问题</label>
+                <input type="number" min="1" step="1" class="form-control" id="summaryBulletLimitInput" value="5">
+                <div class="form-text">手动选题超过该值时，按该值展示。</div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="saveSummaryBulletLimit()">
+                    <i class="fas fa-check me-1"></i>保存
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 进度遮罩 -->
+<div id="captureProgress">
+    <div class="prog-title" id="progTitle">正在截图，请稍候...</div>
+    <div class="progress mb-3" style="height:8px">
+        <div class="progress-bar progress-bar-striped progress-bar-animated" id="progBar" style="width:0%"></div>
+    </div>
+    <div class="text-muted small" id="progSub">准备中...</div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<!-- ECharts -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<!-- ChartRegistry -->
+<script src="{{ url_for('static', filename='js/chart-registry.js') }}"></script>
+<script src="{{ url_for('static', filename='js/export-config-store.js') }}"></script>
+
+<script>
+    'use strict';
+
+    /* ==========================================================
+       StepManager —— 5 步流程控制器
+       ========================================================== */
+    const ExportSteps = [
+        { id: 'scope', title: '范围与模板', visible: () => true, validate: validateScope },
+        { id: 'charts', title: '图表选择', visible: () => true, validate: validateCharts },
+        { id: 'summary', title: '摘要与选题', visible: () => shouldShowSummaryStep(), validate: validateSummary },
+        { id: 'advanced', title: '高级配置', visible: () => true, validate: validateAdvanced },
+        { id: 'review', title: '预览与导出', visible: () => true, validate: null },
+    ];
+
+    const StepManager = {
+        current: 'scope',
+        states: {},  // { stepId: 'todo'|'current'|'done'|'error' }
+
+        init() {
+            ExportSteps.forEach(s => this.states[s.id] = 'todo');
+            this.states['scope'] = 'current';
+            this.syncUI();
+        },
+
+        getVisibleSteps() {
+            return ExportSteps.filter(s => s.visible());
+        },
+
+        goTo(targetId) {
+            const visible = this.getVisibleSteps();
+            const targetStep = visible.find(s => s.id === targetId);
+            if (!targetStep) return;
+
+            // Mark current as done if moving forward
+            const curIdx = visible.findIndex(s => s.id === this.current);
+            const tarIdx = visible.findIndex(s => s.id === targetId);
+            if (tarIdx > curIdx) {
+                // Validate all steps between current and target
+                for (let i = curIdx; i < tarIdx; i++) {
+                    const step = visible[i];
+                    if (step.validate) {
+                        const err = step.validate();
+                        if (err) {
+                            this.states[step.id] = 'error';
+                            showToast(err, 'warning');
+                            this.current = step.id;
+                            this.states[step.id] = 'current';
+                            this.syncUI();
+                            return;
+                        }
+                    }
+                    this.states[step.id] = 'done';
+                }
+            }
+
+            this.current = targetId;
+            this.states[targetId] = 'current';
+            this.syncUI();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            // Special: entering review step populates its content
+            if (targetId === 'review') populateReviewStep();
+            if (targetId === 'summary') renderSummaryStep();
+        },
+
+        next() {
+            const visible = this.getVisibleSteps();
+            const curIdx = visible.findIndex(s => s.id === this.current);
+            if (curIdx < 0) return;
+
+            // Validate current step
+            const curStep = visible[curIdx];
+            if (curStep.validate) {
+                const err = curStep.validate();
+                if (err) {
+                    this.states[curStep.id] = 'error';
+                    showToast(err, 'warning');
+                    this.syncUI();
+                    return;
+                }
+            }
+            this.states[curStep.id] = 'done';
+
+            // Find next visible step
+            if (curIdx < visible.length - 1) {
+                this.goTo(visible[curIdx + 1].id);
+            }
+        },
+
+        prev() {
+            const visible = this.getVisibleSteps();
+            const curIdx = visible.findIndex(s => s.id === this.current);
+            if (curIdx > 0) {
+                this.goTo(visible[curIdx - 1].id);
+            }
+        },
+
+        syncUI() {
+            const visible = this.getVisibleSteps();
+            const allIds = ExportSteps.map(s => s.id);
+
+            // Hide/show step sections
+            allIds.forEach(id => {
+                const section = document.getElementById('step' + id.charAt(0).toUpperCase() + id.slice(1));
+                if (section) {
+                    section.classList.toggle('active', id === this.current);
+                }
+            });
+
+            // Desktop left nav
+            document.querySelectorAll('#wizardNav .wn-step').forEach(el => {
+                const sid = el.dataset.step;
+                el.classList.remove('active', 'done', 'error');
+                const isVisible = visible.some(s => s.id === sid);
+                el.style.display = isVisible ? '' : 'none';
+                if (sid === this.current) el.classList.add('active');
+                else if (this.states[sid] === 'done') el.classList.add('done');
+                else if (this.states[sid] === 'error') el.classList.add('error');
+            });
+
+            // Mobile stepper
+            document.querySelectorAll('#wizardStepper .ws-step').forEach(el => {
+                const sid = el.dataset.step;
+                el.classList.remove('active', 'done');
+                const isVisible = visible.some(s => s.id === sid);
+                el.style.display = isVisible ? '' : 'none';
+                if (sid === this.current) el.classList.add('active');
+                else if (this.states[sid] === 'done') el.classList.add('done');
+            });
+            // Also hide/show stepper lines
+            document.querySelectorAll('#wizardStepper .ws-line').forEach((line, idx) => {
+                // Simple: show if neighboring steps are visible
+                line.style.display = '';
+            });
+
+            // Wizard footer buttons
+            const curIdx = visible.findIndex(s => s.id === this.current);
+            const btnPrev = document.getElementById('btnPrevStep');
+            const btnNext = document.getElementById('btnNextStep');
+            if (btnPrev) btnPrev.style.display = curIdx > 0 ? '' : 'none';
+            if (btnNext) {
+                if (curIdx >= visible.length - 1) {
+                    // Last step: hide next button (export button is in the step content)
+                    btnNext.style.display = 'none';
+                } else {
+                    btnNext.style.display = '';
+                    btnNext.innerHTML = '下一步 <i class="fas fa-arrow-right ms-1"></i>';
+                }
+            }
+
+            // Mobile summary text
+            updateMobileSummary();
+        }
+    };
+
+    // ── Step validators ──
+    function validateScope() {
+        if (!ExportConfig.startMonth || !ExportConfig.endMonth) return '请先选择起止日期';
+        return null;
+    }
+    function validateCharts() {
+        const selected = Object.values(ExportConfig.chartConfigs).filter(c => c.selected);
+        if (!selected.length) return '请至少选择一张图表';
+        return null;
+    }
+    function validateSummary() {
+        // 校验所有开启摘要的图表是否完成选题
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
+        for (const mod of modules) {
+            for (const chart of (mod.charts || [])) {
+                if (!chart.supportsSummary) continue;
+                const cfg = ExportConfig.chartConfigs[chart.id];
+                if (!cfg || !cfg.selected || cfg.appendSummary === false) continue;
+                const manualCount = (cfg.manualBullets || []).length;
+                // 有 candidateProvider 的图表视为自动推荐已完成；否则需要手动选题
+                if (!chart.candidateProvider && manualCount === 0) {
+                    return `图表「${chart.title}」已开启摘要但未完成选题`;
+                }
+            }
+        }
+        return null;
+    }
+    function validateAdvanced() {
+        const topN = parseInt(document.getElementById('riskMatrixTopN')?.value);
+        if (isNaN(topN) || topN < 1) return 'TopN 必须为正整数';
+        return null;
+    }
+
+    function shouldShowSummaryStep() {
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
+        for (const mod of modules) {
+            for (const chart of (mod.charts || [])) {
+                const cfg = ExportConfig.chartConfigs[chart.id];
+                if (cfg && cfg.selected && chart.supportsSummary && cfg.appendSummary !== false) return true;
+            }
+        }
+        return false;
+    }
+
+    // ── Step 3: render summary chart list ──
+    function renderSummaryStep() {
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
+        const list = document.getElementById('summaryChartList');
+        const hint = document.getElementById('summaryEmptyHint');
+        let html = '';
+        let count = 0;
+
+        for (const mod of modules) {
+            for (const chart of (mod.charts || [])) {
+                if (!chart.supportsSummary) continue;
+                const cfg = ExportConfig.chartConfigs[chart.id];
+                if (!cfg || !cfg.selected) continue;
+                count++;
+
+                const summaryOn = cfg.appendSummary !== false;
+                const manualCount = (cfg.manualBullets || []).length;
+                const isDone = !summaryOn || manualCount > 0 || chart.candidateProvider;
+                const statusClass = !summaryOn ? 'text-muted' : (isDone ? 'scr-status-done' : 'scr-status-pending');
+                const statusText = !summaryOn ? '已关闭' : (manualCount > 0 ? `已选 ${manualCount} 条` : '自动推荐');
+                const statusIcon = !summaryOn ? 'fa-minus-circle' : (isDone ? 'fa-check-circle' : 'fa-clock');
+
+                html += `<div class="summary-chart-row" data-chart-id="${chart.id}" data-status="${!summaryOn ? 'off' : (isDone ? 'done' : 'pending')}">
+                    <div class="form-check form-switch mb-0" style="flex-shrink:0">
+                        <input class="form-check-input" type="checkbox" ${summaryOn ? 'checked' : ''}
+                            onchange="toggleChartSummary('${chart.id}', this.checked)">
+                    </div>
+                    <div class="scr-name" style="${!summaryOn ? 'opacity:.4' : ''}">${chart.title}</div>
+                    <span class="scr-status ${statusClass}"><i class="fas ${statusIcon} me-1"></i>${statusText}</span>
+                    ${summaryOn ? `<button class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size:.75rem"
+                        onclick="openBulletSelector('${chart.id}')"><i class="fas fa-pen me-1"></i>选题</button>` : ''}
+                    ${summaryOn && manualCount > 0 ? `<button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:.72rem"
+                        onclick="resetChartToAutoSummary('${chart.id}')"><i class="fas fa-undo me-1"></i>恢复自动</button>` : ''}
+                </div>`;
+            }
+        }
+
+        if (count === 0) {
+            list.innerHTML = '';
+            hint.style.display = '';
+        } else {
+            hint.style.display = 'none';
+            list.innerHTML = html;
+        }
+    }
+
+    function toggleChartSummary(chartId, enabled) {
+        if (ExportConfig.chartConfigs[chartId]) {
+            ExportConfig.chartConfigs[chartId].appendSummary = enabled;
+        }
+        renderSummaryStep();
+        updateSummary();
+    }
+
+    function resetChartToAutoSummary(chartId) {
+        if (ExportConfig.chartConfigs[chartId]) {
+            ExportConfig.chartConfigs[chartId].manualBullets = [];
+        }
+        renderSummaryStep();
+        updateSummary();
+    }
+
+    function filterSummaryCharts(filter) {
+        document.querySelectorAll('.summary-chart-row').forEach(row => {
+            if (filter === 'all') row.style.display = '';
+            else row.style.display = row.dataset.status === filter ? '' : 'none';
+        });
+    }
+
+    // ── Step 5: populate review ──
+    function populateReviewStep() {
+        const selected = Object.values(ExportConfig.chartConfigs).filter(c => c.selected);
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
+        let summaryCount = 0;
+        for (const mod of modules) {
+            for (const chart of (mod.charts || [])) {
+                const cfg = ExportConfig.chartConfigs[chart.id];
+                if (cfg && cfg.selected && chart.supportsSummary && cfg.appendSummary !== false && ExportConfig.appendSummaryGlobal && ExportConfig.enhance.decisionSummaryEnabled) summaryCount++;
+            }
+        }
+        const pages = calcEstimatedPages(selected.length, summaryCount);
+        const start = ExportConfig.startMonth || '--';
+        const end = ExportConfig.endMonth || '--';
+
+        const el = id => document.getElementById(id);
+        if (el('reviewChartCount')) el('reviewChartCount').textContent = selected.length;
+        if (el('reviewSummaryCount')) el('reviewSummaryCount').textContent = summaryCount;
+        if (el('reviewPageCount')) el('reviewPageCount').textContent = pages;
+        if (el('reviewDateRange')) el('reviewDateRange').textContent = start === end ? start : `${start} ~ ${end.slice(5)}`;
+
+        // Config table
+        const themeNames = { blue: '标准公司蓝', dark: '质感深色', simple: '黑白简约' };  // 与 cfgTheme 选项一致
+        if (el('reviewTheme')) el('reviewTheme').textContent = themeNames[ExportConfig.theme] || ExportConfig.theme;
+        if (el('reviewTemplate')) {
+            const tplSel = document.getElementById('cfgTemplate');
+            el('reviewTemplate').textContent = tplSel?.selectedOptions?.[0]?.text || '系统默认';
+        }
+        if (el('reviewKeyPersons')) {
+            el('reviewKeyPersons').textContent = ExportConfig.keyPersons.enabled
+                ? `${ExportConfig.keyPersons.selected.length} 人` : '未启用';
+        }
+        const enh = ExportConfig.enhance;
+        const enhParts = [];
+        if (enh.trendShowLatest || enh.trendShowPeak || enh.trendShowAverage) enhParts.push('趋势');
+        if (enh.riskMatrixEnabled) enhParts.push('风险矩阵');
+        if (enh.decisionSummaryEnabled) enhParts.push('决策摘要');
+        if (el('reviewEnhance')) el('reviewEnhance').textContent = enhParts.join(' · ') || '无';
+
+        // Chart list
+        const chartList = el('reviewChartList');
+        if (chartList) {
+            let listHtml = '';
+            for (const mod of modules) {
+                const charts = (mod.charts || []).filter(c => {
+                    const cfg = ExportConfig.chartConfigs[c.id];
+                    return cfg && cfg.selected;
+                });
+                if (!charts.length) continue;
+                listHtml += `<div class="fw-semibold text-secondary mb-1 mt-2" style="font-size:.75rem">${mod.label || ''}</div>`;
+                for (const c of charts) {
+                    listHtml += `<div style="font-size:.82rem;padding:2px 0">${c.title}</div>`;
+                }
+            }
+            chartList.innerHTML = listHtml;
+        }
+    }
+
+    function resetEnhanceConfig() {
+        document.getElementById('enhTrendLatest').checked = true;
+        document.getElementById('enhTrendPeak').checked = true;
+        document.getElementById('enhTrendAvg').checked = true;
+        document.getElementById('enhRiskMatrix').checked = true;
+        document.getElementById('riskMatrixTopN').value = 5;
+        document.getElementById('enhDecisionSummary').checked = true;
+        ExportConfig.enhance = {
+            trendEnabled: true,
+            trendShowLatest: true, trendShowPeak: true, trendShowAverage: true,
+            riskMatrixEnabled: true, riskMatrixTopN: 5, decisionSummaryEnabled: true
+        };
+        showToast('已恢复推荐配置', 'success');
+    }
+
+    function updateMobileSummary() {
+        const sel = Object.values(ExportConfig.chartConfigs).filter(c => c.selected).length;
+        const start = ExportConfig.startMonth || '--';
+        const end = ExportConfig.endMonth || '--';
+        const range = start === end ? start : `${start}~${end.slice(5)}`;
+        const text = `${range} · ${sel} 张图表`;
+        const el = document.getElementById('mobileSummaryText');
+        if (el) el.textContent = text;
+    }
+
+
+    /* ==========================================================
+       ExportConfig —— 前端配置状态对象
+       ========================================================== */
+    const ExportConfig = {
+        startMonth: '',
+        endMonth: '',
+        theme: 'blue',
+        appendSummaryGlobal: true,
+        summaryBulletLimit: 5,
+        selectedCharts: new Set(),      // 全局已选图表 ID 集合
+        chartConfigs: {},               // { [chartId]: { summaryEnabled } }
+        enhance: {
+            trendShowLatest: true,
+            trendShowPeak: true,
+            trendShowAverage: true,
+            riskMatrixEnabled: true,
+            riskMatrixTopN: 5,
+            decisionSummaryEnabled: true
+        },
+        templateId: null,
+        keyPersons: { enabled: false, selected: [] }
+    };
+
+    // 关键人员缓存
+    window.__keyPersonCache = { allPersons: [], keyPersons: [], radarImages: {}, profiles: {} };
+    let currentDeptCount = 0;
+
+    function normalizeSummaryBulletLimit(value) {
+        const n = parseInt(value, 10);
+        return Number.isFinite(n) && n > 0 ? n : 5;
+    }
+
+    function updateSummaryBulletLimitLabel() {
+        const label = document.getElementById('summaryBulletLimitLabel');
+        if (label) label.textContent = `${normalizeSummaryBulletLimit(ExportConfig.summaryBulletLimit)}条`;
+    }
+
+    function openSummaryBulletLimitModal() {
+        const input = document.getElementById('summaryBulletLimitInput');
+        if (input) input.value = normalizeSummaryBulletLimit(ExportConfig.summaryBulletLimit);
+        const modal = new bootstrap.Modal(document.getElementById('summaryBulletLimitModal'));
+        modal.show();
+    }
+
+    function saveSummaryBulletLimit() {
+        const input = document.getElementById('summaryBulletLimitInput');
+        const limit = normalizeSummaryBulletLimit(input ? input.value : ExportConfig.summaryBulletLimit);
+        ExportConfig.summaryBulletLimit = limit;
+        updateSummaryBulletLimitLabel();
+        updateSummary();
+        bootstrap.Modal.getInstance(document.getElementById('summaryBulletLimitModal'))?.hide();
+        showToast(`摘要统一展示条数已设为 ${limit} 条`, 'success');
+    }
+
+    async function fetchAccessibleDeptCount() {
+        try {
+            const resp = await fetch('/personnel/api/analytics-data');
+            if (!resp.ok) return 0;
+            const data = await resp.json();
+            return data.accessible_dept_count || 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    /* ==========================================================
+       初始化
+       ========================================================== */
+    document.addEventListener('DOMContentLoaded', async () => {
+        // 尝试恢复上次配置（先设置时间范围，再 apply 覆盖）
+        const stored = ExportConfigStore.load();
+        setQuickRange(3);     // 先设默认
+        if (stored) {
+            // 时间范围
+            if (stored.startMonth) {
+                ExportConfig.startMonth = stored.startMonth;
+                document.getElementById('cfgStartMonth').value = stored.startMonth;
+            }
+            if (stored.endMonth) {
+                ExportConfig.endMonth = stored.endMonth;
+                document.getElementById('cfgEndMonth').value = stored.endMonth;
+            }
+        }
+        currentDeptCount = await fetchAccessibleDeptCount();
+        renderChartSelection();  // 恢复选中和图表级配置
+        if (stored) {
+            // 应用主题、增强等
+            ExportConfigStore.applyTo(stored, ExportConfig);
+            syncFormFromConfig();
+        }
+        updateSummaryBulletLimitLabel();
+        bindConfigListeners();
+        updateSummary();
+        StepManager.init();  // 初始化步骤管理器
+        // 后台自动截图，回填预览（不阻塞配置页操作）
+        setTimeout(() => previewAllCharts(), 300);
+        loadTemplates();  // 拉取模板列表
+    });
+
+    /**
+     * previewAllCharts —— 自动在配置页渲染预览缩略图
+     * 不影响配置操作，纯后台异步逐模块拉取 API 并渲染小图
+     */
+    async function previewAllCharts() {
+        const start = ExportConfig.startMonth;
+        const end = ExportConfig.endMonth;
+        if (!start || !end) return;
+
+        let deptCount = 0;
+        try {
+            const r = await fetch('/personnel/api/analytics-data');
+            if (r.ok) { const d = await r.json(); deptCount = d.accessible_dept_count || 0; }
+        } catch (e) { }
+
+        const moduleConfigs = [
+            { key: 'analytics', note: '人员' },
+            { key: 'training', note: '培训' },
+            { key: 'safety', note: '安全' },
+        ];
+
+        for (const cfg of moduleConfigs) {
+            try {
+                const { images } = await captureModuleChartsNew(cfg.key, start, end, deptCount);
+                for (const imgObj of images) {
+                    if (!imgObj.chartId || !imgObj.image) continue;
+                    // 找到对应卡片的预览占位区并替换
+                    const card = document.querySelector(`[data-chart-id="${imgObj.chartId}"]`);
+                    if (!card) continue;
+                    const placeholder = card.querySelector('.chart-preview-placeholder');
+                    if (!placeholder) continue;
+                    placeholder.innerHTML = `<img src="${imgObj.image}" 
+                        style="width:100%;height:100%;object-fit:cover;border-radius:0;display:block" 
+                        alt="图表预览">`;
+                    placeholder.style.background = 'none';
+                    placeholder.style.padding = '0';
+                }
+            } catch (e) {
+                console.warn(`[previewAllCharts] ${cfg.key} 预览失败:`, e);
+            }
+        }
+    }
+
+    // 日期变更后防抖触发预览刷新（1.2s 内连续改则只触发一次）
+    let _previewDebounceTimer = null;
+    /* ── 日期变化时清除依赖时间范围的缓存 ── */
+    function invalidateDateDependentCaches() {
+        // 清空选题候选缓存
+        window.__bulletCandidates = {};
+        // 清空关键人员缓存与已选列表
+        if (window.__keyPersonCache) {
+            window.__keyPersonCache.allPersons = [];
+            window.__keyPersonCache.keyPersons = [];
+            window.__keyPersonCache.radarImages = {};
+            window.__keyPersonCache.profiles = {};
+        }
+        ExportConfig.keyPersons.selected = [];
+        // 清空图表截图缓存（日期不同截图也需刷新）
+        window.__chartImageCache = {};
+        // 刷新 UI
+        if (typeof renderKeyPersonList === 'function') renderKeyPersonList();
+        if (typeof updateKpBadge === 'function') updateKpBadge();
+    }
+
+    function schedulePreviewRefresh() {
+        clearTimeout(_previewDebounceTimer);
+        _previewDebounceTimer = setTimeout(() => {
+            // 日期变更后清空候选缓存（下次打开选题 Modal 会重新拉取）
+            window.__bulletCandidates = {};
+            previewAllCharts();
+        }, 1200);
+    }
+
+    function bindConfigListeners() {
+        document.getElementById('cfgStartMonth').addEventListener('change', e => {
+            ExportConfig.startMonth = e.target.value;
+            invalidateDateDependentCaches();
+            updateSummary();
+            schedulePreviewRefresh();  // 日期改变后刷新预览
+        });
+        document.getElementById('cfgEndMonth').addEventListener('change', e => {
+            ExportConfig.endMonth = e.target.value;
+            invalidateDateDependentCaches();
+            updateSummary();
+            schedulePreviewRefresh();  // 日期改变后刷新预览
+        });
+        document.getElementById('cfgTheme').addEventListener('change', e => {
+            ExportConfig.theme = e.target.value;
+        });
+        document.getElementById('cfgAppendSummaryGlobal').addEventListener('change', e => {
+            ExportConfig.appendSummaryGlobal = e.target.checked;
+            updateSummary();
+        });
+        document.getElementById('enhTrendLatest').addEventListener('change', e => {
+            ExportConfig.enhance.trendShowLatest = e.target.checked;
+            ExportConfig.enhance.trendEnabled = !!(ExportConfig.enhance.trendShowLatest || ExportConfig.enhance.trendShowPeak || ExportConfig.enhance.trendShowAverage);
+        });
+        document.getElementById('enhTrendPeak').addEventListener('change', e => {
+            ExportConfig.enhance.trendShowPeak = e.target.checked;
+            ExportConfig.enhance.trendEnabled = !!(ExportConfig.enhance.trendShowLatest || ExportConfig.enhance.trendShowPeak || ExportConfig.enhance.trendShowAverage);
+        });
+        document.getElementById('enhTrendAvg').addEventListener('change', e => {
+            ExportConfig.enhance.trendShowAverage = e.target.checked;
+            ExportConfig.enhance.trendEnabled = !!(ExportConfig.enhance.trendShowLatest || ExportConfig.enhance.trendShowPeak || ExportConfig.enhance.trendShowAverage);
+        });
+        document.getElementById('enhRiskMatrix').addEventListener('change', e => {
+            ExportConfig.enhance.riskMatrixEnabled = e.target.checked;
+        });
+        document.getElementById('riskMatrixTopN').addEventListener('change', e => {
+            ExportConfig.enhance.riskMatrixTopN = parseInt(e.target.value) || 5;
+        });
+        document.getElementById('enhDecisionSummary').addEventListener('change', e => {
+            ExportConfig.enhance.decisionSummaryEnabled = e.target.checked;
+            updateSummary();
+        });
+    }
+
+    /** 将 ExportConfig 的值同步回表单控件（用于加载上次配置后刷新 UI） */
+    function syncFormFromConfig() {
+        const el = id => document.getElementById(id);
+        if (el('cfgStartMonth')) el('cfgStartMonth').value = ExportConfig.startMonth || '';
+        if (el('cfgEndMonth')) el('cfgEndMonth').value = ExportConfig.endMonth || '';
+        if (el('cfgTheme')) el('cfgTheme').value = ExportConfig.theme || 'blue';
+        if (el('cfgAppendSummaryGlobal')) el('cfgAppendSummaryGlobal').checked = !!ExportConfig.appendSummaryGlobal;
+        const e = ExportConfig.enhance;
+        if (el('enhTrendLatest')) el('enhTrendLatest').checked = !!e.trendShowLatest;
+        if (el('enhTrendPeak')) el('enhTrendPeak').checked = !!e.trendShowPeak;
+        if (el('enhTrendAvg')) el('enhTrendAvg').checked = !!e.trendShowAverage;
+        e.trendEnabled = !!(e.trendShowLatest || e.trendShowPeak || e.trendShowAverage);
+        if (el('enhRiskMatrix')) el('enhRiskMatrix').checked = !!e.riskMatrixEnabled;
+        if (el('riskMatrixTopN')) el('riskMatrixTopN').value = e.riskMatrixTopN || 5;
+        if (el('enhDecisionSummary')) el('enhDecisionSummary').checked = !!e.decisionSummaryEnabled;
+    }
+
+    /* ==========================================================
+       快速时间范围
+       ========================================================== */
+    function setQuickRange(months) {
+        const now = new Date();
+        const end = new Date(now.getFullYear(), now.getMonth(), 1);
+        const start = new Date(end.getFullYear(), end.getMonth() - (months - 1), 1);
+        const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        document.getElementById('cfgStartMonth').value = fmt(start);
+        document.getElementById('cfgEndMonth').value = fmt(end);
+        ExportConfig.startMonth = fmt(start);
+        ExportConfig.endMonth = fmt(end);
+        updateSummary();
+    }
+
+    /* ==========================================================
+       图表选择区渲染（由 ChartRegistry 驱动）
+       ========================================================== */
+    function renderChartSelection() {
+        const area = document.getElementById('chartSelectionArea');
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
+
+        if (!modules || modules.length === 0) {
+            area.innerHTML = '<div class="alert alert-warning">ChartRegistry 未加载，请刷新页面</div>';
+            return;
+        }
+
+        const moduleIconMap = {
+            'analytics': { icon: 'fa-users', label: '人员分析' },
+            'training': { icon: 'fa-graduation-cap', label: '培训分析' },
+            'safety': { icon: 'fa-shield-alt', label: '安全分析' },
+        };
+
+        let html = '';
+        for (const mod of modules) {
+            const modKey = Object.keys(ChartRegistry.getModules()).find(k => ChartRegistry.getModules()[k] === mod) || 'analytics';
+            const exportableCharts = ChartRegistry.filterByVisibility(modKey, currentDeptCount)
+                .filter(c => c.exportable !== false);
+            if (!exportableCharts.length) continue;
+            const iconInfo = moduleIconMap[modKey] || { icon: 'fa-chart-bar', label: mod.label || modKey };
+            html += `<div class="module-group">
+                <div class="module-label">
+                    <i class="fas ${iconInfo.icon}"></i> ${iconInfo.label}
+                    <span class="text-muted fw-normal ms-1" style="font-size:0.8rem">(${exportableCharts.length} 张)</span>
+                </div>
+                <div class="chart-grid">`;
+
+            for (const chart of exportableCharts) {
+                const isDefault = chart.defaultSelected !== false;
+
+                // 确保配置对象初始化
+                if (!ExportConfig.chartConfigs[chart.id]) {
+                    ExportConfig.chartConfigs[chart.id] = {
+                        selected: isDefault,
+                        enhanceEnabled: true,
+                        appendSummary: isDefault && !!chart.supportsSummary
+                    };
+                }
+                const isSelected = ExportConfig.chartConfigs[chart.id].selected;
+
+                // 提取优先标签
+                const l = chart.chartLabels || {};
+                const noteLabel = l.note || (chart.summaryHint ? chart.summaryHint.split('|').slice(-1)[0].trim() : '');
+
+                // 能力胶囊
+                let badgesHtml = '';
+                if (chart.supportsSummary) badgesHtml += `<span class="capsule-badge badge-outline-primary">支持摘要</span>`;
+                if (chart.schema === 'trend_enhance' || chart.schema === 'risk_matrix_enhance') {
+                    badgesHtml += `<span class="capsule-badge badge-outline-info">增强图表</span>`;
+                }
+
+                // 人工选题按钮（仅 supportsManualBullets 且有 candidateProvider）
+                let manualBulletHtml = '';
+                if (chart.supportsManualBullets && chart.candidateProvider) {
+                    const existingCount = (ExportConfig.chartConfigs[chart.id] && ExportConfig.chartConfigs[chart.id].manualBullets || []).length;
+                    const badgeHtml = existingCount > 0 ? `<span class="manual-bullets-badge" id="mbBadge_${chart.id}">已选${existingCount}</span>` : `<span class="manual-bullets-badge" id="mbBadge_${chart.id}" style="display:none"></span>`;
+                    manualBulletHtml = `<span class="manual-bullets-btn" onclick="event.stopPropagation();openBulletSelector('${chart.id}')"><i class="fas fa-pen-to-square me-1"></i>选题${badgeHtml}</span>`;
+                }
+
+                // 底部兜底状态
+                const priority = chart.priority || 'medium';
+                const priorityLabel = { high: '⭐️ 重点', medium: '标准', low: '辅助' }[priority] || '标准';
+
+                html += `
+                <div class="chart-card${isSelected ? ' selected' : ''} h-100" data-chart-id="${chart.id}" onclick="toggleCard(this, '${chart.id}')">
+                    <div class="check-mark"><i class="fas fa-check"></i></div>
+                    
+                    <!-- 原生 Checkbox 作为数据绑定源 (隐藏) -->
+                    <input type="checkbox" class="chart-check" data-chart-id="${chart.id}" 
+                           ${isSelected ? 'checked' : ''} onchange="syncCardState(this)">
+
+                    <!-- 预览区域：初始显示加载态，previewAllCharts() 异步回填真实截图 -->
+                    <div class="chart-preview-placeholder" style="background:#f1f5f9">
+                        <div style="text-align:center;color:#94a3b8">
+                            <div class="spinner-border spinner-border-sm mb-1" style="color:#c7d2fe"></div>
+                            <div style="font-size:0.7rem;margin-top:4px">加载预览...</div>
+                        </div>
+                    </div>
+
+                    <div class="chart-card-body d-flex flex-column" style="flex:1">
+                        <div class="chart-card-title">${chart.title || '无标题图表'}</div>
+                        ${noteLabel ? `<div class="chart-card-labels">${noteLabel}</div>` : ''}
+                        
+                        <div class="chart-card-meta mt-1 mb-3" style="flex-grow:1; display:flex; flex-direction:column; justify-content:center">
+                            ${chart.summaryHint ? chart.summaryHint.split('|').slice(0, 2).join(' | ').trim() : ''}
+                        </div>
+
+                        <div class="chart-card-footer mt-auto pt-2 disabled">
+                            <span class="text-secondary fw-semibold" style="font-size:0.75rem">${priorityLabel}</span>
+                            <div class="ms-auto d-flex gap-1 align-items-center" style="flex-wrap:wrap; justify-content:flex-end">
+                                ${manualBulletHtml}
+                                ${badgesHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }
+            html += `</div></div>`;
+        }
+
+        document.getElementById('chartLoadingHint').style.display = 'none';
+        area.innerHTML = html;
+        updateSummary();
+    }
+
+    // --- 相邻补充方法 ---
+    function toggleCard(cardEl, chartId) {
+        const chk = cardEl.querySelector('.chart-check');
+        if (!chk) return;
+        chk.checked = !chk.checked;
+        syncCardState(chk);
+    }
+
+    function syncCardState(checkbox) {
+        const chartId = checkbox.dataset.chartId;
+        const card = checkbox.closest('.chart-card');
+        const selected = checkbox.checked;
+
+        if (ExportConfig.chartConfigs[chartId]) {
+            ExportConfig.chartConfigs[chartId].selected = selected;
+        }
+        card.classList.toggle('selected', selected);
+        updateSummary();
+    }
+
+    function onChartToggle(checkbox) {
+        const chartId = checkbox.dataset.chartId;
+        const card = checkbox.closest('.chart-card');
+        const selected = checkbox.checked;
+
+        if (ExportConfig.chartConfigs[chartId]) {
+            ExportConfig.chartConfigs[chartId].selected = selected;
+        }
+        card.classList.toggle('selected', selected);
+        updateSummary();
+    }
+
+    /** 实时搜索过滤图表卡片 */
+    function filterCharts(keyword) {
+        const q = (keyword || '').trim().toLowerCase();
+        document.querySelectorAll('.chart-card').forEach(card => {
+            const title = (card.querySelector('.chart-card-title') || {}).textContent || '';
+            const meta = (card.querySelector('.chart-card-meta') || {}).textContent || '';
+            const label = (card.querySelector('.chart-card-labels') || {}).textContent || '';
+            const match = !q || (title + meta + label).toLowerCase().includes(q);
+            const wrapper = card.parentElement || card;
+            wrapper.classList.toggle('chart-search-hidden', !match);
+        });
+        document.querySelectorAll('.module-group').forEach(group => {
+            const vis = group.querySelectorAll('.chart-grid > div:not(.chart-search-hidden)');
+            group.classList.toggle('chart-search-hidden', vis.length === 0);
+        });
+    }
+
+    function selectAll() {
+        document.querySelectorAll('.chart-check').forEach(chk => {
+            chk.checked = true;
+            chk.dispatchEvent(new Event('change'));
+        });
+    }
+
+    function selectDefault() {
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
+        const defaultIds = new Set();
+        for (const mod of modules) {
+            for (const chart of (mod.charts || [])) {
+                if (chart.exportable !== false && chart.defaultSelected !== false) {
+                    defaultIds.add(chart.id);
+                }
+            }
+        }
+        document.querySelectorAll('.chart-check').forEach(chk => {
+            chk.checked = defaultIds.has(chk.dataset.chartId);
+            chk.dispatchEvent(new Event('change'));
+        });
+    }
+
+    function clearAll() {
+        document.querySelectorAll('.chart-check').forEach(chk => {
+            chk.checked = false;
+            chk.dispatchEvent(new Event('change'));
+        });
+    }
+
+    function resetConfig() {
+        setQuickRange(3);
+        selectDefault();
+        document.getElementById('cfgTheme').value = 'blue';
+        document.getElementById('cfgAppendSummaryGlobal').checked = true;
+        document.getElementById('enhTrendLatest').checked = true;
+        document.getElementById('enhTrendPeak').checked = true;
+        document.getElementById('enhTrendAvg').checked = true;
+        document.getElementById('enhRiskMatrix').checked = true;
+        document.getElementById('riskMatrixTopN').value = 5;
+        document.getElementById('enhDecisionSummary').checked = true;
+        ExportConfig.enhance = {
+            trendEnabled: true,
+            trendShowLatest: true, trendShowPeak: true, trendShowAverage: true,
+            riskMatrixEnabled: true, riskMatrixTopN: 5,
+            decisionSummaryEnabled: true
+        };
+        ExportConfig.appendSummaryGlobal = true;
+        updateSummary();
+    }
+
+    /** 更新"上次配置"区域显示 */
+    function updateStoreBar() {
+        const label = document.getElementById('lastSavedLabel');
+        const btnLoad = document.getElementById('btnLoadLast');
+        const t = ExportConfigStore.lastSavedAtDisplay();
+        if (t) {
+            if (label) label.textContent = `上次配置：${t}`;
+            if (btnLoad) btnLoad.disabled = false;
+        } else {
+            if (label) label.textContent = '暂无上次配置';
+            if (btnLoad) btnLoad.disabled = true;
+        }
+    }
+
+    /** 使用上次配置 */
+    function loadLastConfig() {
+        const stored = ExportConfigStore.load();
+        if (!stored) { alert('暂无上次保存的配置'); return; }
+        // 恢复时间范围
+        if (stored.startMonth) {
+            ExportConfig.startMonth = stored.startMonth;
+            document.getElementById('cfgStartMonth').value = stored.startMonth;
+        }
+        if (stored.endMonth) {
+            ExportConfig.endMonth = stored.endMonth;
+            document.getElementById('cfgEndMonth').value = stored.endMonth;
+        }
+        // 恢复图表选中
+        if (Array.isArray(stored.selectedCharts)) {
+            // 重新勾选卡片
+            ExportConfig.selectedCharts = new Set(stored.selectedCharts);
+            document.querySelectorAll('.chart-check').forEach(chk => {
+                const cid = chk.dataset.chartId;
+                const sel = ExportConfig.selectedCharts.has(cid);
+                chk.checked = sel;
+                const card = chk.closest('.chart-card');
+                if (card) card.classList.toggle('selected', sel);
+                if (!ExportConfig.chartConfigs[cid]) ExportConfig.chartConfigs[cid] = {};
+                ExportConfig.chartConfigs[cid].selected = sel;
+            });
+        }
+        ExportConfigStore.applyTo(stored, ExportConfig);
+        syncFormFromConfig();
+        updateSummary();
+    }
+
+    /** 保存当前配置为默认（同时也保存到上次） */
+    function saveCurrentAsDefault() {
+        ExportConfigStore.save(ExportConfig);
+        ExportConfigStore.saveAsDefault(ExportConfig);
+        updateStoreBar();
+        // 简短反馈
+        const btn = event.currentTarget;
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check me-1"></i>已保存';
+        btn.classList.replace('btn-outline-secondary', 'btn-success');
+        setTimeout(() => {
+            btn.innerHTML = orig;
+            btn.classList.replace('btn-success', 'btn-outline-secondary');
+        }, 2000);
+    }
+
+    /**
+     * calcEstimatedPages —— 与后端 estimate_page_count() 保持同一套规则
+     * 封面(1) + 图表页(双排 ceil) + 摘要页(每张有 summaryData 的图一页) + 末页(1)
+     */
+    function calcEstimatedPages(chartCount, summaryCount) {
+        return 1 + Math.ceil(chartCount / 2) + summaryCount + 1;
+    }
+
+    /* ==========================================================
+       配置摘要更新
+       ========================================================== */
+    function updateSummary() {
+        const selected = Object.values(ExportConfig.chartConfigs).filter(c => c.selected);
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
+
+        // 统计支持摘要且图表级开关开启的图表数
+        let summaryCount = 0;
+        for (const mod of modules) {
+            for (const chart of (mod.charts || [])) {
+                const cfg = ExportConfig.chartConfigs[chart.id];
+                if (cfg && cfg.selected && chart.supportsSummary && cfg.appendSummary !== false
+                    && ExportConfig.appendSummaryGlobal && ExportConfig.enhance.decisionSummaryEnabled) {
+                    summaryCount++;
+                }
+            }
+        }
+
+        const estimatedPages = calcEstimatedPages(selected.length, summaryCount);
+        const start = ExportConfig.startMonth || '--';
+        const end = ExportConfig.endMonth || '--';
+        const rangeText = start === end ? start : `${start}~${end.slice(5)}`;
+
+        const enh = ExportConfig.enhance;
+        const enhParts = [];
+        if (enh.trendShowLatest || enh.trendShowPeak || enh.trendShowAverage) {
+            const trendSub = [enh.trendShowLatest ? '最新' : '', enh.trendShowPeak ? '峰值' : '', enh.trendShowAverage ? '均值' : ''].filter(Boolean).join('/');
+            enhParts.push(`趋势(${trendSub})`);
+        }
+        if (enh.riskMatrixEnabled) enhParts.push(`风险矩阵 Top${enh.riskMatrixTopN}`);
+        if (enh.decisionSummaryEnabled) enhParts.push('决策摘要');
+
+        // ── Wizard sidebar 同步（唯一 DOM 更新目标）──
+        const _el = id => document.getElementById(id);
+        if (_el('sidebarDateRange')) _el('sidebarDateRange').textContent = rangeText;
+        if (_el('sidebarChartCount')) _el('sidebarChartCount').textContent = `${selected.length} 张`;
+        // 更新已选图表名称标签
+        const chartTagsEl = _el('sidebarChartTags');
+        if (chartTagsEl) {
+            const selectedNames = [];
+            for (const mod of modules) {
+                for (const chart of (mod.charts || [])) {
+                    const cfg = ExportConfig.chartConfigs[chart.id];
+                    if (cfg && cfg.selected) selectedNames.push(chart.title);
+                }
+            }
+            if (selectedNames.length > 0) {
+                chartTagsEl.innerHTML = selectedNames.map(n => `<span class="ws-tag">${n}</span>`).join('');
+            } else {
+                chartTagsEl.innerHTML = '';
+            }
+        }
+        if (_el('sidebarSummaryCount')) _el('sidebarSummaryCount').textContent = `${summaryCount} 张`;
+        if (_el('sidebarPageCount')) _el('sidebarPageCount').textContent = `${estimatedPages} 页`;
+        if (_el('sidebarTemplate')) {
+            const tplSel = _el('cfgTemplate');
+            _el('sidebarTemplate').textContent = tplSel?.selectedOptions?.[0]?.text || '系统默认';
+        }
+        if (_el('sidebarKeyPersons')) {
+            _el('sidebarKeyPersons').textContent = ExportConfig.keyPersons.enabled
+                ? `${ExportConfig.keyPersons.selected.length} 人` : '未启用';
+        }
+        if (_el('sidebarEnhance')) {
+            const enhText = enhParts.length ? enhParts.join(' · ') : '无';
+            _el('sidebarEnhance').textContent = enhText;
+            _el('sidebarEnhance').title = enhText;
+        }
+
+        // Mobile summary
+        if (typeof updateMobileSummary === 'function') updateMobileSummary();
+
+        // 当前 step 自动刷新
+        if (typeof StepManager !== 'undefined') {
+            if (StepManager.current === 'summary') renderSummaryStep();
+            if (StepManager.current === 'review') populateReviewStep();
+        }
+    }
+
+    /* ==========================================================
+       captureAllCharts() —— Phase 1 核心：复用批量截图能力
+       产出 window.__chartImageCache[chartId]（独立于 __pptCache）
+       
+       【说明】：不新增 renderSingleChartOffline() 单图 API（方案B）。
+       直接调用 ChartRegistry.renderOfflineAllAsync() 批量渲染，
+       再按 chartId 拆解，存入 __chartImageCache。
+       ========================================================== */
+    async function captureAllCharts(start, end) {
+        window.__chartImageCache = {};  // 全局独立缓存，key = chartId
+
+        // 先获取部门数（权限过滤需要）
+        let deptCount = 0;
+        try {
+            const deptResp = await fetch('/personnel/api/analytics-data');
+            if (deptResp.ok) {
+                const deptData = await deptResp.json();
+                deptCount = deptData.accessible_dept_count || 0;
+            }
+        } catch (e) {
+            console.warn('[captureAllCharts] 获取部门数失败:', e);
+        }
+
+        const moduleConfigs = [
+            { key: 'analytics', note: '人员分析' },
+            { key: 'training', note: '培训分析' },
+            { key: 'safety', note: '安全分析' },
+        ];
+
+        let totalCharts = 0;
+        const modules = ChartRegistry.getModules ? Object.values(ChartRegistry.getModules()) : [];
+        for (const mod of modules) {
+            totalCharts += (mod.charts || []).filter(c => c.exportable !== false).length;
+        }
+
+        let doneCharts = 0;
+        setProgress(true, '正在批量截图...');
+
+        for (const cfg of moduleConfigs) {
+            setProgressText(`正在截取「${cfg.note}」模块...`);
+            setProgressBar(Math.round(doneCharts / Math.max(totalCharts, 1) * 100));
+
+            try {
+                const { images, apiResp, processed } = await captureModuleChartsNew(cfg.key, start, end, deptCount);
+
+                for (const imgObj of images) {
+                    const chartId = imgObj.chartId;
+                    if (!chartId) continue;
+
+                    // 查找图表定义（获取 pptEnhance/summaryHint 等元信息）
+                    const chartDef = findChartDef(cfg.key, chartId);
+                    const cfg2 = ExportConfig.chartConfigs[chartId];
+
+                    // 增强数据和 summaryData 由前端生成（Phase 1 复用旧逻辑）
+                    let enhanceData = null;
+                    let summaryData = null;
+                    const cache = window.__pptCache && window.__pptCache[cfg.key];
+
+                    if (chartDef && chartDef.pptEnhance && cache) {
+                        const pe = chartDef.pptEnhance;
+                        if (pe.type === 'trend' && ExportConfig.enhance.trendEnabled) {
+                            enhanceData = buildTrendEnhanceData(pe, cache, chartId);
+                        } else if (pe.type === 'risk_matrix' && ExportConfig.enhance.riskMatrixEnabled) {
+                            enhanceData = buildRiskMatrixEnhanceData(pe, cache, ExportConfig.enhance.riskMatrixTopN);
+                        }
+                        // decision_summary 的 summaryData 在 POST 前异步构建
+                    }
+
+                    window.__chartImageCache[chartId] = {
+                        image: imgObj.image,           // base64 截图
+                        title: imgObj.title || (chartDef && chartDef.title) || chartId,
+                        hint: imgObj.hint || (chartDef && chartDef.summaryHint) || '',
+                        labels: imgObj.labels || null,
+                        moduleKey: cfg.key,
+                        chartId: chartId,
+                        pptEnhance: chartDef ? (chartDef.pptEnhance || null) : null,   // 元信息
+                        enhanceData: enhanceData,   // 已由前端生成
+                        summaryData: null,          // decision_summary 在 POST 前异步构建
+                    };
+                    doneCharts++;
+                }
+            } catch (e) {
+                console.warn(`[captureAllCharts] ${cfg.key} 失败:`, e);
+                doneCharts++;
+            }
+        }
+        setProgressBar(100);
+    }
+
+    /** 找图表定义 */
+    function findChartDef(moduleKey, chartId) {
+        const mod = ChartRegistry.getModule ? ChartRegistry.getModule(moduleKey) : null;
+        if (!mod) return null;
+        return (mod.charts || []).find(c => c.id === chartId) || null;
+    }
+
+    /**
+     * captureModuleChartsNew —— 复用旧 captureModuleCharts 能力
+     * 区别：额外把 apiResp/processed 存入 __pptCache（复用旧增强函数），
+     * 返回 { images, apiResp, processed }
+     */
+    async function captureModuleChartsNew(moduleKey, start, end, deptCount) {
+        const mod = ChartRegistry.getModule(moduleKey);
+        if (!mod) return { images: [], apiResp: null, processed: null };
+
+        // 参数统一处理（复用旧逻辑）
+        let params;
+        if (moduleKey === 'safety') {
+            const [startYear, startMonth] = start.split('-');
+            const [endYear, endMonth] = end.split('-');
+            const endMonthLastDay = new Date(endYear, endMonth, 0).getDate();
+            const endDateString = endMonthLastDay < 10 ? '0' + endMonthLastDay : endMonthLastDay;
+            params = new URLSearchParams({ start_date: `${start}-01`, end_date: `${end}-${endDateString}` });
+        } else {
+            params = new URLSearchParams({ start_month: start, end_month: end });
+        }
+
+        let apiResp;
+        if (mod.multiApi) {
+            const urls = mod.apiUrls || [];
+            apiResp = await Promise.all(
+                urls.map(u => fetch(`${u}?${params}`).then(r => r.ok ? r.json() : null).catch(() => null))
+            );
+        } else {
+            const resp = await fetch(`${mod.apiUrl}?${params}`);
+            apiResp = resp.ok ? await resp.json() : null;
+        }
+
+        if (!apiResp) return { images: [], apiResp: null, processed: null };
+
+        // 存入 __pptCache（供增强函数使用，复用旧逻辑）
+        window.__pptCache = window.__pptCache || {};
+        const processed = ChartRegistry.preprocess(moduleKey, apiResp);
+        window.__pptCache[moduleKey] = { apiResp, processed };
+
+        const images = await ChartRegistry.renderOfflineAllAsync(moduleKey, apiResp, params.toString(), deptCount);
+        return { images, apiResp, processed };
+    }
+
+    /* ==========================================================
+       增强数据构建（复用旧页面 buildTrendEnhanceData 等函数）
+       ========================================================== */
+    function buildRiskMatrixEnhanceData(pe, cache, topN) {
+        if (!cache || !cache.apiResp) return null;
+        const matrixData = Array.isArray(cache.apiResp) ? cache.apiResp[2] : null;
+        if (!matrixData || !matrixData.length) return null;
+        const vals = matrixData.map(m => Array.isArray(m.value) ? m.value : [m.count || 0, m.total_score || 0]);
+        const avgX = vals.reduce((s, v) => s + v[0], 0) / vals.length;
+        const avgY = vals.reduce((s, v) => s + v[1], 0) / vals.length;
+        return matrixData
+            .filter((m, i) => vals[i][0] >= avgX && vals[i][1] >= avgY)
+            .sort((a, b) => (b.value ? b.value[1] : b.total_score || 0) - (a.value ? a.value[1] : a.total_score || 0))
+            .slice(0, topN || 5)
+            .map(m => ({
+                name: m.name, emp_no: m.emp_no || '',
+                team: m.team || '', department: m.department || '',
+                count: Array.isArray(m.value) ? m.value[0] : (m.count || 0),
+                total_score: Array.isArray(m.value) ? m.value[1] : (m.total_score || 0)
+            }));
+    }
+
+    /* --- 复制旧页面的 buildTrendEnhanceData 和辅助函数 --- */
+    function buildTrendEnhanceData(pe, cache, chartId) {
+        if (!cache) return null;
+        const { apiResp, processed } = cache;
+        const seriesArr = [];
+        if (chartId === 'training_monthly_rate') {
+            const keys = processed && processed.monthKeys;
+            const monthMap = processed && processed.monthMap;
+            if (!keys || !monthMap) return null;
+            const yVals = keys.map(m => monthMap[m].total > 0 ? +(monthMap[m].qualified / monthMap[m].total * 100).toFixed(1) : 0);
+            seriesArr.push(_calcSeriesStat(keys, yVals, '合格率', '%'));
+        } else if (chartId === 'training_monthly_count') {
+            const keys = processed && processed.monthKeys;
+            const monthMap = processed && processed.monthMap;
+            if (!keys || !monthMap) return null;
+            const total = keys.map(m => monthMap[m].total);
+            const fail = keys.map(m => monthMap[m].total - monthMap[m].qualified);
+            seriesArr.push(_calcSeriesStat(keys, total, '总人次', '人次'));
+            seriesArr.push(_calcSeriesStat(keys, fail, '不合格人次', '人次'));
+        } else if (chartId === 'safety_daily_trend') {
+            const raw = Array.isArray(apiResp) ? apiResp[3] : null;
+            if (!raw || !raw.dates) return null;
+            seriesArr.push(_calcSeriesStat(raw.dates, raw.counts, '违规次数', '次'));
+            seriesArr.push(_calcSeriesStat(raw.dates, raw.scores, '累计扣分', '分'));
+        }
+        return seriesArr.length ? { series: seriesArr } : null;
+    }
+    function _calcSeriesStat(xLabels, yVals, name, unit) {
+        const n = yVals.length;
+        if (!n) return { name, unit, latest: null, latestLabel: null, peak: null, peakLabel: null, average: null };
+        const latest = yVals[n - 1];
+        const latestLabel = xLabels[n - 1];
+        let peakIdx = 0;
+        yVals.forEach((v, i) => { if (v > yVals[peakIdx]) peakIdx = i; });
+        const avg = yVals.reduce((s, v) => s + v, 0) / n;
+        return { name, unit, latest: +latest.toFixed(1), latestLabel, peak: +yVals[peakIdx].toFixed(1), peakLabel: xLabels[peakIdx], average: +avg.toFixed(1) };
+    }
+
+    /* ==========================================================
+       组装 module_slides（Phase 1 保持旧 payload 结构）
+       ========================================================== */
+    function buildModuleSlidesFromCache() {
+        const rawModules = ChartRegistry.getModules ? ChartRegistry.getModules() : {};
+        const moduleSlideMap = {};
+
+        const moduleMetaMap = {
+            'analytics': { title: '人员数据分析', note: '基于人员基础档案数据统计分析' },
+            'training': { title: '培训数据分析', note: '重点关注员工各项培训及考核合格情况' },
+            'safety': { title: '安全数据分析', note: '基于日常安全检查、隐患排查等维度统计' },
+        };
+
+        for (const [modKey, mod] of Object.entries(rawModules)) {
+            const meta = moduleMetaMap[modKey] || { title: mod.label || modKey, note: '' };
+            for (const chart of (mod.charts || [])) {
+                const cfg = ExportConfig.chartConfigs[chart.id];
+                if (!cfg || !cfg.selected) continue;
+                const imgObj = window.__chartImageCache[chart.id];
+                if (!imgObj || !imgObj.image) continue;
+
+                if (!moduleSlideMap[modKey]) {
+                    moduleSlideMap[modKey] = { title: meta.title, images: [], note: meta.note };
+                }
+                moduleSlideMap[modKey].images.push({
+                    title: imgObj.title,
+                    image: imgObj.image,
+                    hint: imgObj.hint || '',
+                    labels: imgObj.labels || null,
+                    chartId: imgObj.chartId,
+                    moduleKey: imgObj.moduleKey,
+                    pptEnhance: imgObj.pptEnhance || null,
+                    // enhanceData 由前端已生成，传递给后端
+                    enhanceData: imgObj.enhanceData || null,
+                    summaryData: imgObj.summaryData || null,   // decision_summary 在 POST 前注入
+                });
+            }
+        }
+
+        return Object.values(moduleSlideMap);
+    }
+
+    /* ==========================================================
+       主导出流程
+       ========================================================== */
+    async function startExport() {
+        const start = ExportConfig.startMonth;
+        const end = ExportConfig.endMonth;
+
+        if (!start || !end) { showToast('请先选择时间范围', 'warning'); return; }
+        const selectedCharts = Object.values(ExportConfig.chartConfigs).filter(c => c.selected);
+        if (!selectedCharts.length) { showToast('请至少选择一张图表', 'warning'); return; }
+
+        // ── 自动保存本次配置为"上次配置" ──
+        ExportConfig.selectedCharts = new Set(Object.keys(ExportConfig.chartConfigs).filter(id => ExportConfig.chartConfigs[id].selected));
+        ExportConfigStore.save(ExportConfig);
+        updateStoreBar();
+
+        const btn = document.getElementById('btnStartExport');
+        btn.disabled = true;
+
+        try {
+            // Step 1：批量截图（产出 window.__chartImageCache）
+            await captureAllCharts(start, end);
+
+            // Step 2：异步构建 decision_summary
+            setProgressText('正在构建摘要数据...');
+            setProgressBar(80);
+            if (ExportConfig.appendSummaryGlobal && ExportConfig.enhance.decisionSummaryEnabled) {
+                await buildAllDecisionSummaries(start, end);
+            }
+
+            // Step 2.5：关键人员雷达图抓取
+            if (ExportConfig.keyPersons.enabled && ExportConfig.keyPersons.selected.length > 0) {
+                setProgressText('正在生成人员画像...');
+                setProgressBar(90);
+                await captureAllRadarCharts(start, end);
+            }
+
+            setProgressBar(100);
+            setProgress(false);
+
+            // Step 3：弹出确认 Modal（Phase 2 新增，不再直接 POST）
+            showConfirmModal();
+
+        } catch (e) {
+            setProgress(false);
+            showToast('截图失败：' + e.message, 'danger');
+            console.error('[startExport]', e);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    /* ── 截图完成后直接进入导出（wizard 模式下不再弹确认 Modal）── */
+    function showConfirmModal() {
+        // 截图已完成，直接调用导出
+        doConfirmedExport();
+    }
+
+    /* ── 确认后 POST v2（Phase 2 新协议：raw_images + export_config → 后端 builder） ── */
+    async function doConfirmedExport() {
+        const btn = document.getElementById('btnStartExport');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>生成中...';
+        }
+
+        try {
+            const start = ExportConfig.startMonth;
+            const end = ExportConfig.endMonth;
+
+            // 从 __chartImageCache 构建 raw_images（key = chartId，全量传）
+            const rawImages = {};
+            for (const [chartId, imgObj] of Object.entries(window.__chartImageCache || {})) {
+                if (!imgObj || !imgObj.image) continue;
+                rawImages[chartId] = {
+                    image: imgObj.image,
+                    title: imgObj.title,
+                    hint: imgObj.hint || '',
+                    labels: imgObj.labels || null,
+                    moduleKey: imgObj.moduleKey,
+                    chartId: chartId,
+                    pptEnhance: imgObj.pptEnhance || null,
+                    enhanceData: imgObj.enhanceData || null,
+                    summaryData: imgObj.summaryData || null,
+                };
+            }
+
+            if (!Object.keys(rawImages).length) {
+                throw new Error('截图缓存为空，请重新截图');
+            }
+
+            const body = {
+                start_month: start,
+                end_month: end,
+                theme: ExportConfig.theme,
+                export_config: {
+                    chartConfigs: ExportConfig.chartConfigs,
+                    appendSummaryGlobal: ExportConfig.appendSummaryGlobal,
+                    summaryBulletLimit: ExportConfig.summaryBulletLimit,
+                    enhance: ExportConfig.enhance,
+                },
+                raw_images: rawImages,
+                key_persons: ExportConfig.keyPersons.enabled ? ExportConfig.keyPersons.selected : [],
+                radar_images: ExportConfig.keyPersons.enabled ? (window.__keyPersonCache.radarImages || {}) : {},
+                person_profiles: ExportConfig.keyPersons.enabled ? (window.__keyPersonCache.profiles || {}) : {},
+                summary_data: null,
+                template_id: ExportConfig.templateId || null,
+            };
+
+            const resp = await fetch('/api/export/ppt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': window.csrf_token || ''
+                },
+                body: JSON.stringify(body)
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ error: resp.statusText }));
+                throw new Error(err.error || '服务器错误');
+            }
+
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `综合能力报告_${start}_${end}.pptx`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showToast('PPT 已成功导出！', 'success');
+        } catch (e) {
+            showToast('导出失败：' + e.message, 'danger');
+            console.error('[doConfirmedExport]', e);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-download me-2"></i>确认导出';
+            }
+        }
+    }
+
+    /* decision_summary 异步构建（复用旧逻辑） */
+    async function buildAllDecisionSummaries(start, end) {
+        const _startDate = start.length === 7 ? start + '-01' : start;
+        const _endDateRaw = end.length === 7 ? end : end.substring(0, 7);
+        const _lastDay = new Date(new Date(_endDateRaw + '-01').getFullYear(), new Date(_endDateRaw + '-01').getMonth() + 1, 0).getDate();
+        const _endDate = _endDateRaw + '-' + String(_lastDay).padStart(2, '0');
+        const dateParams = `start_date=${_startDate}&end_date=${_endDate}`;
+
+        const tasks = [];
+        for (const [chartId, imgObj] of Object.entries(window.__chartImageCache || {})) {
+            if (!imgObj) continue;
+            const cfg = ExportConfig.chartConfigs[chartId];
+            const pe = imgObj.pptEnhance;
+            if (!cfg || !cfg.selected || cfg.appendSummary === false || !pe || pe.type !== 'decision_summary') continue;
+            if (!imgObj.summaryData) {
+                const cache = window.__pptCache && window.__pptCache[imgObj.moduleKey];
+                if (cache) {
+                    tasks.push(
+                        buildDecisionSummaryDataNew(imgObj, pe.summaryMode, cache, dateParams)
+                    );
+                }
+            }
+        }
+        if (tasks.length) await Promise.all(tasks);
+    }
+
+    /* ==========================================================
+       Phase 3：典型问题人工选择
+       ========================================================== */
+    window.__bulletCandidates = {};  // { [chartId]: { maxSelect, loaded, candidates: [] } }
+    let _bulletSelectorChartId = null;  // 当前打开 Modal 的图表 ID
+
+    /**
+     * 根据 candidateProvider 配置加载候选列表
+     */
+    async function loadBulletCandidates(chartId) {
+        if (window.__bulletCandidates[chartId] && window.__bulletCandidates[chartId].loaded) return;
+
+        const chartDef = findChartDefGlobal(chartId);
+        if (!chartDef || !chartDef.candidateProvider) return;
+
+        const provider = chartDef.candidateProvider;
+        const start = ExportConfig.startMonth;
+        const end = ExportConfig.endMonth;
+        if (!start || !end) return;
+
+        const _startDate = start.length === 7 ? start + '-01' : start;
+        const _endDateRaw = end.length === 7 ? end : end.substring(0, 7);
+        const _lastDay = new Date(new Date(_endDateRaw + '-01').getFullYear(), new Date(_endDateRaw + '-01').getMonth() + 1, 0).getDate();
+        const _endDate = _endDateRaw + '-' + String(_lastDay).padStart(2, '0');
+        const dp = `start_date=${_startDate}&end_date=${_endDate}`;
+
+        const entry = { maxSelect: null, loaded: false, candidates: [] };
+        window.__bulletCandidates[chartId] = entry;
+
+        try {
+            let allProblems = [];
+
+            if (provider.type === 'severity_all_scores') {
+                // 拉取 ≥ minScore 的所有分数段 drilldown
+                const minScore = provider.minScore || 3;
+                const cache = window.__pptCache && window.__pptCache.safety;
+                let raw = null;
+                if (cache && cache.apiResp) {
+                    raw = Array.isArray(cache.apiResp) ? cache.apiResp[0] : cache.apiResp;
+                }
+                // fallback: 如果 __pptCache 尚未加载完成，直接请求 severity-distribution
+                if (!raw || !Array.isArray(raw)) {
+                    try {
+                        const resp = await fetch(`/safety/api/analytics/severity-distribution?${dp}`);
+                        if (resp.ok) raw = await resp.json();
+                    } catch (e) { /* ignore */ }
+                }
+                if (raw && Array.isArray(raw)) {
+                    const scores = raw.map(r => parseSeverityScore(r.name)).filter(s => s >= minScore);
+                    const uniqueScores = [...new Set(scores)];
+                    const results = await Promise.all(uniqueScores.map(s =>
+                        fetch(`/safety/api/analytics/severity-drilldown?score=${s}&${dp}`)
+                            .then(r => r.ok ? r.json() : null).catch(() => null)
+                    ));
+                    results.forEach(dr => { if (dr && dr.problems) allProblems.push(...dr.problems); });
+                }
+                // 转换为统一候选格式
+                entry.candidates = allProblems.map(p => ({
+                    id: String(p.id),
+                    date: p.date || '',
+                    person: p.inspectedPerson || '',
+                    problem: p.hazardDescription || p.inspectionItem || '',
+                    score: p.score != null ? `-${p.score}分` : '',
+                    displayText: `${p.date || ''}  ${p.inspectedPerson || ''}  ${p.hazardDescription || p.inspectionItem || ''}  -${p.score}分`,
+                    raw: p
+                }));
+
+            } else if (provider.type === 'top_loss_top1') {
+                // 取所有 top-loss 项目的 drilldown
+                const cache = window.__pptCache && window.__pptCache.safety;
+                let items = [];
+                if (cache && cache.apiResp) {
+                    const raw = Array.isArray(cache.apiResp) ? cache.apiResp[1] : cache.apiResp;
+                    items = raw && raw.items ? raw.items : [];
+                }
+                // fallback: 直接请求 top-loss-items API
+                if (!items.length) {
+                    try {
+                        const resp = await fetch(`/safety/api/analytics/top-loss-items?${dp}`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            items = data && data.items ? data.items : [];
+                        }
+                    } catch (e) { /* ignore */ }
+                }
+                // 拉取前3个项目的 drilldown 以给出更多候选
+                const topItems = items.slice(0, 3);
+                const results = await Promise.all(topItems.map(item =>
+                    fetch(`/safety/api/analytics/top-loss-drilldown?item=${encodeURIComponent(item)}&${dp}`)
+                        .then(r => r.ok ? r.json() : null).catch(() => null)
+                ));
+                results.forEach(dr => { if (dr && dr.problems) allProblems.push(...dr.problems); });
+                entry.candidates = allProblems.map(p => ({
+                    id: String(p.id),
+                    date: p.date || '',
+                    person: p.inspectedPerson || '',
+                    problem: p.hazardDescription || p.inspectionItem || '',
+                    score: p.score != null ? `-${p.score}分` : '',
+                    displayText: `${p.date || ''}  ${p.inspectedPerson || ''}  ${p.hazardDescription || ''}  -${p.score}分`,
+                    raw: p
+                }));
+
+            } else if (provider.type === 'project_top1') {
+                // 取前3个失格最多项目的 drilldown
+                const cache = window.__pptCache && window.__pptCache.training;
+                let topProjects = [];
+                if (cache) {
+                    const chartDefT = findChartDefGlobal('training_project_top10');
+                    if (chartDefT) {
+                        const extracted = chartDefT.extractData(cache.apiResp, cache.processed);
+                        topProjects = (extracted || []).slice(0, 3);
+                    }
+                }
+                // fallback: 直接请求 training API 获取数据
+                if (!topProjects.length) {
+                    try {
+                        const resp = await fetch(`/training/api/data?${dp}`);
+                        if (resp.ok) {
+                            const rawRows = await resp.json();
+                            const chartDefT = findChartDefGlobal('training_project_top10');
+                            if (chartDefT && chartDefT.extractData) {
+                                const mod = ChartRegistry.getModule ? ChartRegistry.getModule('training') : null;
+                                const preprocessor = mod && mod.preprocessor;
+                                const processed = preprocessor ? preprocessor(rawRows) : null;
+                                const extracted = chartDefT.extractData(rawRows, processed);
+                                topProjects = (extracted || []).slice(0, 3);
+                            }
+                        }
+                    } catch (e) { /* ignore */ }
+                }
+                if (topProjects.length) {
+                    const results = await Promise.all(topProjects.map(proj =>
+                        fetch(`/training/api/analytics/project-drilldown?project=${encodeURIComponent(proj[0])}&${dp}`)
+                            .then(r => r.ok ? r.json() : null).catch(() => null)
+                    ));
+                    results.forEach(dr => {
+                        const records = dr ? (dr.problems || dr.rows || dr.records || []) : [];
+                        allProblems.push(...records);
+                    });
+                }
+                entry.candidates = allProblems.map(p => ({
+                    id: String(p.id),
+                    date: p.date || '',
+                    person: p.name || p.empNo || '',
+                    problem: p.specificProblem || p.problemType || '',
+                    score: p.score != null ? (p.score === 0 ? '失格' : `${p.score}分`) : '失格',
+                    displayText: `${p.date || ''}  ${p.name || ''}  ${p.specificProblem || p.problemType || ''}  ${p.score === 0 ? '失格' : (p.score + '分')}`,
+                    raw: p
+                }));
+            }
+
+            // 去重（按 ID）
+            const seen = new Set();
+            entry.candidates = entry.candidates.filter(c => {
+                if (seen.has(c.id)) return false;
+                seen.add(c.id);
+                return true;
+            });
+            entry.loaded = true;
+
+        } catch (e) {
+            console.warn('[loadBulletCandidates] 失败:', chartId, e);
+            entry.loaded = true;
+        }
+    }
+
+    /** 全局查找图表定义（跨模块） */
+    function findChartDefGlobal(chartId) {
+        const raw = ChartRegistry.getModules ? ChartRegistry.getModules() : {};
+        const modules = Array.isArray(raw) ? raw : Object.values(raw);
+        for (const mod of modules) {
+            const chart = (mod.charts || []).find(c => c.id === chartId);
+            if (chart) return chart;
+        }
+        return null;
+    }
+
+    /** 打开候选选题 Modal */
+    async function openBulletSelector(chartId) {
+        _bulletSelectorChartId = chartId;
+        const chartDef = findChartDefGlobal(chartId);
+
+        // Modal 标题
+        document.getElementById('bulletModalChartTitle').textContent = chartDef ? `— ${chartDef.title}` : '';
+
+        // 重置显示
+        document.getElementById('bulletLoadingHint').style.display = 'block';
+        document.getElementById('bulletEmptyHint').style.display = 'none';
+        document.getElementById('bulletCandidateList').innerHTML = '';
+        document.getElementById('bulletSelectedCount').textContent = '已选 0 条';
+
+        document.getElementById('bulletMaxLabel').textContent = '数量由你决定';
+
+        // 弹出 Modal
+        const modal = new bootstrap.Modal(document.getElementById('bulletSelectorModal'));
+        modal.show();
+
+        // 加载候选
+        await loadBulletCandidates(chartId);
+
+        const entry = window.__bulletCandidates[chartId];
+        document.getElementById('bulletLoadingHint').style.display = 'none';
+
+        if (!entry || !entry.candidates.length) {
+            document.getElementById('bulletEmptyHint').style.display = 'block';
+            return;
+        }
+
+        // 已选列表
+        const existingBullets = (ExportConfig.chartConfigs[chartId] || {}).manualBullets || [];
+        const selectedSet = new Set(existingBullets);
+
+        // 渲染列表
+        let html = '';
+        for (const c of entry.candidates) {
+            const checked = selectedSet.has(c.id) ? 'checked' : '';
+            html += `
+            <div class="bullet-candidate-item">
+                <input type="checkbox" class="form-check-input bullet-chk" 
+                       data-candidate-id="${c.id}" ${checked}
+                       onchange="onBulletCheck(this)">
+                <div class="bc-text">
+                    <span class="text-muted" style="font-size:.75rem">${c.date}</span>
+                    <span class="fw-semibold ms-1">${c.person}</span>
+                    <span class="ms-1">${c.problem}</span>
+                </div>
+                <div class="bc-score">${c.score}</div>
+            </div>`;
+        }
+        document.getElementById('bulletCandidateList').innerHTML = html;
+
+        // 更新选中计数 & 禁用超限
+        refreshBulletCheckState();
+    }
+
+    /** 勾选/取消候选 */
+    function onBulletCheck(chk) {
+        refreshBulletCheckState();
+    }
+
+    /** 刷新选中计数和禁用状态 */
+    function refreshBulletCheckState() {
+        const chartId = _bulletSelectorChartId;
+        if (!chartId) return;
+        const entry = window.__bulletCandidates[chartId];
+
+        const allChks = document.querySelectorAll('#bulletCandidateList .bullet-chk');
+        let count = 0;
+        allChks.forEach(chk => { if (chk.checked) count++; });
+
+        allChks.forEach(chk => {
+            chk.disabled = false;
+        });
+
+        document.getElementById('bulletSelectedCount').textContent = `已选 ${count} 条`;
+    }
+
+    /** 确认选题 */
+    function confirmBulletSelection() {
+        const chartId = _bulletSelectorChartId;
+        if (!chartId) return;
+
+        const allChks = document.querySelectorAll('#bulletCandidateList .bullet-chk');
+        const selectedIds = [];
+        allChks.forEach(chk => {
+            if (chk.checked) selectedIds.push(chk.dataset.candidateId);
+        });
+
+        // 写入 ExportConfig
+        if (!ExportConfig.chartConfigs[chartId]) ExportConfig.chartConfigs[chartId] = {};
+        ExportConfig.chartConfigs[chartId].manualBullets = selectedIds;
+
+        // 更新卡片角标
+        renderBulletBadge(chartId, selectedIds.length);
+
+        if (StepManager.current === 'summary') renderSummaryStep();
+        if (StepManager.current === 'review') populateReviewStep();
+        updateSummary();
+
+        // 关闭 Modal
+        bootstrap.Modal.getInstance(document.getElementById('bulletSelectorModal'))?.hide();
+
+        showToast(`已选择 ${selectedIds.length} 条典型问题`, 'success');
+    }
+
+    /** 清空选择 */
+    function clearBulletSelection() {
+        document.querySelectorAll('#bulletCandidateList .bullet-chk').forEach(chk => {
+            chk.checked = false;
+            chk.disabled = false;
+        });
+        refreshBulletCheckState();
+    }
+
+    /** 更新卡片上的已选角标 */
+    function renderBulletBadge(chartId, count) {
+        const badge = document.getElementById(`mbBadge_${chartId}`);
+        if (!badge) return;
+        if (count > 0) {
+            badge.textContent = `已选${count}`;
+            badge.style.display = 'inline';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    /* 复用旧 buildDecisionSummaryData 逻辑，写入 window.__chartImageCache[chartId].summaryData */
+    async function buildDecisionSummaryDataNew(imgObj, mode, cache, dateParams) {
+        try {
+            const { apiResp, processed } = cache;
+            const isMultiApi = Array.isArray(apiResp);
+            let stats = [], bullets = [];
+            const chartTitle = imgObj.title || '';
+
+            if (mode === 'severity') {
+                const pe = imgObj.pptEnhance || {};
+                const statsRule = pe.statsRule || { minScore: 3 };
+                const summaryBulletLimit = normalizeSummaryBulletLimit(ExportConfig.summaryBulletLimit);
+                const bulletsRule = pe.bulletsRule || { minScore: 4, fallbackMinScore: 3, maxItems: summaryBulletLimit, sort: 'score_desc_date_desc', fields: ['date', 'person', 'problem', 'score'] };
+                bulletsRule.maxItems = summaryBulletLimit;
+                const raw = isMultiApi ? apiResp[0] : apiResp;
+                if (!raw || !raw.length) return;
+                const minThreshold = Math.min(statsRule.minScore, bulletsRule.fallbackMinScore);
+                const highCount = raw.filter(r => parseSeverityScore(r.name) >= statsRule.minScore).reduce((s, r) => s + (r.value || 0), 0);
+                if (raw.filter(r => parseSeverityScore(r.name) >= minThreshold).length === 0) return;
+                const scoreList = raw.map(r => parseSeverityScore(r.name)).filter(s => s >= minThreshold);
+                const uniqueScores = [...new Set(scoreList)];
+                const dResults = await Promise.all(uniqueScores.map(s =>
+                    fetch(`/safety/api/analytics/severity-drilldown?score=${s}&${dateParams}`)
+                        .then(r => r.ok ? r.json() : null).catch(() => null)));
+                const allProblems = [];
+                dResults.forEach(dr => { if (dr && dr.problems) allProblems.push(...dr.problems); });
+                const persons = [...new Set(allProblems.map(p => p.inspectedPerson).filter(Boolean))];
+                const depts = [...new Set(allProblems.map(p => p.department).filter(Boolean))];
+                const teams = [...new Set(allProblems.map(p => p.team).filter(Boolean))];
+                stats = [{ label: `≥${statsRule.minScore}分问题数`, value: String(highCount) }, { label: '涉及人员数', value: String(persons.length) }, { label: '涉及部门/班组', value: `${depts.length}/${teams.length}` }];
+                let filtered = allProblems.filter(p => p.score >= bulletsRule.minScore);
+                if (!filtered.length) filtered = allProblems.filter(p => p.score >= bulletsRule.fallbackMinScore);
+                if (bulletsRule.sort === 'score_desc_date_desc') filtered.sort((a, b) => b.score !== a.score ? b.score - a.score : (b.date || '').localeCompare(a.date || ''));
+                bullets = filtered.slice(0, bulletsRule.maxItems).map(p => {
+                    const parts = [];
+                    (bulletsRule.fields || []).forEach(f => {
+                        if (f === 'date') parts.push(p.date || '');
+                        if (f === 'person') parts.push(p.inspectedPerson || '');
+                        if (f === 'problem') parts.push(p.hazardDescription || p.inspectionItem || '');
+                        if (f === 'score') parts.push(`-${p.score}分`);
+                    });
+                    return parts.filter(Boolean).join('  ');
+                });
+
+            } else if (mode === 'top_loss') {
+                const raw = isMultiApi ? apiResp[1] : apiResp;
+                const extracted = raw && raw.items ? raw.items.map((name, i) => ({ name, score: raw.scores[i] || 0 })) : [];
+                if (!extracted.length) return;
+                const top1 = extracted[0];
+                const dr = await fetch(`/safety/api/analytics/top-loss-drilldown?item=${encodeURIComponent(top1.name)}&${dateParams}`).then(r => r.ok ? r.json() : null).catch(() => null);
+                const problems = dr && dr.problems ? dr.problems : [];
+                const persons = [...new Set(problems.map(p => p.inspectedPerson).filter(Boolean))];
+                const depts = [...new Set(problems.map(p => p.department).filter(Boolean))];
+                const teams = [...new Set(problems.map(p => p.team).filter(Boolean))];
+                stats = [{ label: 'Top1 问题项', value: top1.name }, { label: '涉及人员数', value: String(persons.length) }, { label: '涉及部门/班组', value: `${depts.length}/${teams.length}` }];
+                bullets = problems.slice(0, normalizeSummaryBulletLimit(ExportConfig.summaryBulletLimit)).map(p => `${p.date || ''}  ${p.inspectedPerson || ''}  ${p.hazardDescription || ''}  -${p.score}分`);
+
+            } else if (mode === 'top_frequency') {
+                const raw = isMultiApi ? apiResp[5] : apiResp;
+                const extracted = raw && raw.items ? raw.items.map((name, i) => ({ name, count: raw.counts[i] || 0 })) : [];
+                if (!extracted.length) return;
+                const top1 = extracted[0];
+                const dr = await fetch(`/safety/api/analytics/top-frequency-drilldown?item=${encodeURIComponent(top1.name)}&${dateParams}`).then(r => r.ok ? r.json() : null).catch(() => null);
+                const problems = dr && dr.problems ? dr.problems : [];
+                const persons = [...new Set(problems.map(p => p.inspectedPerson).filter(Boolean))];
+                const depts = [...new Set(problems.map(p => p.department).filter(Boolean))];
+                const teams = [...new Set(problems.map(p => p.team).filter(Boolean))];
+                stats = [{ label: 'Top1 高频问题', value: top1.name }, { label: '累计发生次数', value: String(top1.count) }, { label: '涉及部门/班组', value: `${depts.length}/${teams.length}` }];
+                bullets = problems.slice(0, normalizeSummaryBulletLimit(ExportConfig.summaryBulletLimit)).map(p => `${p.date || ''}  ${p.inspectedPerson || ''}  ${p.hazardDescription || ''}  -${p.score}分`);
+
+            } else if (mode === 'project_top10') {
+                const mod = ChartRegistry.getModule ? ChartRegistry.getModule(imgObj.moduleKey) : null;
+                if (!mod) return;
+                const chartDef = (mod.charts || []).find(c => c.id === imgObj.chartId);
+                if (!chartDef) return;
+                const extracted = chartDef.extractData(apiResp, processed);
+                if (!extracted || !extracted.length) return;
+                const top1Name = extracted[0][0], top1Count = extracted[0][1];
+                const dr = await fetch(`/training/api/analytics/project-drilldown?project=${encodeURIComponent(top1Name)}&${dateParams}`).then(r => r.ok ? r.json() : null).catch(() => null);
+                const records = dr ? (dr.problems || dr.rows || dr.records || []) : [];
+                const persons = [...new Set(records.map(p => p.name || p.empNo).filter(Boolean))];
+                const teams = [...new Set(records.map(p => p.team).filter(Boolean))];
+                stats = [{ label: 'Top1 失格项目', value: top1Name }, { label: '不合格次数', value: String(top1Count) }, { label: '涉及人员数', value: String(persons.length) }];
+                bullets = records.slice(0, normalizeSummaryBulletLimit(ExportConfig.summaryBulletLimit)).map(p => `${p.date || ''}  ${p.name || p.empNo || ''}  ${p.team || ''}  ${p.specificProblem || p.problemType || ''}`);
+            }
+
+            if (stats.length) {
+                // Phase 3：手选优先 — 若用户有 manualBullets 则用手选结果替换自动 bullets
+                const manualIds = (ExportConfig.chartConfigs[imgObj.chartId] || {}).manualBullets || [];
+                if (manualIds.length > 0) {
+                    const candidateEntry = window.__bulletCandidates[imgObj.chartId];
+                    if (candidateEntry && candidateEntry.candidates) {
+                        const manualSet = new Set(manualIds);
+                        const manualItems = candidateEntry.candidates.filter(c => manualSet.has(c.id));
+                        if (manualItems.length > 0) {
+                            bullets = manualItems.slice(0, normalizeSummaryBulletLimit(ExportConfig.summaryBulletLimit)).map(c => c.displayText);
+                        }
+                    }
+                }
+                imgObj.summaryData = {
+                    mode,
+                    chartTitle,
+                    stats,
+                    maxBullets: normalizeSummaryBulletLimit(ExportConfig.summaryBulletLimit),
+                    bullets: bullets.length ? bullets : ['暂无典型问题记录']
+                };
+            }
+        } catch (e) {
+            console.warn('[buildDecisionSummaryDataNew] 失败:', imgObj.chartId, e);
+        }
+    }
+
+    function parseSeverityScore(label) {
+        if (typeof label === 'number') return label;
+        const m = String(label).match(/[\d.]+/);
+        return m ? parseFloat(m[0]) : 0;
+    }
+
+    /* ==========================================================
+       工具函数
+       ========================================================== */
+    function setProgress(show, title) {
+        document.getElementById('captureProgress').style.display = show ? 'flex' : 'none';
+        if (show) {
+            document.getElementById('captureProgress').style.flexDirection = 'column';
+            document.getElementById('captureProgress').style.justifyContent = 'center';
+            document.getElementById('captureProgress').style.alignItems = 'center';
+        }
+        if (title) document.getElementById('progTitle').textContent = title;
+    }
+    function setProgressText(text) {
+        document.getElementById('progSub').textContent = text;
+    }
+    function setProgressBar(pct) {
+        document.getElementById('progBar').style.width = pct + '%';
+    }
+    function showToast(msg, type) {
+        const div = document.createElement('div');
+        div.className = `alert alert-${type || 'info'} alert-dismissible fade show`;
+        div.style.cssText = 'position:fixed;top:70px;right:20px;z-index:9999;min-width:280px;box-shadow:0 4px 12px rgba(0,0,0,.15)';
+        div.innerHTML = `${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+        document.body.appendChild(div);
+        setTimeout(() => div.remove(), 5000);
+    }
+
+    /* ==========================================================
+       企业模板管理
+       ========================================================== */
+    let __tplList = [];       // 缓存的模板列表
+    let __tplEditLogo = '';   // 编辑中的 Logo base64
+    let __tplEditEndBg = '';  // 编辑中的末页背景 base64
+
+    /* ==========================================================
+       关键人员画像
+       ========================================================== */
+    function toggleKeyPersonSection(enabled) {
+        ExportConfig.keyPersons.enabled = enabled;
+        const loadBtn = document.getElementById('btnLoadKeyPersons');
+        if (loadBtn) loadBtn.style.display = enabled ? '' : 'none';
+        document.getElementById('kpListWrapper').style.display = enabled ? '' : 'none';
+        document.getElementById('kpSelectedBadge').style.display = enabled && ExportConfig.keyPersons.selected.length ? '' : 'none';
+        updateSummary();
+        // 自动加载人员（wizard 模式下无需手动点「加载」按钮）
+        if (enabled && !window.__keyPersonCache.allPersons.length) {
+            loadKeyPersonsForConfig();
+        }
+    }
+
+    async function loadKeyPersonsForConfig() {
+        const start = ExportConfig.startMonth;
+        const end = ExportConfig.endMonth;
+        if (!start || !end) { showToast('请先选择时间范围', 'warning'); return; }
+
+        const btn = document.getElementById('btnLoadKeyPersons');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>加载中...';
+
+        try {
+            const params = new URLSearchParams({ start_month: start, end_month: end });
+            const resp = await fetch(`/personnel/api/students-list?${params}`);
+            const data = await resp.json();
+
+            const allPersons = Array.isArray(data) ? data : (data.students || []);
+            const keyP = allPersons.filter(p => p.is_key_personnel);
+
+            window.__keyPersonCache.allPersons = allPersons;
+            window.__keyPersonCache.keyPersons = keyP;
+
+            // 默认预选所有关键人员
+            ExportConfig.keyPersons.selected = keyP.map(p => p.emp_no);
+
+            renderKeyPersonList();
+            updateKpBadge();
+            updateSummary();
+        } catch (e) {
+            showToast('加载人员失败：' + e.message, 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sync-alt me-1"></i>加载人员';
+        }
+    }
+
+    function renderKeyPersonList() {
+        const area = document.getElementById('kpListArea');
+        const all = window.__keyPersonCache.allPersons;
+        if (!all.length) {
+            area.innerHTML = '<div class="text-muted text-center py-3" style="font-size:.82rem">该日期范围内暂无人员数据</div>';
+            return;
+        }
+        // 关键人员在前
+        const keyP = window.__keyPersonCache.keyPersons;
+        const others = all.filter(p => !p.is_key_personnel).sort((a, b) => (a.comprehensive_score || 0) - (b.comprehensive_score || 0));
+        const sorted = [...keyP, ...others];
+        const sel = new Set(ExportConfig.keyPersons.selected);
+
+        area.innerHTML = sorted.map(p => {
+            const isKey = p.is_key_personnel;
+            const checked = sel.has(p.emp_no) ? 'checked' : '';
+            const score = p.comprehensive_score ?? '--';
+            const sc = score < 65 ? 'kp-score-danger' : score < 75 ? 'kp-score-warning' : 'kp-score-ok';
+            return `<div class="kp-item">
+                <input class="form-check-input" type="checkbox" value="${p.emp_no}" ${checked}
+                    onchange="toggleKeyPerson('${p.emp_no}', this.checked)">
+                <div>
+                    <span class="kp-name">${isKey ? '<span class="badge bg-danger me-1" style="font-size:.6em;vertical-align:middle">关键</span>' : ''}${p.name}</span>
+                    <span class="text-muted" style="font-size:.72rem">${p.emp_no}</span>
+                    <div class="kp-dept">${p.department_name || '未分配'}</div>
+                </div>
+                <div class="kp-score ${sc}">${score} 分</div>
+            </div>`;
+        }).join('');
+    }
+
+    function toggleKeyPerson(empNo, checked) {
+        const sel = ExportConfig.keyPersons.selected;
+        if (checked && !sel.includes(empNo)) sel.push(empNo);
+        else if (!checked) {
+            const idx = sel.indexOf(empNo);
+            if (idx >= 0) sel.splice(idx, 1);
+        }
+        updateKpBadge();
+        updateSummary();
+    }
+
+    function kpSelectAllKey() {
+        const keyP = window.__keyPersonCache.keyPersons;
+        const sel = new Set(ExportConfig.keyPersons.selected);
+        keyP.forEach(p => sel.add(p.emp_no));
+        ExportConfig.keyPersons.selected = [...sel];
+        renderKeyPersonList();
+        updateKpBadge();
+        updateSummary();
+    }
+
+    function kpClearAll() {
+        ExportConfig.keyPersons.selected = [];
+        renderKeyPersonList();
+        updateKpBadge();
+        updateSummary();
+    }
+
+    function updateKpBadge() {
+        const n = ExportConfig.keyPersons.selected.length;
+        const badge = document.getElementById('kpSelectedBadge');
+        badge.textContent = `已选 ${n} 人`;
+        badge.style.display = ExportConfig.keyPersons.enabled && n > 0 ? '' : 'none';
+    }
+
+    // 批量抓取雷达图（复用旧页逻辑）
+    async function captureAllRadarCharts(start, end) {
+        const empNos = ExportConfig.keyPersons.selected;
+        const cache = window.__keyPersonCache;
+        cache.radarImages = {};
+        cache.profiles = {};
+
+        const batchSize = 5;
+        for (let i = 0; i < empNos.length; i += batchSize) {
+            const batch = empNos.slice(i, i + batchSize);
+            const results = await Promise.all(batch.map(e => captureRadarChartForConfig(e, start, end)));
+            results.forEach((result, idx) => {
+                const empNo = batch[idx];
+                cache.radarImages[empNo] = result.image || '';
+                cache.profiles[empNo] = result.profile || {};
+            });
+        }
+    }
+
+    async function captureRadarChartForConfig(empNo, start, end) {
+        try {
+            const params = new URLSearchParams({ start_month: start, end_month: end });
+            const resp = await fetch(`/personnel/api/comprehensive-profile/${empNo}?${params}`);
+            if (!resp.ok) return { image: '', profile: {} };
+            const data = await resp.json();
+            const image = renderOfflineRadarForConfig(data);
+            return { image, profile: data };
+        } catch { return { image: '', profile: {} }; }
+    }
+
+    function renderOfflineRadarForConfig(profileData) {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 400;
+            canvas.height = 400;
+            const chart = echarts.init(canvas);
+
+            const scores = profileData.scores || {};
+            const indicators = [
+                { name: '培训能力', max: 100 },
+                { name: '安全意识', max: 100 },
+                { name: '工作绩效', max: 100 },
+                { name: '安全趋势', max: 100 },
+                { name: '稳定性', max: 100 },
+            ];
+            const values = [
+                scores.training ?? 0,
+                scores.safety ?? 0,
+                scores.performance ?? 0,
+                scores.learning ?? 0,
+                scores.stability ?? 0,
+            ];
+
+            chart.setOption({
+                animation: false,
+                backgroundColor: '#fff',
+                radar: { indicator: indicators, shape: 'circle', radius: '65%' },
+                series: [{
+                    type: 'radar',
+                    data: [{
+                        value: values, name: '能力画像',
+                        areaStyle: { opacity: 0.25, color: '#F53F3F' },
+                        lineStyle: { color: '#F53F3F', width: 2 },
+                        itemStyle: { color: '#F53F3F' }
+                    }]
+                }]
+            });
+
+            const dataUrl = chart.getDataURL({ type: 'png', pixelRatio: 2 });
+            chart.dispose();
+            return dataUrl;
+        } catch { return ''; }
+    }
+
+    /* ==========================================================
+       模板管理
+       ========================================================== */
+    async function loadTemplates() {
+        try {
+            const resp = await fetch('/api/ppt-templates');
+            if (!resp.ok) return;
+            __tplList = await resp.json();
+        } catch (e) {
+            __tplList = [];
+        }
+        const sel = document.getElementById('cfgTemplate');
+        // 记住当前用户选择（可能是手动选的或之前默认选中的）
+        const prevId = ExportConfig.templateId;
+
+        // 重建下拉列表
+        sel.innerHTML = '<option value="">系统默认模板</option>';
+        __tplList.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = String(t.id);
+            opt.textContent = t.template_name + (t.is_default ? ' ★' : '');
+            sel.appendChild(opt);
+        });
+
+        // 选中策略：
+        // 1. 如果当前已有选中（手动或上次保存），尝试恢复
+        // 2. 如果没有选中（首次进入），自动选中 is_default=1 的企业模板
+        if (prevId) {
+            sel.value = String(prevId);
+            // 如果模板已被删除，value 会回退到空
+        }
+        if (!sel.value || sel.value === '') {
+            const def = __tplList.find(t => t.is_default);
+            if (def) {
+                sel.value = String(def.id);
+            }
+        }
+        // 同步到 ExportConfig
+        ExportConfig.templateId = sel.value ? parseInt(sel.value) : null;
+    }
+
+    function selectTemplate() {
+        const sel = document.getElementById('cfgTemplate');
+        ExportConfig.templateId = sel.value ? parseInt(sel.value) : null;
+    }
+
+    // 绑定 change 事件
+    document.addEventListener('DOMContentLoaded', () => {
+        const sel = document.getElementById('cfgTemplate');
+        if (sel) sel.addEventListener('change', selectTemplate);
+
+        // 颜色选择器同步
+        const p = document.getElementById('tplEditPrimary');
+        const pt = document.getElementById('tplEditPrimaryText');
+        const s = document.getElementById('tplEditSecondary');
+        const st = document.getElementById('tplEditSecondaryText');
+        if (p && pt) {
+            p.addEventListener('input', () => { pt.value = p.value.toUpperCase(); });
+            pt.addEventListener('change', () => { p.value = pt.value; });
+        }
+        if (s && st) {
+            s.addEventListener('input', () => { st.value = s.value.toUpperCase(); });
+            st.addEventListener('change', () => { s.value = st.value; });
+        }
+
+        // Logo 文件上传
+        const logoInput = document.getElementById('tplEditLogo');
+        if (logoInput) logoInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                __tplEditLogo = ev.target.result;
+                document.getElementById('tplLogoPreview').innerHTML =
+                    `<img src="${__tplEditLogo}" style="max-height:40px; border-radius:4px">`;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // 末页背景文件上传
+        const endBgInput = document.getElementById('tplEditEndBg');
+        if (endBgInput) endBgInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = ev => {
+                __tplEditEndBg = ev.target.result;
+                document.getElementById('tplEndBgPreview').innerHTML =
+                    `<img src="${__tplEditEndBg}" style="max-height:60px; border-radius:4px">`;
+            };
+            reader.readAsDataURL(file);
+        });
+    });
+
+    function openTemplateManager() {
+        showTemplateList();
+        const modal = new bootstrap.Modal(document.getElementById('tplManagerModal'));
+        modal.show();
+        renderTemplateList();
+    }
+
+    function renderTemplateList() {
+        const container = document.getElementById('tplListContainer');
+        if (!__tplList.length) {
+            container.innerHTML = '<div class="text-center text-muted py-4">暂无模板，点击「新增模板」创建</div>';
+            return;
+        }
+        container.innerHTML = __tplList.map(t => `
+            <div class="tpl-card ${t.is_default ? 'tpl-default' : ''}" onclick="openTemplateEditor(${t.id})" style="cursor:pointer">
+                <div class="tpl-color-dot" style="background:${t.primary_color || '#1A56DB'}"></div>
+                <span class="tpl-name">${t.template_name}</span>
+                ${t.is_default ? '<span class="tpl-badge-default">默认</span>' : ''}
+                ${t.has_logo ? '<i class="fas fa-image text-muted" title="已设Logo"></i>' : ''}
+                <i class="fas fa-chevron-right text-muted"></i>
+            </div>
+        `).join('');
+    }
+
+    function showTemplateList() {
+        document.getElementById('tplListView').style.display = '';
+        document.getElementById('tplEditView').style.display = 'none';
+        document.getElementById('tplFooterList').style.display = '';
+        document.getElementById('tplFooterEdit').style.display = 'none';
+        document.getElementById('tplManagerTitle').innerHTML = '<i class="fas fa-palette me-2"></i>报告模板管理';
+        renderTemplateList();
+    }
+
+    async function openTemplateEditor(tplId) {
+        __tplEditLogo = '';
+        __tplEditEndBg = '';
+        document.getElementById('tplEditId').value = tplId || '';
+        document.getElementById('tplEditName').value = '';
+        document.getElementById('tplEditPrimary').value = '#1A56DB';
+        document.getElementById('tplEditPrimaryText').value = '#1A56DB';
+        document.getElementById('tplEditSecondary').value = '#DC3545';
+        document.getElementById('tplEditSecondaryText').value = '#DC3545';
+        document.getElementById('tplEditEndTitle').value = '';
+        document.getElementById('tplEditEndSubtitle').value = '';
+        document.getElementById('tplEditFont').value = '';
+        document.getElementById('tplEditDefault').checked = false;
+        document.getElementById('tplLogoPreview').innerHTML = '';
+        document.getElementById('tplEndBgPreview').innerHTML = '';
+        document.getElementById('tplEditLogo').value = '';
+        document.getElementById('tplEditEndBg').value = '';
+        document.getElementById('tplBtnDelete').style.display = tplId ? '' : 'none';
+
+        // 如果是编辑，从 API 加载完整数据
+        if (tplId) {
+            try {
+                const resp = await fetch(`/api/ppt-templates/${tplId}`);
+                if (resp.ok) {
+                    const t = await resp.json();
+                    document.getElementById('tplEditName').value = t.template_name || '';
+                    document.getElementById('tplEditPrimary').value = t.primary_color || '#1A56DB';
+                    document.getElementById('tplEditPrimaryText').value = t.primary_color || '#1A56DB';
+                    document.getElementById('tplEditSecondary').value = t.secondary_color || '#DC3545';
+                    document.getElementById('tplEditSecondaryText').value = t.secondary_color || '#DC3545';
+                    document.getElementById('tplEditEndTitle').value = t.end_page_title || '';
+                    document.getElementById('tplEditEndSubtitle').value = t.end_page_subtitle || '';
+                    document.getElementById('tplEditFont').value = t.font_family || '';
+                    document.getElementById('tplEditDefault').checked = !!t.is_default;
+                    if (t.logo_image) {
+                        __tplEditLogo = t.logo_image;
+                        const src = t.logo_image.startsWith('data:') ? t.logo_image : `data:image/png;base64,${t.logo_image}`;
+                        document.getElementById('tplLogoPreview').innerHTML =
+                            `<img src="${src}" style="max-height:40px; border-radius:4px">`;
+                    }
+                    if (t.end_page_background) {
+                        __tplEditEndBg = t.end_page_background;
+                        const src = t.end_page_background.startsWith('data:') ? t.end_page_background : `data:image/png;base64,${t.end_page_background}`;
+                        document.getElementById('tplEndBgPreview').innerHTML =
+                            `<img src="${src}" style="max-height:60px; border-radius:4px">`;
+                    }
+                }
+            } catch (e) {
+                console.warn('[openTemplateEditor] 加载失败', e);
+            }
+        }
+
+        document.getElementById('tplListView').style.display = 'none';
+        document.getElementById('tplEditView').style.display = '';
+        document.getElementById('tplFooterList').style.display = 'none';
+        document.getElementById('tplFooterEdit').style.display = '';
+        document.getElementById('tplManagerTitle').innerHTML =
+            `<i class="fas fa-edit me-2"></i>${tplId ? '编辑' : '新增'}模板`;
+    }
+
+    async function saveTemplate() {
+        const tplId = document.getElementById('tplEditId').value;
+        const name = document.getElementById('tplEditName').value.trim();
+        if (!name) { showToast('请填写模板名称', 'warning'); return; }
+
+        const body = {
+            template_name: name,
+            primary_color: document.getElementById('tplEditPrimary').value,
+            secondary_color: document.getElementById('tplEditSecondary').value,
+            end_page_title: document.getElementById('tplEditEndTitle').value.trim() || null,
+            end_page_subtitle: document.getElementById('tplEditEndSubtitle').value.trim() || null,
+            font_family: document.getElementById('tplEditFont').value.trim() || null,
+            is_default: document.getElementById('tplEditDefault').checked,
+            logo_image: __tplEditLogo || null,
+            end_page_background: __tplEditEndBg || null
+        };
+
+        try {
+            const url = tplId ? `/api/ppt-templates/${tplId}` : '/api/ppt-templates';
+            const method = tplId ? 'PUT' : 'POST';
+            const resp = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': window.csrf_token || ''
+                },
+                body: JSON.stringify(body)
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                showToast(result.error || '保存失败', 'danger');
+                return;
+            }
+            showToast(result.message || '保存成功', 'success');
+            await loadTemplates();
+            showTemplateList();
+        } catch (e) {
+            showToast('网络错误: ' + e.message, 'danger');
+        }
+    }
+
+    async function deleteTemplate() {
+        const tplId = document.getElementById('tplEditId').value;
+        if (!tplId) return;
+        if (!confirm('确定删除此模板？')) return;
+
+        try {
+            const resp = await fetch(`/api/ppt-templates/${tplId}`, {
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': window.csrf_token || '' }
+            });
+            const result = await resp.json();
+            if (!resp.ok) {
+                showToast(result.error || '删除失败', 'danger');
+                return;
+            }
+            showToast(result.message || '删除成功', 'success');
+            // 如果当前选中的就是这个模板，清除选择
+            if (ExportConfig.templateId == tplId) {
+                document.getElementById('cfgTemplate').value = '';
+                ExportConfig.templateId = null;
+            }
+            await loadTemplates();
+            showTemplateList();
+        } catch (e) {
+            showToast('网络错误: ' + e.message, 'danger');
+        }
+    }
+</script>
+
+{% endblock %}

@@ -125,7 +125,7 @@ def dashboard():
         {
             "title": "导出 PPT 报告",
             "description": "按日期范围将统计图表和关键人员画像导出为演示文稿。",
-            "endpoint": "export_ppt.ppt_export_page",
+            "endpoint": "export_ppt.ppt_export_config_page",
             "icon": "fas fa-file-powerpoint",
         },
     ]

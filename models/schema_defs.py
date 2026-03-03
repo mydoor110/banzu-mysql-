@@ -400,6 +400,26 @@ CREATE TABLE IF NOT EXISTS ppt_export_cache (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 """
 
+PPT_TEMPLATES_TABLE = """
+CREATE TABLE IF NOT EXISTS ppt_templates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    template_name VARCHAR(255) NOT NULL,
+    logo_image MEDIUMTEXT,
+    end_page_background MEDIUMTEXT,
+    primary_color VARCHAR(20) DEFAULT '#1A56DB',
+    secondary_color VARCHAR(20) DEFAULT '#DC3545',
+    title_color VARCHAR(20),
+    footer_color VARCHAR(20),
+    font_family VARCHAR(100),
+    end_page_title VARCHAR(255),
+    end_page_subtitle VARCHAR(255),
+    is_default TINYINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by INT,
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+"""
+
 # Recent Imports View
 VIEW_RECENT_IMPORTS = """
 CREATE VIEW v_recent_imports AS
@@ -450,5 +470,6 @@ ALL_TABLES = [
     ALGORITHM_ACTIVE_CONFIG_TABLE,
     ALGORITHM_CONFIG_LOGS_TABLE,
     ASYNC_TASKS_TABLE,
-    PPT_EXPORT_CACHE_TABLE
+    PPT_EXPORT_CACHE_TABLE,
+    PPT_TEMPLATES_TABLE
 ]
