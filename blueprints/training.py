@@ -1931,9 +1931,9 @@ def api_analytics_project_drilldown():
         {join_clause}
         WHERE {where_clause}
         AND tr.is_qualified = 0
-        AND tp.name = %s
+        AND (tp.name = %s OR (tp.name IS NULL AND tr.specific_problem = %s))
     """
-    params = dept_params.copy() + [project_name]
+    params = dept_params.copy() + [project_name, project_name]
 
     tr = parse_time_range(request.args, ['day', 'month'], default_grain='day', default_range=None)
     sd, ed = tr['start_date'], tr['end_date']
