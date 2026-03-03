@@ -8,7 +8,7 @@ from models.schema_defs import ALL_TABLES, VIEW_RECENT_IMPORTS
 
 # Current Database Schema Version
 # Increment this when making schema changes
-CURRENT_DB_VERSION = 5
+CURRENT_DB_VERSION = 6
 
 class DBVersionManager:
     def __init__(self, cursor=None):
@@ -165,6 +165,12 @@ class DBVersionManager:
             self._migration_v5_config_version()
             self._update_version(5)
 
+        # Migration from 5 -> 6 (Training Project Governance / PPT Templates)
+        if start_ver < 6 and target_ver >= 6:
+            print("[-] Running Migration v6 (Training Project Governance / PPT Templates)...")
+            self._migration_v6_export_and_training_model()
+            self._update_version(6)
+
     def _migration_v1_baseline(self):
         """
         Baseline adjustments for v1 schema.
@@ -215,6 +221,17 @@ class DBVersionManager:
         except Exception as e:
             print(f"[!] FATAL: Failed to ensure index {index_name} on {table_name}: {e}")
             raise  # 索引创建失败是致命错误，不允许继续升级版本
+
+    def _ensure_index(self, table_name, index_name, columns):
+        """确保普通索引存在，失败时抛出异常（致命错误）"""
+        try:
+            self.cur.execute(f"SHOW INDEX FROM {table_name} WHERE Key_name = %s", (index_name,))
+            if self.cur.fetchone() is None:
+                print(f"    + Creating index {index_name} on {table_name}")
+                self.cur.execute(f"CREATE INDEX {index_name} ON {table_name}({columns})")
+        except Exception as e:
+            print(f"[!] FATAL: Failed to ensure index {index_name} on {table_name}: {e}")
+            raise
 
     def _ensure_foreign_key(self, table_name, constraint_name, foreign_key, references, on_delete="CASCADE"):
         """确保外键约束存在"""
@@ -409,3 +426,92 @@ class DBVersionManager:
         except Exception as e:
             print(f"    [!] config_version 初始化警告: {e}")
 
+    def _migration_v6_export_and_training_model(self):
+        """培训项目治理、PPT 模板与异步任务结构补齐"""
+        from models.schema_defs import (
+            TRAINING_PROJECT_CATEGORIES_TABLE,
+            TRAINING_PROJECTS_TABLE,
+            ASYNC_TASKS_TABLE,
+            PPT_TEMPLATES_TABLE,
+        )
+
+        # 新表兜底：旧库升级时若缺表，显式补齐
+        self._ensure_table('training_project_categories', TRAINING_PROJECT_CATEGORIES_TABLE)
+        self._ensure_table('training_projects', TRAINING_PROJECTS_TABLE)
+        self._ensure_table('async_tasks', ASYNC_TASKS_TABLE)
+        self._ensure_table('ppt_templates', PPT_TEMPLATES_TABLE)
+
+        # 培训项目分类
+        self._ensure_column('training_project_categories', 'description', 'TEXT')
+        self._ensure_column('training_project_categories', 'display_order', 'INT DEFAULT 0')
+        self._ensure_index('training_project_categories', 'idx_training_project_categories_order', 'display_order')
+
+        # 培训项目主数据
+        self._ensure_column('training_projects', 'description', 'TEXT')
+        self._ensure_column('training_projects', 'category_id', 'INT')
+        self._ensure_column('training_projects', 'is_active', 'INT NOT NULL DEFAULT 1')
+        self._ensure_column('training_projects', 'is_archived', 'INT NOT NULL DEFAULT 0')
+        self._ensure_column('training_projects', 'archived_at', 'DATETIME')
+        self._ensure_column('training_projects', 'archived_by', 'INT')
+        self._ensure_foreign_key(
+            table_name='training_projects',
+            constraint_name='fk_training_projects_category_id',
+            foreign_key='category_id',
+            references='training_project_categories(id)',
+            on_delete='SET NULL'
+        )
+        self._ensure_foreign_key(
+            table_name='training_projects',
+            constraint_name='fk_training_projects_archived_by',
+            foreign_key='archived_by',
+            references='users(id)',
+            on_delete='SET NULL'
+        )
+        self._ensure_index('training_projects', 'idx_training_projects_category_id', 'category_id')
+        self._ensure_index('training_projects', 'idx_training_projects_archived', 'is_archived')
+
+        # 培训记录扩展字段
+        self._ensure_column('training_records', 'project_id', 'INT')
+        self._ensure_column('training_records', 'project_name_snapshot', 'VARCHAR(255)')
+        self._ensure_column('training_records', 'category_name_snapshot', 'VARCHAR(255)')
+        self._ensure_column('training_records', 'is_disqualified', 'INT DEFAULT 0')
+        self._ensure_column('training_records', 'is_retake', 'INT DEFAULT 0')
+        self._ensure_column('training_records', 'retake_of_record_id', 'INT')
+        self._ensure_foreign_key(
+            table_name='training_records',
+            constraint_name='fk_training_records_project_id',
+            foreign_key='project_id',
+            references='training_projects(id)',
+            on_delete='SET NULL'
+        )
+        self._ensure_foreign_key(
+            table_name='training_records',
+            constraint_name='fk_training_records_retake_of_record_id',
+            foreign_key='retake_of_record_id',
+            references='training_records(id)',
+            on_delete='SET NULL'
+        )
+        self._ensure_index('training_records', 'idx_training_records_project_snapshot', 'project_name_snapshot')
+
+        # PPT 模板表字段兜底
+        self._ensure_column('ppt_templates', 'logo_image', 'MEDIUMTEXT')
+        self._ensure_column('ppt_templates', 'end_page_background', 'MEDIUMTEXT')
+        self._ensure_column('ppt_templates', 'primary_color', "VARCHAR(20) DEFAULT '#1A56DB'")
+        self._ensure_column('ppt_templates', 'secondary_color', "VARCHAR(20) DEFAULT '#DC3545'")
+        self._ensure_column('ppt_templates', 'title_color', 'VARCHAR(20)')
+        self._ensure_column('ppt_templates', 'footer_color', 'VARCHAR(20)')
+        self._ensure_column('ppt_templates', 'font_family', 'VARCHAR(100)')
+        self._ensure_column('ppt_templates', 'end_page_title', 'VARCHAR(255)')
+        self._ensure_column('ppt_templates', 'end_page_subtitle', 'VARCHAR(255)')
+        self._ensure_column('ppt_templates', 'is_default', 'TINYINT NOT NULL DEFAULT 0')
+        self._ensure_column('ppt_templates', 'updated_by', 'INT')
+        self._ensure_foreign_key(
+            table_name='ppt_templates',
+            constraint_name='fk_ppt_templates_updated_by',
+            foreign_key='updated_by',
+            references='users(id)',
+            on_delete='SET NULL'
+        )
+
+        # 异步任务表兜底
+        self._ensure_column('async_tasks', 'meta_data', 'TEXT')
