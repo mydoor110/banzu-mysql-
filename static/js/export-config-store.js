@@ -27,6 +27,7 @@
             endMonth:            config.endMonth,
             theme:               config.theme,
             appendSummaryGlobal: config.appendSummaryGlobal,
+            summaryBulletLimit:  config.summaryBulletLimit,
             selectedCharts:      Array.from(config.selectedCharts || []),
             chartConfigs:        config.chartConfigs ? JSON.parse(JSON.stringify(config.chartConfigs)) : {},
             enhance: {
@@ -108,6 +109,8 @@
                 if (storedObj.theme)      ExportConfig.theme      = storedObj.theme;
                 if (storedObj.appendSummaryGlobal !== undefined)
                     ExportConfig.appendSummaryGlobal = storedObj.appendSummaryGlobal;
+                if (storedObj.summaryBulletLimit !== undefined)
+                    ExportConfig.summaryBulletLimit = storedObj.summaryBulletLimit;
 
                 // 恢复选中图表集合
                 if (Array.isArray(storedObj.selectedCharts)) {

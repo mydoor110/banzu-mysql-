@@ -30,7 +30,7 @@
                 {
                     id: 'risk_distribution', title: '驾龄风险分布',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'bar_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：电客车司机 | 单位：人 | 按入司后单驾年限分级，识别新手集中风险',
                     chartLabels: {
                         scope: '电客车司机', unit: '人',
@@ -57,7 +57,7 @@
                 {
                     id: 'team_power', title: '班组经验结构对比',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'bar_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：电客车司机 | 单位：年 | 各部门平均司龄/驾龄/取证年限对比',
                     chartLabels: {
                         scope: '电客车司机', unit: '年',
@@ -88,7 +88,7 @@
                 {
                     id: 'experience_scatter', title: '司龄 vs 取证年限散点图',
                     exportable: true, defaultSelected: false, priority: 'medium',
-                    schema: 'scatter_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'scatter_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：电客车司机 | 单位：年 | 取证年限vs单驾年限，识别准师傅人选',
                     chartLabels: {
                         scope: '电客车司机', unit: '年',
@@ -119,7 +119,7 @@
                 {
                     id: 'stability_scatter', title: '工龄 vs 司龄散点图',
                     exportable: true, defaultSelected: false, priority: 'medium',
-                    schema: 'scatter_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'scatter_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：电客车司机 | 单位：年 | 司龄vs工龄，区分应届/社招/老员工结构',
                     chartLabels: {
                         scope: '电客车司机', unit: '年',
@@ -150,7 +150,7 @@
                 {
                     id: 'hometown_stats', title: '籍贯分布统计',
                     exportable: true, defaultSelected: false, priority: 'low',
-                    schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'bar_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：全部在册人员 | 单位：人 | 排序：按人数降序 | 补充图',
                     chartLabels: {
                         scope: '在册人员', unit: '人',
@@ -178,7 +178,7 @@
                 {
                     id: 'political_stats', title: '政治面貌分布',
                     exportable: true, defaultSelected: false, priority: 'low',
-                    schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'bar_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：全部在册人员 | 单位：人 | 党员/团员/群众占比统计 | 补充图',
                     chartLabels: {
                         scope: '在册人员', unit: '人',
@@ -207,7 +207,7 @@
                 {
                     id: 'dept_rookie_compare', title: '各部门新手占比对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
-                    schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'group_bar', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
                     summaryHint: '统计对象：电客车司机 | 单位：% | 仅多部门管理账号展示 | 横向对比各部门新手占比',
                     chartLabels: {
@@ -237,7 +237,7 @@
                 {
                     id: 'dept_backbone_compare', title: '各部门骨干人数对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
-                    schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'group_bar', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
                     summaryHint: '统计对象：电客车司机(单驾>=3年) | 单位：人 | 仅多部门管理账号展示',
                     chartLabels: {
@@ -302,7 +302,7 @@
                 {
                     id: 'training_monthly_rate', title: '月度培训合格率趋势',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'trend_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'trend_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     pptEnhance: { type: 'trend', seriesType: 'single', seriesNames: ['合格率'], yUnit: '%' },
                     summaryHint: '统计对象：培训记录 | 单位：% | 观察合格率趋势，识别培训质量拐点',
                     chartLabels: {
@@ -333,7 +333,8 @@
                 {
                     id: 'training_project_top10', title: '失格最多项目 Top10',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'ranked_bar', supportsPreview: false, supportsSummary: true, supportsManualBullets: true,
+                    schema: 'ranked_bar', supportsPreview: true, supportsSummary: true, supportsManualBullets: true,
+                    candidateProvider: { type: 'project_top1' },
                     pptEnhance: { type: 'decision_summary', summaryMode: 'project_top10' },
                     chartLabels: {
                         scope: '培训记录', unit: '次',
@@ -383,7 +384,7 @@
                 {
                     id: 'training_problem_type', title: '培训问题分类占比',
                     exportable: true, defaultSelected: true, priority: 'medium',
-                    schema: 'pie_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'pie_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：不合格故障记录 | 单位：次 | 分析故障分类，明确改进方向',
                     chartLabels: {
                         scope: '不合格故障记录', unit: '次',
@@ -415,7 +416,7 @@
                 {
                     id: 'training_monthly_count', title: '月度培训人次趋势',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'trend_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'trend_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     pptEnhance: { type: 'trend', seriesType: 'double', seriesNames: ['总人次', '不合格人次'], yUnit: '人次' },
                     summaryHint: '统计对象：培训记录 | 单位：人次 | 培训规模趋势，合格与不合格人次对比',
                     chartLabels: {
@@ -452,7 +453,7 @@
                 {
                     id: 'training_project_count_top20', title: '实操项目人次 Top20',
                     exportable: true, defaultSelected: false, priority: 'low',
-                    schema: 'ranked_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'ranked_bar', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：培训记录 | 单位：次 | 排序：按总次数降序 | 补充图',
                     chartLabels: {
                         scope: '实操项目', unit: '项',
@@ -486,7 +487,7 @@
                 {
                     id: 'training_person_count', title: '人员培训合格/失格次数',
                     exportable: true, defaultSelected: false, priority: 'low',
-                    schema: 'bar_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'bar_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     drilldown: true, drilldownUrl: '/training/api/analytics/person-disqualified-drilldown',
                     clickBehavior: 'modal',
                     drilldownParamBuilder: function (params) { return { name: params.name }; },
@@ -537,7 +538,7 @@
                 {
                     id: 'training_dept_rate_compare', title: '各部门培训合格率对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
-                    schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'group_bar', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
                     summaryHint: '统计对象：培训记录 | 单位：% | 仅多部门管理账号展示 | 横向对比各部门合格率',
                     chartLabels: {
@@ -588,7 +589,8 @@
                 {
                     id: 'safety_severity', title: '安全问题严重度分级',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'ranked_bar', supportsPreview: false, supportsSummary: true, supportsManualBullets: true,
+                    schema: 'ranked_bar', supportsPreview: true, supportsSummary: true, supportsManualBullets: true,
+                    candidateProvider: { type: 'severity_all_scores', minScore: 3 },
                     pptEnhance: {
                         type: 'decision_summary',
                         summaryMode: 'severity',
@@ -648,7 +650,8 @@
                 {
                     id: 'safety_top_loss', title: '高频失分问题 Top10',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'ranked_bar', supportsPreview: false, supportsSummary: true, supportsManualBullets: true,
+                    schema: 'ranked_bar', supportsPreview: true, supportsSummary: true, supportsManualBullets: true,
+                    candidateProvider: { type: 'top_loss_top1' },
                     pptEnhance: { type: 'decision_summary', summaryMode: 'top_loss' },
                     chartLabels: {
                         scope: '违规项', unit: '分',
@@ -695,7 +698,7 @@
                 {
                     id: 'safety_risk_matrix', title: '人员安全风险矩阵',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'matrix_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'matrix_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     chartLabels: {
                         scope: '被检查人员', unit: '人',
                         sortRule: '违规次数 × 累计扣分双维度', note: '右上象限为高风险人员',
@@ -772,7 +775,7 @@
                 {
                     id: 'safety_daily_trend', title: '安全问题日趋势',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'trend_chart', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'trend_chart', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     pptEnhance: { type: 'trend', seriesType: 'dual_axis', seriesNames: ['违规次数', '累计扣分'], yUnits: ['次', '分'] },
                     summaryHint: '统计对象：安全问题记录 | 单位：次/分 | 观察阶段性风险抬头和整改效果',
                     chartLabels: {
@@ -814,7 +817,7 @@
                 {
                     id: 'safety_top_contributors', title: '整改任务最多人员',
                     exportable: true, defaultSelected: false, priority: 'low',
-                    schema: 'ranked_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'ranked_bar', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     summaryHint: '统计对象：整改责任人(rectifier) | 单位：次 | 排序：按整改次数降序 | 补充图',
                     chartLabels: {
                         scope: '整改责任人', unit: '次',
@@ -847,7 +850,7 @@
                 {
                     id: 'safety_top_frequency', title: '高频安全问题 Top10',
                     exportable: true, defaultSelected: true, priority: 'high',
-                    schema: 'ranked_bar', supportsPreview: false, supportsSummary: true, supportsManualBullets: true,
+                    schema: 'ranked_bar', supportsPreview: true, supportsSummary: true, supportsManualBullets: true,
                     pptEnhance: { type: 'decision_summary', summaryMode: 'top_frequency' },
                     chartLabels: {
                         scope: '安全问题记录', unit: '次',
@@ -894,7 +897,7 @@
                 {
                     id: 'safety_dept_issue_compare', title: '各部门问题数对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
-                    schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'group_bar', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
                     summaryHint: '统计对象：安全问题记录 | 单位：次 | 仅多部门管理账号展示',
                     chartLabels: {
@@ -926,7 +929,7 @@
                 {
                     id: 'safety_dept_risk_compare', title: '各部门高风险人员对比',
                     exportable: true, defaultSelected: false, priority: 'medium',
-                    schema: 'group_bar', supportsPreview: false, supportsSummary: false, supportsManualBullets: false,
+                    schema: 'group_bar', supportsPreview: true, supportsSummary: false, supportsManualBullets: false,
                     visibility: 'multi_dept',
                     summaryHint: '统计对象：人员 | 单位：人 | 仅多部门管理账号展示 | 高风险=右上象限',
                     chartLabels: {
@@ -1164,7 +1167,7 @@
                         images.push({
                             title: chart.title, image: img,
                             hint: chart.summaryHint || '', labels: lblsAsync,
-                            // PPT 增强元信息（供 ppt_export.html 打包 enhanceData/summaryData）
+                            // PPT 增强元信息（供导出页打包 enhanceData/summaryData）
                             chartId: chart.id,
                             moduleKey: moduleKey,
                             pptEnhance: chart.pptEnhance || null
@@ -1616,4 +1619,3 @@
     window.ChartRegistry = ChartRegistry;
 
 })();
-

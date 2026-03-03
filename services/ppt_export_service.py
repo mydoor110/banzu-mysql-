@@ -59,12 +59,47 @@ class PPTExportService:
         }
     }
 
-    def __init__(self, theme_name='blue'):
+    def __init__(self, theme_name='blue', template_config=None):
         self.prs = Presentation()
         self.prs.slide_width = SLIDE_WIDTH
         self.prs.slide_height = SLIDE_HEIGHT
         self._blank_layout = self.prs.slide_layouts[6]
-        self.theme = self.THEMES.get(theme_name, self.THEMES['blue'])
+        self.theme = dict(self.THEMES.get(theme_name, self.THEMES['blue']))  # 可写副本
+
+        # ── 企业模板配置 ───────────────────────────────────────────────────
+        self.tpl = template_config  # dict or None
+        self._font_family = None
+        if self.tpl:
+            self._apply_template_overrides()
+
+    @staticmethod
+    def _hex_to_rgb(hex_str):
+        """将 '#1A56DB' 格式的 hex 颜色转为 RGBColor，失败返回 None"""
+        if not hex_str or not isinstance(hex_str, str):
+            return None
+        h = hex_str.lstrip('#')
+        if len(h) != 6:
+            return None
+        try:
+            return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+        except ValueError:
+            return None
+
+    def _apply_template_overrides(self):
+        """用企业模板配置覆盖主题色"""
+        tpl = self.tpl
+        pc = self._hex_to_rgb(tpl.get('primary_color'))
+        sc = self._hex_to_rgb(tpl.get('secondary_color'))
+        tc = self._hex_to_rgb(tpl.get('title_color'))
+
+        if pc:
+            self.theme['header_bg'] = pc
+        if sc:
+            self.theme['accent'] = sc
+        if tc:
+            self.theme['header_text'] = tc
+
+        self._font_family = tpl.get('font_family') or None
 
     def generate(self, start_date: str, end_date: str, module_slides: list,
                  nine_grid_image: str, key_persons: list,
@@ -120,7 +155,10 @@ class PPTExportService:
         for person in key_persons:
             self._add_person_slide(person)
 
-        # 统一添加页脚和页码（跳过封面）
+        # 末页（如有模板配置）
+        self._add_end_slide()
+
+        # 统一添加页脚和页码（跳过封面和末页）
         self._add_footers(start_date, end_date)
 
         buf = io.BytesIO()
@@ -181,6 +219,25 @@ class PPTExportService:
         self._add_textbox(slide, text=datetime.now().strftime("生成时间：%Y-%m-%d %H:%M"),
                           left=Inches(0.8), top=Inches(6.6), width=Inches(10.0), height=Inches(0.4),
                           font_size=Pt(11), color=RGBColor(0x55, 0x66, 0x77))
+
+        # ── 企业 Logo（右上角叠加） ────────────────────────────────────────
+        if self.tpl and self.tpl.get('logo_image'):
+            try:
+                logo_b64 = self.tpl['logo_image']
+                # 去除可能的 data:image/... 前缀
+                if ',' in logo_b64:
+                    logo_b64 = logo_b64.split(',', 1)[1]
+                logo_data = base64.b64decode(logo_b64)
+                logo_stream = io.BytesIO(logo_data)
+                # Logo 放在右上角，高度0.8英寸，宽度自适应
+                slide.shapes.add_picture(
+                    logo_stream,
+                    left=SLIDE_WIDTH - Inches(3.0),
+                    top=Inches(0.3),
+                    height=Inches(0.8)
+                )
+            except Exception:
+                pass  # Logo 解码失败不阻断导出
 
     # ── 执行摘要页 ────────────────────────────────────────────────────
     def _add_summary_slide(self, start_date: str, end_date: str, summary_data: dict):
@@ -307,6 +364,8 @@ class PPTExportService:
         for idx, slide in enumerate(self.prs.slides):
             if idx == 0:  # 跳过封面
                 continue
+            if self._has_end_slide and idx == total - 1:  # 跳过末页
+                continue
             # 页码（右下角）
             self._add_textbox(slide, text=f'{idx + 1} / {total}',
                               left=SLIDE_WIDTH - Inches(1.2), top=SLIDE_HEIGHT - Inches(0.4),
@@ -314,10 +373,86 @@ class PPTExportService:
                               font_size=Pt(9), color=COLOR_TEXT_MUTED,
                               align=PP_ALIGN.RIGHT)
             # 左下角标记
+            footer_color = COLOR_TEXT_MUTED
+            if self.tpl:
+                fc = self._hex_to_rgb(self.tpl.get('footer_color'))
+                if fc:
+                    footer_color = fc
             self._add_textbox(slide, text=f'人员综合能力报告 | {start_date} ~ {end_date}',
                               left=Inches(0.3), top=SLIDE_HEIGHT - Inches(0.4),
                               width=Inches(6.0), height=Inches(0.3),
-                              font_size=Pt(8), color=COLOR_TEXT_MUTED)
+                              font_size=Pt(8), color=footer_color)
+
+    def _add_end_slide(self):
+        """末页：如果模板配置了末页背景则使用，否则生成默认末页"""
+        self._has_end_slide = False
+
+        # 只有配置了末页背景或末页标题才生成末页
+        has_end_bg = self.tpl and self.tpl.get('end_page_background')
+        has_end_title = self.tpl and self.tpl.get('end_page_title')
+        if not has_end_bg and not has_end_title:
+            return
+
+        self._has_end_slide = True
+        slide = self.prs.slides.add_slide(self._blank_layout)
+
+        # 末页背景图
+        if has_end_bg:
+            try:
+                bg_b64 = self.tpl['end_page_background']
+                if ',' in bg_b64:
+                    bg_b64 = bg_b64.split(',', 1)[1]
+                bg_data = base64.b64decode(bg_b64)
+                bg_stream = io.BytesIO(bg_data)
+                slide.shapes.add_picture(
+                    bg_stream, 0, 0,
+                    width=SLIDE_WIDTH, height=SLIDE_HEIGHT
+                )
+            except Exception:
+                # 背景图失败时使用深色背景
+                bg = slide.background.fill
+                bg.solid()
+                bg.fore_color.rgb = COLOR_BG_DARK
+        else:
+            bg = slide.background.fill
+            bg.solid()
+            bg.fore_color.rgb = COLOR_BG_DARK
+
+        # 末页标题
+        end_title = self.tpl.get('end_page_title', '') if self.tpl else ''
+        end_subtitle = self.tpl.get('end_page_subtitle', '') if self.tpl else ''
+
+        if end_title:
+            self._add_textbox(slide, text=end_title,
+                              left=Inches(1.0), top=Inches(2.5),
+                              width=SLIDE_WIDTH - Inches(2.0), height=Inches(1.5),
+                              font_size=Pt(36), bold=True,
+                              color=RGBColor(0xFF, 0xFF, 0xFF),
+                              align=PP_ALIGN.CENTER)
+        if end_subtitle:
+            self._add_textbox(slide, text=end_subtitle,
+                              left=Inches(1.0), top=Inches(4.0),
+                              width=SLIDE_WIDTH - Inches(2.0), height=Inches(1.0),
+                              font_size=Pt(18),
+                              color=RGBColor(0xCC, 0xCC, 0xCC),
+                              align=PP_ALIGN.CENTER)
+
+        # Logo（如配置，居中底部）
+        if self.tpl and self.tpl.get('logo_image'):
+            try:
+                logo_b64 = self.tpl['logo_image']
+                if ',' in logo_b64:
+                    logo_b64 = logo_b64.split(',', 1)[1]
+                logo_data = base64.b64decode(logo_b64)
+                logo_stream = io.BytesIO(logo_data)
+                slide.shapes.add_picture(
+                    logo_stream,
+                    left=SLIDE_WIDTH // 2 - Inches(1.0),
+                    top=Inches(5.5),
+                    height=Inches(0.8)
+                )
+            except Exception:
+                pass
 
     def _add_single_image_slide(self, title: str, chart_obj, note: str = ""):
         slide = self.prs.slides.add_slide(self._blank_layout)
@@ -428,6 +563,14 @@ class PPTExportService:
         chart_title = summary_data.get('chartTitle', chart_obj.get('title', '图表分析'))
         stats = summary_data.get('stats', [])
         bullets = summary_data.get('bullets', [])
+        max_bullets = summary_data.get('maxBullets')
+        try:
+            max_bullets = int(max_bullets)
+        except (TypeError, ValueError):
+            max_bullets = len(bullets) if bullets else 5
+        if max_bullets <= 0:
+            max_bullets = len(bullets) if bullets else 5
+        bullets = bullets[:max_bullets]
 
         slide = self.prs.slides.add_slide(self._blank_layout)
         self._apply_background(slide)
@@ -475,14 +618,17 @@ class PPTExportService:
                         card_w, Inches(4.5), title='典型问题记录')
         y_b = bullets_top + Inches(0.55)
         if bullets:
-            for i, blt in enumerate(bullets[:5]):
-                bullet_text = f"{'①②③④⑤'[i]}  {blt}" if i < 5 else f"·  {blt}"
+            bullet_count = len(bullets)
+            line_height = Inches(0.48 if bullet_count <= 7 else 0.4 if bullet_count <= 9 else 0.34)
+            font_size = Pt(10 if bullet_count <= 7 else 9 if bullet_count <= 9 else 8)
+            for i, blt in enumerate(bullets):
+                bullet_text = f"{i + 1}.  {blt}"
                 self._add_textbox(slide, text=bullet_text,
                                   left=card_left + Inches(0.2), top=y_b,
-                                  width=card_w - Inches(0.4), height=Inches(0.45),
-                                  font_size=Pt(10), color=self.theme['text_main'],
+                                  width=card_w - Inches(0.4), height=line_height,
+                                  font_size=font_size, color=self.theme['text_main'],
                                   word_wrap=True)
-                y_b += Inches(0.48)
+                y_b += line_height
         else:
              self._add_textbox(slide, text="暂无典型问题记录",
                                left=card_left + Inches(0.2), top=y_b,
@@ -966,6 +1112,8 @@ class PPTExportService:
         run.font.bold = bold
         if color:
             run.font.color.rgb = color
+        if self._font_family and font_size and font_size >= Pt(14):
+            run.font.name = self._font_family
         return txBox
 
     def _insert_image(self, slide, img_b64: str, left, top, width, height):
