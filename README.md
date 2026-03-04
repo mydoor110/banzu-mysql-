@@ -91,91 +91,355 @@
 
 ## 快速开始
 
-### 1. 环境准备
-确保已安装 Python 3.8+ 和 MySQL 8.0+。
+### 1. 环境要求
+
+当前项目实际运行要求：
+
+- Python 3.8+
+- MySQL 8.0+
+- 建议安装 `mysqldump`，否则“备份管理”功能会降级
+
+安装 MySQL 客户端示例：
 
 ```bash
-# 安装系统依赖 (MySQL 客户端)
-# Ubuntu/Debian
+# Ubuntu / Debian
 sudo apt-get install -y mysql-client
-# CentOS/RHEL
+
+# CentOS / RHEL
 sudo yum install -y mysql
+
+# macOS
+brew install mysql-client
 ```
 
-### 2. 安装项目依赖
+### 2. 安装 Python 依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. 配置环境
-
-复制环境变量示例文件并修改配置：
+### 3. 配置环境变量
 
 ```bash
 cp .env.example .env
 vim .env
 ```
 
-配置重点：
-- `DB_TYPE=mysql`
-- `MYSQL_HOST`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`
+至少需要确认以下配置：
 
-### 4. 数据库初始化与升级
+- `MYSQL_HOST`
+- `MYSQL_PORT`
+- `MYSQL_USER`
+- `MYSQL_PASSWORD`
+- `MYSQL_DATABASE`
+- `APP_USER`
+- `APP_PASS`
+- `SECRET_KEY`
+- `PORT`
 
-项目集成了 `DBVersionManager`（当前版本 v4），支持自动化的数据库版本管理。
+生产环境额外建议：
 
-#### 新库初始化
+- 设置 `FLASK_ENV=production`
+- 使用高强度 `SECRET_KEY`
+- 如已启用 HTTPS，设置 `SESSION_COOKIE_SECURE=True`
+
+注意：
+
+- 项目代码只支持 MySQL，不再支持 SQLite。
+- `python app.py` 会自动执行数据库初始化。
+- `flask run`、`gunicorn` 或其他 WSGI 启动方式不会自动执行 `init-db`，部署前必须先手动执行一次 `flask --app app init-db`。
+
+---
+
+## 数据库初始化与升级
+
+项目当前实际使用 `models/db_mgmt.py` 中的 `DBVersionManager`，目标数据库版本为 `v6`：
+
+- `v1`: 基线表结构与部门外键补齐
+- `v2`: 钉钉相关字段补齐
+- `v3`: `ppt_export_cache` 表
+- `v4`: `employee_id` 治理 + 多张表日期字段结构化
+- `v5`: 算法配置版本治理（`config_version`）
+- `v6`: 培训项目主数据、PPT 模板、异步任务等结构补齐
+
+### 自动迁移机制说明
+
+执行 `flask --app app init-db` 时，系统会按以下顺序工作：
+
+1. 幂等创建缺失表。
+2. 读取 `system_metadata.key_name='db_version'`。
+3. 按版本顺序执行缺失迁移。
+4. 重建视图、补齐索引。
+5. 初始化基础数据：
+   - 顶级部门
+   - 默认管理员
+   - 停用词
+   - AI 分析配置
+   - 算法预设与当前生效配置
+
+### 重要数据库风险说明
+
+这部分务必注意，尤其是生产升级：
+
+1. MySQL 的 `CREATE TABLE`、`ALTER TABLE` 等 DDL 会隐式提交，失败时不能像普通事务那样完整回滚。
+2. `init-db` 是“幂等补齐 + 增量迁移”，不是“全量回滚式发布”。
+3. `v4` 中的日期迁移会把无法识别的日期清洗为 `NULL`，不是保留原字符串。
+4. `v4` 中的 `employee_id` 回填依赖匹配规则：
+   - `performance_records.emp_no -> employees.emp_no`
+   - `training_records.emp_no -> employees.emp_no`
+   - `safety_inspection_records.inspected_person -> employees.name`
+5. 如果历史数据质量差，迁移可能“部分成功并带 warning”，因此升级后必须人工核验结果，不能只看命令退出码。
+6. 生产环境不要直接通过首次启动 `python app.py` 触发升级，应该先备份，再执行 `flask --app app init-db`，确认无误后再启动服务。
+
+---
+
+## 首次部署
+
+以下流程适用于“数据库中还没有该系统业务表”的全新部署。
+
+### 1. 创建数据库
+
+请先在 MySQL 中手动创建空数据库：
+
+```sql
+CREATE DATABASE team_management
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+```
+
+如果你使用其他库名，请同步修改 `.env` 中的 `MYSQL_DATABASE`。
+
+### 2. 配置 `.env`
+
+建议至少配置如下内容：
+
+```env
+APP_USER=admin
+APP_PASS=请替换为强密码
+SECRET_KEY=请替换为随机高强度密钥
+PORT=5001
+
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=你的MySQL账号
+MYSQL_PASSWORD=你的MySQL密码
+MYSQL_DATABASE=team_management
+
+FLASK_ENV=production
+SESSION_COOKIE_SECURE=False
+```
+
+如果是 HTTPS 反向代理后的正式环境，再把 `SESSION_COOKIE_SECURE` 调整为 `True`。
+
+### 3. 首次初始化数据库
+
+推荐使用 CLI，而不是直接先跑服务：
 
 ```bash
-# CLI 方式（推荐）
 flask --app app init-db
+```
 
-# 或者直接启动应用（python app.py 会自动初始化）
+该命令会：
+
+1. 创建所有表和视图。
+2. 将数据库版本写到 `system_metadata.db_version`。
+3. 初始化管理员账号、默认部门、停用词、AI 配置、算法预设。
+
+### 4. 初始化完成后的核验
+
+建议至少执行以下 SQL：
+
+```sql
+SELECT value
+FROM system_metadata
+WHERE key_name = 'db_version';
+
+SELECT COUNT(*) AS departments_cnt FROM departments;
+SELECT COUNT(*) AS users_cnt FROM users;
+SELECT COUNT(*) AS presets_cnt FROM algorithm_presets;
+```
+
+预期：
+
+- `db_version = 6`
+- `departments` 至少 1 条
+- `users` 至少 1 条
+- `algorithm_presets` 至少 3 条
+
+### 5. 启动应用
+
+```bash
 python app.py
 ```
 
-系统会自动：
-1. 检测当前数据库版本
-2. 创建缺失的表
-3. 执行增量迁移（v1→v2→v3→v4）
-4. 初始化基础数据（管理员账号、默认部门、算法预设）
+默认监听：
 
-#### 老库升级
+- `0.0.0.0:${PORT}`
+- 未设置 `PORT` 时默认 `5001`
 
-对于 **已有数据的老库**，执行同样的命令即可自动升级：
+默认管理员账号来自 `.env`：
+
+- 用户名：`APP_USER`
+- 密码：`APP_PASS`
+
+---
+
+## 升级已有数据库
+
+以下流程适用于“旧版本数据库保留历史业务数据并升级到当前代码”。
+
+### 升级原则
+
+1. 先备份，再升级。
+2. 先 dry-run/预检查，再执行正式迁移。
+3. 先执行 `init-db`，再启动新版本服务。
+4. 升级后必须核验版本号、字段类型、回填结果和关键业务页面。
+
+### 1. 升级前备份
+
+推荐至少做一次逻辑备份：
+
+```bash
+mysqldump -h 127.0.0.1 -P 3306 -u root -p \
+  --default-character-set=utf8mb4 \
+  team_management > team_management_$(date +%F_%H%M%S).sql
+```
+
+如果生产库名、主机、账号不同，请自行替换。
+
+### 2. 升级前预检查
+
+先确认当前版本号：
+
+```sql
+SELECT value
+FROM system_metadata
+WHERE key_name = 'db_version';
+```
+
+如果没有返回结果，通常表示：
+
+- 这是非常旧的库，版本记录尚未建立
+- 或者库是手工搭建的半成品
+
+这种情况下更应该先备份，再在测试环境验证升级流程。
+
+针对 `v4` 数据治理，建议额外检查以下风险：
+
+```sql
+SELECT COUNT(*) AS perf_unmatched
+FROM performance_records p
+LEFT JOIN employees e ON p.emp_no = e.emp_no
+WHERE p.emp_no IS NOT NULL AND p.emp_no != '' AND e.id IS NULL;
+
+SELECT COUNT(*) AS training_unmatched
+FROM training_records t
+LEFT JOIN employees e ON t.emp_no = e.emp_no
+WHERE t.emp_no IS NOT NULL AND t.emp_no != '' AND e.id IS NULL;
+
+SELECT COUNT(*) AS safety_unmatched
+FROM safety_inspection_records s
+LEFT JOIN employees e ON s.inspected_person = e.name
+WHERE s.inspected_person IS NOT NULL AND s.inspected_person != '' AND e.id IS NULL;
+```
+
+如果这些计数很大，说明 `employee_id` 回填后会残留较多 `NULL`，需要先治理人员主数据。
+
+日期字段迁移前，建议先用专项 dry-run：
+
+```bash
+flask --app app migrate-dates --dry-run
+```
+
+如果输出里出现大量“置NULL”，请先确认这些历史日期是否允许被清洗为空。
+
+### 3. 执行正式升级
 
 ```bash
 flask --app app init-db
 ```
 
-`DBVersionManager` 会检测当前版本号并执行缺失的迁移：
-- **v4 数据模型治理**: 自动为 `performance_records`、`training_records`、`safety_inspection_records` 添加 `employee_id` 外键并回填，同时将 `employees` 表的日期字段迁移为 `DATE` 类型。
-
-#### 专项迁移（dry-run 模式）
-
-如果需要单独预览迁移效果或手动补救，可使用以下 CLI 命令：
+如果你想先专项预演，可按顺序使用：
 
 ```bash
-# 预览 employee_id 外键迁移（不执行）
 flask --app app migrate-employee-id --dry-run
-
-# 执行 employee_id 外键迁移
-flask --app app migrate-employee-id
-
-# 预览日期字段迁移（不执行）
 flask --app app migrate-dates --dry-run
+```
 
-# 执行日期字段迁移
+必要时也可以单独执行正式专项迁移：
+
+```bash
+flask --app app migrate-employee-id
 flask --app app migrate-dates
 ```
 
-### 5. 启动服务
+但对绝大多数情况，仍以 `flask --app app init-db` 作为统一升级入口。
+
+### 4. 升级后核验
+
+升级完成后，至少检查以下内容：
+
+```sql
+SELECT value
+FROM system_metadata
+WHERE key_name = 'db_version';
+
+SHOW COLUMNS FROM employees LIKE 'birth_date';
+SHOW COLUMNS FROM employees LIKE 'certification_date';
+SHOW COLUMNS FROM training_records LIKE 'training_date';
+SHOW COLUMNS FROM safety_inspection_records LIKE 'inspection_date';
+
+SELECT COUNT(*) AS perf_employee_id_null
+FROM performance_records
+WHERE emp_no IS NOT NULL AND emp_no != '' AND employee_id IS NULL;
+
+SELECT COUNT(*) AS training_employee_id_null
+FROM training_records
+WHERE emp_no IS NOT NULL AND emp_no != '' AND employee_id IS NULL;
+
+SELECT COUNT(*) AS safety_employee_id_null
+FROM safety_inspection_records
+WHERE inspected_person IS NOT NULL AND inspected_person != '' AND employee_id IS NULL;
+```
+
+预期：
+
+- `db_version = 6`
+- 关键日期字段类型为 `date`
+- `employee_id` 的残留 `NULL` 数量符合预期，且已知原因清楚
+
+如果升级日志中出现以下情况，不要直接上线：
+
+- `migration failed`
+- `Backfill warning`
+- 某些字段被大量清洗为 `NULL`
+- `employee_id` 回填残留异常偏多
+
+应先修正数据，再重新验证。
+
+---
+
+## 启动与运维建议
+
+### 推荐启动顺序
+
+生产环境建议固定为：
+
+1. 更新代码
+2. 更新依赖
+3. 执行 `flask --app app init-db`
+4. 验证数据库结果
+5. 启动或重启 WSGI 服务
+
+### 系统依赖检查
+
+可手动执行：
 
 ```bash
-python app.py
+flask --app app check-system
 ```
-访问 `http://localhost:5001`，默认管理员账号请查看 `.env` 配置（默认为 `admin` / `admin123`）。
+
+它当前主要检查 `mysqldump`，缺失时不会阻止系统运行，但会影响备份能力。
 
 ---
 
@@ -185,7 +449,7 @@ python app.py
 
 | 命令 | 说明 | 常用选项 |
 |------|------|----------|
-| `flask --app app init-db` | 初始化/升级数据库 | `--silent` 静默模式 |
+| `flask --app app init-db` | 初始化/升级数据库与基础数据 | `--silent` 静默模式 |
 | `flask --app app check-system` | 检查系统依赖 | — |
 | `flask --app app migrate-employee-id` | employee_id 外键迁移 | `--dry-run` 仅预览 |
 | `flask --app app migrate-dates` | 日期字段类型迁移 | `--dry-run` 仅预览 |
@@ -200,7 +464,7 @@ python app.py
 ├── config/                     # 配置文件
 ├── models/                     # 数据模型层
 │   ├── database.py             # 数据库连接管理
-│   ├── db_mgmt.py              # 数据库版本与迁移管理（核心，v4）
+│   ├── db_mgmt.py              # 数据库版本与迁移管理（核心，v6）
 │   ├── db_transaction.py       # 事务上下文管理器
 │   └── schema_defs.py          # 表结构定义
 ├── blueprints/                 # 功能模块 (Blueprint)
@@ -243,20 +507,16 @@ python app.py
 - **权限控制**: 请求级 `g.user_ctx` 缓存，消除重复查询
 - **数据处理**: Pandas + NumPy
 - **前端**: Bootstrap 5 + ECharts
-- **部署**: 原生支持，集成自动迁移与备份
+- **部署**: 原生部署，升级入口统一为 `flask --app app init-db`
 
 ## 版本历史
 
-### v3.4.0 - 2026年2月 (当前版本)
-- ✅ **数据模型治理**: employee_id 外键迁移和日期字段类型迁移纳入 DBVersionManager v4
-- ✅ **权限统一**: 全部替换 `session['role']` → `g.user_ctx`，session 仅存储认证信息
-- ✅ **事务管理**: 核心写操作统一使用 `db_transaction()` 上下文管理器
-- ✅ **模块瘦身**: `personnel/__init__.py` 业务逻辑下沉至 `services/personnel_service.py`
-- ✅ **CLI 完善**: 新增 `migrate-employee-id`、`migrate-dates` 命令
-
-### v3.3.0 - 2026年2月
-- ✅ **数据库自动化**: 引入 `DBVersionManager`，实现数据库自动初始化与无感升级。
-- ✅ **算法文档整合**: 统一核心算法逻辑说明至主文档。
+### 2026年3月（当前代码状态）
+- ✅ **数据库版本**: `DBVersionManager` 当前目标版本为 `v6`
+- ✅ **统一升级入口**: 使用 `flask --app app init-db` 完成建表、迁移、视图、索引和基础数据初始化
+- ✅ **数据治理**: 已包含 `employee_id` 回填、日期字段结构化、算法配置版本治理
+- ✅ **业务结构补齐**: 已包含培训项目主数据、PPT 模板、异步任务相关表结构
+- ✅ **运维建议更新**: README 已按“首次部署 / 旧库升级 / 数据库核验”重写
 
 ### v3.2.0 - 2026年1月
 - ✅ **钉钉集成**: 支持钉钉免登与通讯录同步。
