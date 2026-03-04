@@ -34,7 +34,7 @@
           color: '#4E5969',
           fontSize: 12
         },
-        padding: [0, 0, 16, 0]
+        padding: [8, 0, 12, 0]
       },
       legend: {
         textStyle: {

@@ -222,7 +222,7 @@
                         var sorted = data.slice().sort(function (a, b) { return b.rate - a.rate; });
                         return {
                             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function (p) { return p[0].name + '<br/>新手占比: ' + p[0].value + '%<br/>新手人数: ' + (sorted[p[0].dataIndex] || {}).count + '人'; } },
-                            grid: { left: 120, right: 50, top: 40, bottom: 30 },
+                            grid: { left: 120, right: 50, top: 50, bottom: 30 },
                             yAxis: { type: 'category', data: sorted.map(function (d) { return d.name; }).reverse(), axisLabel: { fontSize: 11 } },
                             xAxis: { type: 'value', name: '%', max: 100 },
                             series: [{
@@ -251,7 +251,7 @@
                         var sorted = data.slice().sort(function (a, b) { return b.count - a.count; });
                         return {
                             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-                            grid: { left: 120, right: 50, top: 40, bottom: 30 },
+                            grid: { left: 120, right: 50, top: 50, bottom: 30 },
                             yAxis: { type: 'category', data: sorted.map(function (d) { return d.name; }).reverse(), axisLabel: { fontSize: 11 } },
                             xAxis: { type: 'value', name: '人数' },
                             series: [{
@@ -430,8 +430,8 @@
                         var monthMap = processed.monthMap;
                         return {
                             tooltip: { trigger: 'axis' },
-                            legend: { top: 5 },
-                            grid: { left: 60, right: 30, top: 55, bottom: 50 },
+                            legend: { top: 30 },
+                            grid: { left: 60, right: 30, top: 65, bottom: 50 },
                             xAxis: { type: 'category', data: data, axisLabel: { rotate: 30 } },
                             yAxis: { type: 'value', name: '人次' },
                             series: [
@@ -522,8 +522,8 @@
                         var disqualified = data.map(function (e) { return e[1].disqualified; });
                         return {
                             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-                            legend: { top: 5 },
-                            grid: { left: 60, right: 30, top: 55, bottom: 60 },
+                            legend: { top: 30 },
+                            grid: { left: 60, right: 30, top: 65, bottom: 60 },
                             xAxis: { type: 'category', data: names, axisLabel: { interval: 0, rotate: 30 } },
                             yAxis: { type: 'value', name: '次数' },
                             dataZoom: [{ type: 'inside' }, { type: 'slider', bottom: 0 }],
@@ -634,7 +634,7 @@
                         var colorMap = { '重大': '#F53F3F', '严重': '#FF7D00', '一般': '#FADC19', '轻微': '#00B42A' };
                         return {
                             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-                            grid: { left: 100, right: 50, top: 40, bottom: 30 },
+                            grid: { left: 100, right: 50, top: 50, bottom: 30 },
                             yAxis: { type: 'category', data: sorted.map(function (d) { return d.name; }), axisLabel: { fontSize: 12 } },
                             xAxis: { type: 'value', name: '次数', minInterval: 1 },
                             series: [{
@@ -793,8 +793,8 @@
                     buildOption: function (data) {
                         return {
                             tooltip: { trigger: 'axis' },
-                            legend: { top: 5 },
-                            grid: { left: 60, right: 50, top: 55, bottom: 60 },
+                            legend: { top: 30 },
+                            grid: { left: 60, right: 50, top: 65, bottom: 60 },
                             xAxis: { type: 'category', data: data.dates, axisLabel: { rotate: 35, fontSize: 10 } },
                             yAxis: [
                                 { type: 'value', name: '违规次数', minInterval: 1 },
@@ -914,7 +914,7 @@
                         var sorted = data.slice().sort(function (a, b) { return b.count - a.count; });
                         return {
                             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-                            grid: { left: 120, right: 50, top: 40, bottom: 30 },
+                            grid: { left: 120, right: 50, top: 50, bottom: 30 },
                             yAxis: { type: 'category', data: sorted.map(function (d) { return d.name; }).reverse(), axisLabel: { fontSize: 11 } },
                             xAxis: { type: 'value', name: '问题数', minInterval: 1 },
                             series: [{
@@ -946,7 +946,7 @@
                         var sorted = data.slice().sort(function (a, b) { return b.count - a.count; });
                         return {
                             tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-                            grid: { left: 120, right: 50, top: 40, bottom: 30 },
+                            grid: { left: 120, right: 50, top: 50, bottom: 30 },
                             yAxis: { type: 'category', data: sorted.map(function (d) { return d.name; }).reverse(), axisLabel: { fontSize: 11 } },
                             xAxis: { type: 'value', name: '高风险人员数', minInterval: 1 },
                             series: [{
