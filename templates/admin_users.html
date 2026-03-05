@@ -13,6 +13,29 @@
 
 <div class="row g-3">
   <div class="col-md-5">
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h6 class="card-title">批量导入用户</h6>
+        <form method="post" enctype="multipart/form-data">
+          <input type="hidden" name="action" value="batch_import">
+          {% if csrf_token %}
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% endif %}
+          <div class="mb-2">
+            <input class="form-control" type="file" name="import_file" accept=".xlsx,.csv" required>
+          </div>
+          <div class="d-flex gap-2 mb-2">
+            <button class="btn btn-success" type="submit">开始导入</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('admin.download_users_import_template') }}">下载模板</a>
+          </div>
+          <small class="text-muted d-block">
+            支持导入字段：username、password、display_name、role、department_id、department_name、dingtalk_userid、dingtalk_unionid。<br>
+            字段均可选；新建用户在 password 留空时默认密码为 123456；department_id 优先于 department_name。
+          </small>
+        </form>
+      </div>
+    </div>
+
     <div class="card shadow-sm">
       <div class="card-body">
         <h6 class="card-title">新增用户</h6>
