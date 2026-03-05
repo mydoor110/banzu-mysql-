@@ -53,6 +53,8 @@ ENV/
 !/blueprints/
 !/config/
 !/models/
+!/adapters/
+!/repositories/
 !/services/
 !/static/
 !/templates/
