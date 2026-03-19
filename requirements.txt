@@ -20,3 +20,4 @@ python-pptx
 pytest
 pdfplumber
 PyPDF2
+gunicorn
