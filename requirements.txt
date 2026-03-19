@@ -18,3 +18,5 @@ lifelines
 httpx
 python-pptx
 pytest
+pdfplumber
+PyPDF2
