@@ -23,8 +23,8 @@ def fix_interrupted_tasks():
 
 
 def _run_performance_import(task_tracker, file_path, file_name,
-                            user_id, user_info,
-                            target_year, target_month, force_import):
+                            user_info, target_year, target_month, force_import,
+                            importer_user_id=None):
     """
     绩效 PDF 导入的纯业务逻辑。
 
@@ -110,7 +110,7 @@ def _run_performance_import(task_tracker, file_path, file_name,
         batch_data = [
             (
                 r["emp_no"], r["name"], target_year, target_month,
-                r["score"], r["grade"], file_name, user_id
+                r["score"], r["grade"], file_name, importer_user_id
             )
             for r in filtered
         ]
@@ -144,7 +144,7 @@ def _run_performance_import(task_tracker, file_path, file_name,
                 import_details, created_at
             ) VALUES (%s, 'batch_import_async', %s, %s, %s, %s, %s, %s, %s, %s, 0, %s, %s, NOW())
         """, (
-            'performance', user_id, user_info['username'], user_info['role'],
+            'performance', importer_user_id, user_info['username'], user_info['role'],
             user_info['department_id'], user_info.get('department_name'), file_name,
             len(rows), imported_count, skipped_count, json.dumps(details)
         ))
@@ -177,13 +177,14 @@ def submit_task(file_path, file_name, user_id, user_info,
         task_type='performance_import',
         description=f"绩效导入 {file_name} ({target_year}-{target_month})",
         target_func=_run_performance_import,
-        user_id=user_id,
+        user_id=user_id,           # TaskManager 自身记录任务归属
         # 以下为透传给 _run_performance_import 的参数
         file_path=file_path,
         file_name=file_name,
+        importer_user_id=user_id,  # 业务函数内使用（user_id 被 TaskManager 拦截不透传）
+        user_info=user_info,
         target_year=target_year,
         target_month=target_month,
         force_import=force_import,
-        user_info=user_info,
     )
     return int(task.id)
