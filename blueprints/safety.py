@@ -319,6 +319,7 @@ def upload_inspection():
             # 姓名仅作展示字段，工号(emp_no)用于统计唯一化
             # P1.3：使用 db_transaction 统一事务边界，整批原子提交
             from models.db_transaction import db_transaction
+            missing_employees = set()  # 收集不在花名册中的人名
             with db_transaction() as txn_conn:
                 txn_cur = txn_conn.cursor()
                 for record_data in records_to_import:
@@ -328,7 +329,7 @@ def upload_inspection():
                     matched_employee_id = None  # 关联的 employee_id
 
                     if inspected_person:
-                        # 查询被检查人的部门和 ID
+                        # 被检查人必须在花名册中，否则跳过并提醒用户
                         txn_cur.execute("""
                             SELECT id, department_id FROM employees
                             WHERE name = %s
@@ -336,15 +337,20 @@ def upload_inspection():
                         """, (inspected_person,))
                         emp_row = txn_cur.fetchone()
 
-                        if emp_row:
-                            matched_employee_id = emp_row['id']
-                            if emp_row['department_id']:
-                                emp_dept_id = emp_row['department_id']
-                                # 检查是否有权限访问该部门
-                                if emp_dept_id not in accessible_dept_ids:
-                                    has_permission = False
-                                    total_skipped_no_permission += 1
-                                    continue
+                        if not emp_row:
+                            # 不在花名册中，记录姓名并跳过
+                            missing_employees.add(inspected_person)
+                            total_skipped_no_permission += 1
+                            continue
+
+                        matched_employee_id = emp_row['id']
+                        if emp_row['department_id']:
+                            emp_dept_id = emp_row['department_id']
+                            # 检查是否有权限访问该部门
+                            if emp_dept_id not in accessible_dept_ids:
+                                has_permission = False
+                                total_skipped_no_permission += 1
+                                continue
 
                     # 检查是否已存在完全相同的记录（基于关键字段）
                     txn_cur.execute("""
@@ -399,6 +405,9 @@ def upload_inspection():
 
             if msg_parts:
                 flash("、".join(msg_parts), "success" if total_imported > 0 else "warning")
+            if missing_employees:
+                names = "、".join(sorted(missing_employees))
+                flash(f"⚠️ 以下人员不在花名册中，对应记录已跳过，请先在人员管理中维护后重新导入：{names}", "warning")
 
             # 记录导入操作日志
             log_import_operation(
@@ -522,6 +531,7 @@ def confirm_duplicates():
 
         try:
             from models.db_transaction import db_transaction
+            missing_employees = set()  # 收集不在花名册中的人名
             with db_transaction() as txn_conn:
                 txn_cur = txn_conn.cursor()
                 for record_data in records:
@@ -555,13 +565,18 @@ def confirm_duplicates():
                         """, (inspected_person,))
                         emp_row = txn_cur.fetchone()
 
-                        if emp_row:
-                            matched_employee_id = emp_row['id']
-                            if emp_row['department_id']:
-                                emp_dept_id = emp_row['department_id']
-                                if emp_dept_id not in accessible_dept_ids:
-                                    total_skipped_no_permission += 1
-                                    continue
+                        if not emp_row:
+                            # 不在花名册中，记录姓名并跳过
+                            missing_employees.add(inspected_person)
+                            total_skipped_no_permission += 1
+                            continue
+
+                        matched_employee_id = emp_row['id']
+                        if emp_row['department_id']:
+                            emp_dept_id = emp_row['department_id']
+                            if emp_dept_id not in accessible_dept_ids:
+                                total_skipped_no_permission += 1
+                                continue
 
                     # 检查是否已存在完全相同的记录
                     txn_cur.execute("""
@@ -618,6 +633,9 @@ def confirm_duplicates():
 
             if msg_parts:
                 flash("、".join(msg_parts), "success" if total_imported > 0 else "warning")
+            if missing_employees:
+                names = "、".join(sorted(missing_employees))
+                flash(f"⚠️ 以下人员不在花名册中，对应记录已跳过，请先在人员管理中维护后重新导入：{names}", "warning")
 
             # 记录导入操作日志
             log_import_operation(
@@ -740,7 +758,7 @@ def records():
         SELECT sr.*
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
     """
     params = dept_ids.copy()
 
@@ -774,7 +792,7 @@ def records():
     cur.execute(f"""
         SELECT DISTINCT sr.category FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         ORDER BY sr.category
     """, tuple(dept_ids))
     categories = [row['category'] for row in cur.fetchall() if row['category']]
@@ -782,7 +800,7 @@ def records():
     cur.execute(f"""
         SELECT DISTINCT sr.responsible_team FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         ORDER BY sr.responsible_team
     """, tuple(dept_ids))
     teams = [row['responsible_team'] for row in cur.fetchall() if row['responsible_team']]
@@ -790,7 +808,7 @@ def records():
     cur.execute(f"""
         SELECT DISTINCT sr.work_type FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
           AND sr.work_type IS NOT NULL AND sr.work_type != ''
         ORDER BY sr.work_type
     """, tuple(dept_ids))
@@ -854,7 +872,7 @@ def export():
         SELECT sr.*
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
     """
     params = dept_ids.copy()
 
@@ -934,7 +952,7 @@ def api_data():
         SELECT sr.*
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
     """
     params = dept_ids.copy()
 
@@ -1096,7 +1114,7 @@ def api_analytics_severity_distribution():
         SELECT sr.assessment
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         AND sr.assessment IS NOT NULL
         AND sr.assessment != ''
     """
@@ -1149,7 +1167,7 @@ def api_analytics_daily_trend():
         SELECT sr.inspection_date, sr.assessment
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         AND sr.assessment IS NOT NULL
         AND sr.assessment != ''
     """
@@ -1214,7 +1232,7 @@ def api_analytics_top_loss_items():
         SELECT sr.inspection_item, sr.assessment
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         AND sr.inspection_item IS NOT NULL
         AND sr.inspection_item != ''
         AND sr.assessment IS NOT NULL
@@ -1276,7 +1294,7 @@ def api_analytics_personnel_risk_matrix():
             e.emp_no
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         AND sr.inspected_person IS NOT NULL
         AND sr.inspected_person != ''
         AND sr.assessment IS NOT NULL
@@ -1359,7 +1377,7 @@ def api_analytics_top_contributors():
         SELECT sr.rectifier
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         AND sr.rectifier IS NOT NULL
         AND sr.rectifier != ''
     """
@@ -1430,7 +1448,7 @@ def api_analytics_severity_drilldown():
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
         LEFT JOIN departments d ON e.department_id = d.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         AND sr.assessment IS NOT NULL
         AND sr.assessment != ''
     """
@@ -1573,7 +1591,7 @@ def api_analytics_top_frequency_items():
         SELECT sr.inspection_item, sr.assessment
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         AND sr.inspection_item IS NOT NULL
         AND sr.inspection_item != ''
         AND sr.assessment IS NOT NULL
@@ -1632,7 +1650,7 @@ def api_analytics_top_loss_drilldown():
         FROM safety_inspection_records sr
         LEFT JOIN employees e ON sr.employee_id = e.id
         LEFT JOIN departments d ON e.department_id = d.id
-        WHERE (e.department_id IN ({placeholders}) OR sr.employee_id IS NULL)
+        WHERE e.department_id IN ({placeholders})
         AND sr.inspection_item = %s
         AND sr.assessment IS NOT NULL AND sr.assessment != ''
     """

@@ -116,6 +116,7 @@ def upload_daily_report():
         all_records_data = []  # 存储所有待导入的记录
         all_project_names = set()  # 存储所有项目名称
         file_errors = []
+        missing_employees = set()  # 收集不在花名册中的工号+姓名
 
         for file_obj in files:
             if file_obj.filename == "":
@@ -217,13 +218,18 @@ def upload_daily_report():
                     if not emp_no or not name:
                         continue
 
-                    # 权限验证：检查该员工是否属于当前用户可访问的部门
-                    if accessible_dept_ids is not None:  # 非管理员需要验证
-                        cur.execute("SELECT department_id FROM employees WHERE emp_no = %s", (emp_no,))
-                        emp_dept_row = cur.fetchone()
+                    # 员工存在性验证：所有角色都必须确认员工在花名册中
+                    cur.execute("SELECT department_id FROM employees WHERE emp_no = %s", (emp_no,))
+                    emp_dept_row = cur.fetchone()
 
-                        # 如果员工不存在或不属于可访问部门，静默跳过
-                        if not emp_dept_row or emp_dept_row['department_id'] not in accessible_dept_ids:
+                    if not emp_dept_row:
+                        # 员工不在花名册中，记录并跳过
+                        missing_employees.add(f"{emp_no}({name})")
+                        continue
+
+                    # 非管理员：额外验证部门访问权限
+                    if accessible_dept_ids is not None:
+                        if emp_dept_row['department_id'] not in accessible_dept_ids:
                             continue
 
                     # 提取得分
@@ -282,7 +288,10 @@ def upload_daily_report():
 
         # ====== 第二阶段：验证项目是否存在 ======
         if not all_records_data:
-            if file_errors:
+            if missing_employees:
+                names = "、".join(sorted(missing_employees))
+                flash(f"⚠️ 以下人员不在花名册中，对应记录已跳过，请先在人员管理中维护后重新导入：{names}", "warning")
+            elif file_errors:
                 flash(f"处理错误: {'; '.join(file_errors)}", "warning")
             else:
                 flash("没有找到可导入的数据", "warning")
@@ -424,6 +433,9 @@ def upload_daily_report():
             flash(f"跳过 {total_skipped} 条重复记录", "info")
         if file_errors:
             flash(f"处理错误: {'; '.join(file_errors)}", "warning")
+        if missing_employees:
+            names = "、".join(sorted(missing_employees))
+            flash(f"⚠️ 以下人员不在花名册中，对应记录已跳过，请先在人员管理中维护后重新导入：{names}", "warning")
 
         return redirect(url_for("training.records"))
 
